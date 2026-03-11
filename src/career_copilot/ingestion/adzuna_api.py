@@ -6,7 +6,12 @@ from typing import Any
 
 import requests
 
-from career_copilot.ingestion.common import NormalizedJob, coerce_int, parse_datetime
+from career_copilot.ingestion.common import (
+    NormalizedJob,
+    coerce_int,
+    html_to_plain_text,
+    parse_datetime,
+)
 
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
 # Countries: gb, us, au, de, fr, etc. Paginate with results_per_page=50.
@@ -40,7 +45,7 @@ def normalize_adzuna_job(raw: dict[str, Any]) -> NormalizedJob:
         location=loc,
         salary_min=coerce_int(raw.get("salary_min")),
         salary_max=coerce_int(raw.get("salary_max")),
-        description=raw.get("description"),
+        description=html_to_plain_text(raw.get("description")),
         skills=None,
         posted_at=parse_datetime(raw.get("created")),
         url=raw.get("redirect_url"),

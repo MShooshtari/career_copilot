@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from career_copilot.ingestion.common import NormalizedJob, parse_datetime
+from career_copilot.ingestion.common import NormalizedJob, html_to_plain_text, parse_datetime
 
 REMOTIVE_API_URL = "https://remotive.com/api/remote-jobs"
 
@@ -19,7 +19,7 @@ def normalize_remotive_job(raw: dict[str, Any]) -> NormalizedJob:
         location=raw.get("candidate_required_location"),
         salary_min=None,
         salary_max=None,
-        description=raw.get("description"),
+        description=html_to_plain_text(raw.get("description")),
         skills=raw.get("tags") if isinstance(raw.get("tags"), list) else None,
         posted_at=parse_datetime(raw.get("publication_date")),
         url=raw.get("url"),

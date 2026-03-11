@@ -4,7 +4,12 @@ from typing import Any
 
 import requests
 
-from career_copilot.ingestion.common import NormalizedJob, coerce_int, parse_datetime
+from career_copilot.ingestion.common import (
+    NormalizedJob,
+    coerce_int,
+    html_to_plain_text,
+    parse_datetime,
+)
 
 REMOTEOK_API_URL = "https://remoteok.com/api"
 
@@ -18,7 +23,7 @@ def normalize_remoteok_job(raw: dict[str, Any]) -> NormalizedJob:
         location=raw.get("location"),
         salary_min=coerce_int(raw.get("salary_min")),
         salary_max=coerce_int(raw.get("salary_max")),
-        description=raw.get("description"),
+        description=html_to_plain_text(raw.get("description")),
         skills=list(raw.get("tags") or []) if raw.get("tags") is not None else None,
         posted_at=parse_datetime(raw.get("date") or raw.get("posted_at")),
         url=raw.get("url"),
