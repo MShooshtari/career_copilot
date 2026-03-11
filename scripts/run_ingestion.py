@@ -14,11 +14,24 @@ SQL_DIR = ROOT / "sql"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from career_copilot.database.db import connect  # noqa: E402
+from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.ingestion.arbeitnow_api import (  # noqa: E402
+    fetch_arbeitnow_jobs,
+    normalize_arbeitnow_job,
+)
 from career_copilot.ingestion.remoteok_api import (  # noqa: E402
     fetch_remoteok_jobs,
     normalize_remoteok_job,
 )
+from career_copilot.ingestion.remotive_api import (  # noqa: E402
+    fetch_remotive_jobs,
+    normalize_remotive_job,
+)
+from career_copilot.ingestion.adzuna_api import (  # noqa: E402
+    fetch_adzuna_jobs,
+    normalize_adzuna_job,
+)
+from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
 
 UPSERT_SQL = """
 INSERT INTO jobs (
@@ -76,9 +89,48 @@ def ensure_database(dbname: str) -> None:
             return
 
 
+def _fetch_all_sources() -> list[tuple[str, list[NormalizedJob]]]:
+    """Fetch from each source and return (source_name, normalized_jobs)."""
+    out: list[tuple[str, list[NormalizedJob]]] = []
+    # RemoteOK
+    try:
+        raw = fetch_remoteok_jobs()
+        out.append(("remoteok", [normalize_remoteok_job(j) for j in raw]))
+    except Exception as e:
+        print(f"RemoteOK fetch failed: {e}")
+        out.append(("remoteok", []))
+    # Remotive (no key)
+    try:
+        raw = fetch_remotive_jobs()
+        out.append(("remotive", [normalize_remotive_job(j) for j in raw]))
+    except Exception as e:
+        print(f"Remotive fetch failed: {e}")
+        out.append(("remotive", []))
+    # Arbeitnow (no key)
+    try:
+        raw = fetch_arbeitnow_jobs()
+        out.append(("arbeitnow", [normalize_arbeitnow_job(j) for j in raw]))
+    except Exception as e:
+        print(f"Arbeitnow fetch failed: {e}")
+        out.append(("arbeitnow", []))
+    # Adzuna (needs ADZUNA_APP_ID + ADZUNA_APP_KEY)
+    try:
+        raw = fetch_adzuna_jobs()
+        out.append(("adzuna", [normalize_adzuna_job(j) for j in raw]))
+    except Exception as e:
+        print(f"Adzuna fetch failed: {e}")
+        out.append(("adzuna", []))
+    return out
+
+
 def main() -> None:
-    jobs_raw = fetch_remoteok_jobs()
-    normalized = [normalize_remoteok_job(j) for j in jobs_raw]
+    from datetime import datetime, timezone
+    load_env()
+    run_at = datetime.now(timezone.utc).isoformat()
+    source_batches = _fetch_all_sources()
+    normalized: list[NormalizedJob] = []
+    for _name, jobs in source_batches:
+        normalized.extend(jobs)
 
     ensure_database("career_copilot")
     try:
@@ -104,7 +156,6 @@ def main() -> None:
             inserted = 0
             for job in normalized:
                 if job.source_id is None:
-                    # Skip rows that can't be made idempotent.
                     continue
                 cur.execute(
                     UPSERT_SQL,
@@ -125,14 +176,16 @@ def main() -> None:
                 )
                 inserted += 1
 
-            cur.execute(sql.SQL("SELECT count(*) FROM jobs WHERE source = %s"), ("remoteok",))
-            count = cur.fetchone()[0]
+            cur.execute("SELECT source, count(*) FROM jobs GROUP BY source ORDER BY source")
+            per_source = dict(cur.fetchall())
+            cur.execute("SELECT count(*) FROM jobs")
+            total = cur.fetchone()[0]
 
         conn.commit()
 
-    print(f"Fetched {len(jobs_raw)} RemoteOK rows")
-    print(f"Upserted {inserted} RemoteOK jobs")
-    print(f"RemoteOK job count in DB: {count}")
+    parts = " | ".join(f"{name}: {len(jobs)} fetched" for name, jobs in source_batches)
+    print(f"[{run_at}] {parts}")
+    print(f"  Upserted {inserted} | Total in DB: {total} (by source: {per_source})")
 
 
 if __name__ == "__main__":
