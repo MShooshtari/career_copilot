@@ -1,4 +1,4 @@
-# Career Pilot
+# Career Copilot
 
 **AI Career Copilot** — A web app that helps people discover jobs, prepare for interviews, and get personalized recommendations. Built with RAG, recommendation systems, and user modeling.
 
@@ -6,7 +6,7 @@
 
 ## Idea
 
-Career Pilot helps users:
+Career Copilot helps users:
 
 - **Paste resume** — Ingest and analyze resume content
 - **Connect LinkedIn** — Optional profile integration
