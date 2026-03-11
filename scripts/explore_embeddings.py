@@ -48,8 +48,9 @@ def main() -> None:
 
     # Embedding dimension (one vector)
     one = coll.get(limit=1, include=["embeddings"])
-    if one["embeddings"]:
-        dim = len(one["embeddings"][0])
+    embs = one.get("embeddings")
+    if embs is not None and len(embs) > 0:
+        dim = len(embs[0])
         print(f"Embedding dimension: {dim}\n")
 
     # Similarity search
@@ -71,6 +72,13 @@ def main() -> None:
 
     print("Done.")
 
+
+# # Default query: "remote Python backend developer"
+# python scripts/explore_embeddings.py
+
+# # Custom query
+# python scripts/explore_embeddings.py "remote Python backend"
+# python scripts/explore_embeddings.py "data engineer"
 
 if __name__ == "__main__":
     main()
