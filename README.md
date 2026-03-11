@@ -20,7 +20,16 @@ Career Copilot helps users:
 
 ## Local quickstart (Phase 1)
 
-Goal: **ingest jobs from RemoteOK → normalize → upsert into Postgres**.
+Goal: **ingest jobs from multiple APIs → normalize → upsert into Postgres** (no duplicates; re-runs upsert by `source` + `source_id`).
+
+### Job sources (ingestion)
+
+| Source | API key | Notes |
+|--------|--------|--------|
+| **RemoteOK** | None | ~100 jobs per run |
+| **Remotive** | None | Remote jobs; rate limit ~4 req/day |
+| **Arbeitnow** | None | Europe, ATS-backed; large feed |
+| **Adzuna** | **Yes** (free) | Get [App ID & App Key](https://developer.adzuna.com/signup); add to `.env` as `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` for 100s more jobs (GB/US, paginated) |
 
 ### Prereqs
 
@@ -35,7 +44,7 @@ Goal: **ingest jobs from RemoteOK → normalize → upsert into Postgres**.
 python -m pip install -r requirements.txt
 ```
 
-2) Create a `.env` file in the repo root (it’s gitignored). You can copy `configs/config.example.env`, or use discrete settings:
+2) Create a `.env` file in the repo root (copy from `.env.example`). Required for DB; optional for Adzuna:
 
 ```bash
 POSTGRES_HOST=localhost
@@ -43,6 +52,10 @@ POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_DB=career_copilot
 POSTGRES_PASSWORD=your_password_here
+
+# Optional: more jobs from Adzuna
+# ADZUNA_APP_ID=your_app_id
+# ADZUNA_APP_KEY=your_app_key
 ```
 
 3) Run ingestion:
@@ -51,11 +64,10 @@ POSTGRES_PASSWORD=your_password_here
 python scripts/run_ingestion.py
 ```
 
-You should see output like:
+You should see per-source fetch counts and total upserted, e.g.:
 
-- fetched N RemoteOK rows
-- upserted N jobs
-- RemoteOK job count in DB: N
+- `remoteok: 100 fetched | remotive: N fetched | arbeitnow: N fetched | adzuna: N fetched`
+- `Upserted N | Total in DB: N (by source: {...})`
 
 ### DB schema
 
