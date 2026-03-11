@@ -5,6 +5,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg import sql
+from psycopg.types.json import Json
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT / "src"
@@ -30,7 +31,7 @@ VALUES (
   %(salary_min)s, %(salary_max)s, %(description)s, %(skills)s,
   %(posted_at)s, %(url)s, %(raw)s, now()
 )
-ON CONFLICT (source, source_id)
+ON CONFLICT (source, source_id) WHERE source_id IS NOT NULL
 DO UPDATE SET
   title = EXCLUDED.title,
   company = EXCLUDED.company,
@@ -119,7 +120,7 @@ def main() -> None:
                         "skills": job.skills,
                         "posted_at": job.posted_at,
                         "url": job.url,
-                        "raw": job.raw,
+                        "raw": Json(job.raw),
                     },
                 )
                 inserted += 1
