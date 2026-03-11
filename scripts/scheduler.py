@@ -18,8 +18,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler  # noqa: E402
 
 # Run every 5 minutes; change to hours=1 for hourly
 scheduler = BlockingScheduler()
-scheduler.add_job(run_ingestion.main, "interval", minutes=5)
-# scheduler.add_job(run_ingestion.main, "interval", hours=1)
+# scheduler.add_job(run_ingestion.main, "interval", minutes=5)
+scheduler.add_job(run_ingestion.main, "interval", hours=6)
 
 if __name__ == "__main__":
     print("Ingestion scheduler started (every 5 minutes). Ctrl+C to stop.")
