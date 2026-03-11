@@ -1,4 +1,4 @@
-# Career Pilot
+# Career Copilot
 
 **AI Career Copilot** — A web app that helps people discover jobs, prepare for interviews, and get personalized recommendations. Built with RAG, recommendation systems, and user modeling.
 
@@ -6,7 +6,7 @@
 
 ## Idea
 
-Career Pilot helps users:
+Career Copilot helps users:
 
 - **Paste resume** — Ingest and analyze resume content
 - **Connect LinkedIn** — Optional profile integration
@@ -17,6 +17,49 @@ Career Pilot helps users:
 ---
 
 ## Features
+
+## Local quickstart (Phase 1)
+
+Goal: **ingest jobs from RemoteOK → normalize → upsert into Postgres**.
+
+### Prereqs
+
+- Python 3.11+
+- A running PostgreSQL instance (local install is fine)
+
+### Setup
+
+1) Install dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+2) Create a `.env` file in the repo root (it’s gitignored). You can copy `configs/config.example.env`, or use discrete settings:
+
+```bash
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_DB=career_copilot
+POSTGRES_PASSWORD=your_password_here
+```
+
+3) Run ingestion:
+
+```bash
+python scripts/run_ingestion.py
+```
+
+You should see output like:
+
+- fetched N RemoteOK rows
+- upserted N jobs
+- RemoteOK job count in DB: N
+
+### DB schema
+
+The Phase 1 schema lives in `sql/001_create_jobs.sql` and is applied automatically by `scripts/run_ingestion.py`.
 
 ### Data ingestion
 
