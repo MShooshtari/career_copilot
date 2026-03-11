@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from career_copilot.ingestion.common import NormalizedJob, parse_datetime
+from career_copilot.ingestion.common import NormalizedJob, html_to_plain_text, parse_datetime
 
 ARBEITNOW_API_URL = "https://www.arbeitnow.com/api/job-board-api"
 
@@ -20,7 +20,7 @@ def normalize_arbeitnow_job(raw: dict[str, Any]) -> NormalizedJob:
         location=raw.get("location"),
         salary_min=None,
         salary_max=None,
-        description=raw.get("description"),
+        description=html_to_plain_text(raw.get("description")),
         skills=raw.get("tags") if isinstance(raw.get("tags"), list) else None,
         posted_at=parse_datetime(raw.get("published_at") or raw.get("posted") or raw.get("created_at")),
         url=raw.get("url"),
