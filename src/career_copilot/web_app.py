@@ -230,6 +230,7 @@ def index_user_embedding(
     """
     Store the user's profile embedding in a Chroma collection.
 
+    Uses OpenAI text-embedding-3-large (same as jobs; see career_copilot.rag.embedding).
     Returns (collection_name, document_id).
     """
     import chromadb

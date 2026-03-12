@@ -1,5 +1,12 @@
-"""Shared embedding function for Chroma (OpenAI text-embedding-3-large)."""
+"""
+Single source of truth for embeddings: all Chroma collections (jobs and user
+profiles) use OpenAI text-embedding-3-large via this module.
+
+Used by: chroma_store (job indexing), web_app (profile embedding), explore_embeddings.
+"""
 from __future__ import annotations
+
+import os
 
 from career_copilot.database.db import load_env
 
@@ -14,8 +21,14 @@ def get_embedding_function():
     """
     Return Chroma embedding function using OpenAI text-embedding-3-large.
 
-    Requires OPENAI_API_KEY to be set (e.g. in .env).
+    All embeddings (jobs and user profiles) use this; requires OPENAI_API_KEY
+    in the environment (e.g. in .env).
     """
+    if not os.environ.get(OPENAI_API_KEY_ENV):
+        raise RuntimeError(
+            f"{OPENAI_API_KEY_ENV} is not set. Add it to .env (see .env.example) "
+            "so that job and profile embeddings can use the OpenAI API."
+        )
     import chromadb.utils.embedding_functions as embedding_functions
 
     return embedding_functions.OpenAIEmbeddingFunction(

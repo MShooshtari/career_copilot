@@ -1,6 +1,8 @@
 """
 Index job listings from the database into Chroma for RAG (local run).
 
+Uses OpenAI embeddings (career_copilot.rag.embedding). Set OPENAI_API_KEY in .env.
+
 Run after ingestion so that the RAG store is populated from the jobs table.
 Does not modify the existing ingestion or DB schema.
 """
