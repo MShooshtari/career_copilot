@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Career Copilot - User Profile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --danger: #f97373;
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+        }
+        .shell {
+            width: 100%;
+            max-width: 1080px;
+            padding: 32px 16px 40px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            gap: 12px;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-pill {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span {
+            font-size: 18px;
+            font-weight: 700;
+            color: #e5e7eb;
+        }
+        .brand-text h1 {
+            font-size: 20px;
+            margin: 0;
+            font-weight: 600;
+        }
+        .brand-text p {
+            margin: 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        main {
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr);
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+        .card {
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.18), transparent 55%),
+                        radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.12), transparent 55%),
+                        var(--card-bg);
+            border-radius: 18px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 20px 18px 18px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.8);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .card-header h2 {
+            margin: 0;
+            font-size: 17px;
+        }
+        .card-header p {
+            margin: 4px 0 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .pill {
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            padding: 4px 9px;
+            font-size: 11px;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .pill-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 999px;
+            background: #22c55e;
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35);
+        }
+        form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 14px 16px;
+        }
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .field-group.full {
+            grid-column: 1 / -1;
+        }
+        label {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        label span {
+            color: var(--danger);
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        select,
+        textarea {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.96);
+            color: var(--text-main);
+            font-size: 13px;
+            padding: 8px 10px;
+            outline: none;
+            transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+        }
+        input[type="file"] {
+            padding: 6px 10px;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 90px;
+        }
+        input::placeholder,
+        textarea::placeholder {
+            color: #6b7280;
+        }
+        input:focus,
+        textarea:focus,
+        select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.7);
+            background: rgba(15, 23, 42, 1);
+        }
+        select {
+            appearance: none;
+            background-image: linear-gradient(45deg, transparent 50%, #9ca3af 50%), linear-gradient(135deg, #9ca3af 50%, transparent 50%);
+            background-position: calc(100% - 14px) 11px, calc(100% - 9px) 11px;
+            background-size: 5px 5px, 5px 5px;
+            background-repeat: no-repeat;
+        }
+        .hint {
+            font-size: 11px;
+            color: #6b7280;
+        }
+        .actions {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 4px;
+            gap: 8px;
+        }
+        button.primary {
+            border-radius: 999px;
+            border: none;
+            padding: 9px 18px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            box-shadow: 0 10px 25px rgba(55, 48, 163, 0.6);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button.primary:hover {
+            filter: brightness(1.06);
+        }
+        button.primary:active {
+            transform: translateY(1px);
+            box-shadow: 0 6px 18px rgba(55, 48, 163, 0.7);
+        }
+        .summary {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .summary h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+        .summary dl {
+            margin: 0;
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 4px 10px;
+        }
+        .summary dt {
+            font-weight: 500;
+            color: #d1d5db;
+        }
+        .summary dd {
+            margin: 0;
+        }
+        .chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .chip {
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 11px;
+            background: rgba(51, 65, 85, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+        }
+        .muted {
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header>
+            <div class="brand">
+                <div class="logo-pill"><span>CC</span></div>
+                <div class="brand-text">
+                    <h1>User Profile</h1>
+                    <p>Tell Career Copilot who you are so we can match you to better roles.</p>
+                </div>
+            </div>
+            <div class="pill">
+                <span class="pill-dot"></span>
+                <span>Signed in as user {{ user_id }}</span>
+            </div>
+        </header>
+
+        <main>
+            <section class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>Your core profile</h2>
+                        <p>Skills, preferences, and resume form the embedding we use for matching.</p>
+                    </div>
+                </div>
+
+                <form method="post" enctype="multipart/form-data">
+                    <div class="field-group full">
+                        <label for="skill_tags">Skill tags <span>*</span></label>
+                        <input id="skill_tags" name="skill_tags" type="text"
+                               placeholder="e.g. Python, FastAPI, PostgreSQL, AWS"
+                               value="{{ (profile[0] if profile else '') or '' }}" required />
+                        <div class="hint">Comma-separated list, we store each skill and include them in your embedding.</div>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="years_experience">Years of experience</label>
+                        <input id="years_experience" name="years_experience" type="number" min="0" max="60"
+                               value="{{ profile[1] if profile and profile[1] is not none else '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="current_location">Current location</label>
+                        <input id="current_location" name="current_location" type="text"
+                               placeholder="City, Country"
+                               value="{{ (profile[2] if profile else '') or '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="preferred_roles">Preferred roles</label>
+                        <input id="preferred_roles" name="preferred_roles" type="text"
+                               placeholder="e.g. Senior Backend Engineer, ML Engineer"
+                               value="{{ (profile[3] if profile else '') or '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="industries">Industries</label>
+                        <input id="industries" name="industries" type="text"
+                               placeholder="e.g. Fintech, Developer Tools, AI"
+                               value="{{ (profile[4] if profile else '') or '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="work_mode">Work mode</label>
+                        <select id="work_mode" name="work_mode">
+                            <option value="" {% if not profile or not profile[5] %}selected{% endif %}>No preference</option>
+                            <option value="remote" {% if profile and profile[5] == 'remote' %}selected{% endif %}>Remote</option>
+                            <option value="hybrid" {% if profile and profile[5] == 'hybrid' %}selected{% endif %}>Hybrid</option>
+                            <option value="onsite" {% if profile and profile[5] == 'onsite' %}selected{% endif %}>On-site</option>
+                        </select>
+                    </div>
+
+                    <div class="field-group">
+                        <label for="employment_type">Employment type</label>
+                        <select id="employment_type" name="employment_type">
+                            <option value="" {% if not profile or not profile[6] %}selected{% endif %}>No preference</option>
+                            <option value="full_time" {% if profile and profile[6] == 'full_time' %}selected{% endif %}>Full time</option>
+                            <option value="part_time" {% if profile and profile[6] == 'part_time' %}selected{% endif %}>Part time</option>
+                        </select>
+                    </div>
+
+                    <div class="field-group full">
+                        <label for="preferred_locations">Preferred locations to work</label>
+                        <input id="preferred_locations" name="preferred_locations" type="text"
+                               placeholder="e.g. Berlin, Remote EU, New York"
+                               value="{{ (profile[7] if profile else '') or '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="salary_min">Salary range (min)</label>
+                        <input id="salary_min" name="salary_min" type="number" min="0"
+                               placeholder="e.g. 100000"
+                               value="{{ profile[8] if profile and profile[8] is not none else '' }}" />
+                    </div>
+
+                    <div class="field-group">
+                        <label for="salary_max">Salary range (max)</label>
+                        <input id="salary_max" name="salary_max" type="number" min="0"
+                               placeholder="e.g. 180000"
+                               value="{{ profile[9] if profile and profile[9] is not none else '' }}" />
+                    </div>
+
+                    <div class="field-group full">
+                        <label for="resume_file">Resume file</label>
+                        <input id="resume_file" name="resume_file" type="file" accept=".txt,.md,.pdf,.doc,.docx" />
+                        <div class="hint">For this demo we read it as text and feed it into your embedding along with the fields above.</div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="primary" type="submit">
+                            <span>Save profile &amp; update embedding</span>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <aside class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>Stored representation</h2>
+                        <p>What we keep in Postgres and Chroma for this user.</p>
+                    </div>
+                </div>
+
+                {% if profile %}
+                <div class="summary">
+                    <h3>Current snapshot</h3>
+                    <dl>
+                        <dt>Skill tags</dt>
+                        <dd>{{ profile[0] }}</dd>
+
+                        <dt>Experience</dt>
+                        <dd>{{ profile[1] if profile[1] is not none else 'n/a' }} years</dd>
+
+                        <dt>Location</dt>
+                        <dd>{{ profile[2] or 'n/a' }}</dd>
+
+                        <dt>Preferred roles</dt>
+                        <dd>{{ profile[3] or 'n/a' }}</dd>
+
+                        <dt>Industries</dt>
+                        <dd>{{ profile[4] or 'n/a' }}</dd>
+
+                        <dt>Work mode</dt>
+                        <dd>{{ profile[5] or 'n/a' }}</dd>
+
+                        <dt>Employment</dt>
+                        <dd>{{ profile[6] or 'n/a' }}</dd>
+
+                        <dt>Preferred locations</dt>
+                        <dd>{{ profile[7] or 'n/a' }}</dd>
+
+                        <dt>Salary</dt>
+                        <dd>
+                            {% if profile[8] or profile[9] %}
+                                {{ profile[8] or 'n/a' }} – {{ profile[9] or 'n/a' }}
+                            {% else %}
+                                n/a
+                            {% endif %}
+                        </dd>
+                    </dl>
+
+                    <div class="chip-row">
+                        {% if profile[0] %}
+                            {% for token in profile[0].split(",") %}
+                                {% if token.strip() %}
+                                <span class="chip">{{ token.strip() }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="muted">Skill chips will appear here after you save.</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="hint" style="margin-top: 10px;">
+                        Embedding is stored in a dedicated Chroma collection (<code>user_profiles</code>) keyed by <code>user:{{ user_id }}</code>.
+                    </p>
+                </div>
+                {% else %}
+                <p class="summary">
+                    No profile stored yet. Fill out the form on the left, upload a resume, and save to create your first embedding-backed user profile.
+                </p>
+                {% endif %}
+            </aside>
+        </main>
+    </div>
+</body>
+</html>
+
