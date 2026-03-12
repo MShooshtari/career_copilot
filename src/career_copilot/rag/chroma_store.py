@@ -5,10 +5,16 @@ from pathlib import Path
 from typing import Any
 
 from career_copilot.ingestion.common import NormalizedJob
+from career_copilot.rag.embedding import get_embedding_function
+
+# OpenAI allows max 300k tokens per request; batch to stay under that
+# ~4 chars/token → cap doc length and batch size
+JOB_DOC_MAX_CHARS = 6_000
+JOB_UPSERT_BATCH_SIZE = 50
 
 
-def _job_to_document(job: NormalizedJob) -> str:
-    """Build a single searchable document string from a normalized job."""
+def _job_to_document(job: NormalizedJob, max_chars: int = JOB_DOC_MAX_CHARS) -> str:
+    """Build a single searchable document string from a normalized job (truncated for API limit)."""
     parts = []
     if job.title:
         parts.append(job.title)
@@ -20,7 +26,10 @@ def _job_to_document(job: NormalizedJob) -> str:
         parts.append(job.description)
     if job.skills:
         parts.append("Skills: " + ", ".join(job.skills))
-    return "\n\n".join(parts) if parts else ""
+    doc = "\n\n".join(parts) if parts else ""
+    if len(doc) > max_chars:
+        doc = doc[:max_chars].rstrip() + "…"
+    return doc
 
 
 def _job_to_metadata(job: NormalizedJob) -> dict[str, str | int | float | bool]:
@@ -60,7 +69,7 @@ def index_jobs_into_chroma(
     """
     Index normalized jobs into a local Chroma collection for RAG.
 
-    Uses Chroma's default embedding model (runs locally). Data is persisted
+    Uses OpenAI text-embedding-3-large (set OPENAI_API_KEY). Data is persisted
     under `persist_path` for local runs.
 
     Args:
@@ -85,10 +94,23 @@ def index_jobs_into_chroma(
     persist_path.mkdir(parents=True, exist_ok=True)
 
     client = chromadb.PersistentClient(path=str(persist_path))
-    collection = client.get_or_create_collection(
-        name=collection_name,
-        metadata={"description": "Career Copilot job listings for RAG"},
-    )
+    ef = get_embedding_function()
+    try:
+        collection = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Career Copilot job listings for RAG"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=collection_name)
+            collection = client.get_or_create_collection(
+                name=collection_name,
+                metadata={"description": "Career Copilot job listings for RAG"},
+                embedding_function=ef,
+            )
+        else:
+            raise
 
     ids: list[str] = []
     documents: list[str] = []
@@ -105,6 +127,12 @@ def index_jobs_into_chroma(
     if not ids:
         return 0
 
-    # Upsert: add or replace by id
-    collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-    return len(ids)
+    # Upsert in batches to stay under OpenAI max tokens per request (300k)
+    total = 0
+    for i in range(0, len(ids), JOB_UPSERT_BATCH_SIZE):
+        batch_ids = ids[i : i + JOB_UPSERT_BATCH_SIZE]
+        batch_docs = documents[i : i + JOB_UPSERT_BATCH_SIZE]
+        batch_meta = metadatas[i : i + JOB_UPSERT_BATCH_SIZE]
+        collection.upsert(ids=batch_ids, documents=batch_docs, metadatas=batch_meta)
+        total += len(batch_ids)
+    return total
