@@ -359,7 +359,7 @@
                     <div class="field-group full">
                         <label for="resume_file">Resume file</label>
                         <input id="resume_file" name="resume_file" type="file" accept=".txt,.md,.pdf,.doc,.docx" />
-                        <div class="hint">For this demo we read it as text and feed it into your embedding along with the fields above.</div>
+                        <div class="hint">Stored as a file in the database. Text is extracted for the embedding (PDF and plain text supported).</div>
                     </div>
 
                     <div class="actions">
@@ -410,6 +410,15 @@
                         <dd>
                             {% if profile[8] or profile[9] %}
                                 {{ profile[8] or 'n/a' }} – {{ profile[9] or 'n/a' }}
+                            {% else %}
+                                n/a
+                            {% endif %}
+                        </dd>
+
+                        <dt>Resume</dt>
+                        <dd>
+                            {% if profile[10] %}
+                                <a href="/profile/resume" download>{{ profile[10] }}</a>
                             {% else %}
                                 n/a
                             {% endif %}

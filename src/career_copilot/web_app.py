@@ -5,7 +5,7 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from career_copilot.database.db import connect
@@ -74,7 +74,7 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        # One profile per user
+        # One profile per user (resume stored as file bytes + filename)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS profiles (
@@ -85,15 +85,30 @@ def init_schema(conn: psycopg.Connection) -> None:
                 current_location TEXT,
                 preferred_roles TEXT,
                 industries TEXT,
-                work_mode TEXT,          -- remote / hybrid / onsite
-                employment_type TEXT,    -- full_time / part_time
+                work_mode TEXT,
+                employment_type TEXT,
                 preferred_locations TEXT,
                 salary_min INTEGER,
                 salary_max INTEGER,
-                resume_text TEXT
+                resume_file BYTEA,
+                resume_filename TEXT
             );
             """
         )
+        # Commit so CREATE TABLE is persisted; then run migrations in separate transactions
+        conn.commit()
+        for sql in (
+            "ALTER TABLE profiles ADD COLUMN resume_file BYTEA",
+            "ALTER TABLE profiles ADD COLUMN resume_filename TEXT",
+            "ALTER TABLE profiles DROP COLUMN IF EXISTS resume_text",
+        ):
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except psycopg.ProgrammingError as e:
+                conn.rollback()
+                if e.sqlstate != "42701":  # duplicate_column
+                    raise
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS user_skills (
@@ -133,7 +148,8 @@ def upsert_user_profile(
     preferred_locations: str,
     salary_min: int | None,
     salary_max: int | None,
-    resume_text: str,
+    resume_file: bytes | None,
+    resume_filename: str | None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute("DELETE FROM user_skills WHERE user_id = %s", (user_id,))
@@ -160,11 +176,12 @@ def upsert_user_profile(
                 preferred_locations,
                 salary_min,
                 salary_max,
-                resume_text
+                resume_file,
+                resume_filename
             )
             VALUES (%(user_id)s, %(skill_tags)s, %(years_experience)s, %(current_location)s,
                     %(preferred_roles)s, %(industries)s, %(work_mode)s, %(employment_type)s,
-                    %(preferred_locations)s, %(salary_min)s, %(salary_max)s, %(resume_text)s)
+                    %(preferred_locations)s, %(salary_min)s, %(salary_max)s, %(resume_file)s, %(resume_filename)s)
             ON CONFLICT (user_id) DO UPDATE
             SET
                 skill_tags = EXCLUDED.skill_tags,
@@ -177,7 +194,8 @@ def upsert_user_profile(
                 preferred_locations = EXCLUDED.preferred_locations,
                 salary_min = EXCLUDED.salary_min,
                 salary_max = EXCLUDED.salary_max,
-                resume_text = EXCLUDED.resume_text;
+                resume_file = EXCLUDED.resume_file,
+                resume_filename = EXCLUDED.resume_filename;
             """,
             {
                 "user_id": user_id,
@@ -191,7 +209,8 @@ def upsert_user_profile(
                 "preferred_locations": preferred_locations,
                 "salary_min": salary_min,
                 "salary_max": salary_max,
-                "resume_text": resume_text,
+                "resume_file": resume_file,
+                "resume_filename": resume_filename or None,
             },
         )
     conn.commit()
@@ -289,7 +308,7 @@ async def get_profile(request: Request, conn: Annotated[psycopg.Connection, Depe
                 p.preferred_locations,
                 p.salary_min,
                 p.salary_max,
-                p.resume_text
+                p.resume_filename
             FROM profiles p
             WHERE p.user_id = %s
             """,
@@ -304,6 +323,28 @@ async def get_profile(request: Request, conn: Annotated[psycopg.Connection, Depe
         "user_id": user_id,
     }
     return templates.TemplateResponse("profile.html", context)
+
+
+@app.get("/profile/resume")
+async def get_resume(conn: Annotated[psycopg.Connection, Depends(get_db)]) -> Response:
+    """Download the current user's stored resume file."""
+    user_id = 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT resume_file, resume_filename FROM profiles WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+    conn.close()
+    if not row or row[0] is None:
+        return Response(status_code=404)
+    data = bytes(row[0])
+    filename = (row[1] or "resume").replace('"', "")
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/profile", response_class=HTMLResponse)
@@ -323,10 +364,14 @@ async def post_profile(
 ) -> HTMLResponse:
     user_id = 1
 
-    resume_text = ""
-    if resume_file is not None:
+    content_bytes: bytes | None = None
+    resume_filename: str | None = None
+    if resume_file is not None and resume_file.filename:
         content_bytes = await resume_file.read()
-        resume_text = _extract_resume_text(content_bytes, resume_file.filename)
+        resume_filename = resume_file.filename.strip() or None
+        if not content_bytes:
+            content_bytes = None
+            resume_filename = None
 
     # PostgreSQL TEXT cannot contain NUL bytes; strip from all text inputs
     skill_tags = _strip_nul(skill_tags or "")
@@ -336,10 +381,26 @@ async def post_profile(
     work_mode = _strip_nul(work_mode or "")
     employment_type = _strip_nul(employment_type or "")
     preferred_locations = _strip_nul(preferred_locations or "")
-    resume_text = _strip_nul(resume_text)
+
+    resume_text_for_embedding = ""
+    if content_bytes:
+        resume_text_for_embedding = _strip_nul(_extract_resume_text(content_bytes, resume_filename))
 
     conn = get_db()
     try:
+        # If no new file uploaded, keep existing resume in DB (fetch current)
+        if content_bytes is None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT resume_file, resume_filename FROM profiles WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    content_bytes = row[0]
+                    resume_filename = row[1]
+                # else leave content_bytes=None, resume_filename=None to clear or leave as-is
+                # Actually if row is None (no profile yet), we pass None, None. If row exists but resume_file is None, we pass None, None. So we need to pass (content_bytes, resume_filename) which might be (existing_bytes, existing_name) when no new upload.
         upsert_user_profile(
             conn,
             user_id=user_id,
@@ -353,12 +414,16 @@ async def post_profile(
             preferred_locations=preferred_locations,
             salary_min=salary_min,
             salary_max=salary_max,
-            resume_text=resume_text,
+            resume_file=content_bytes,
+            resume_filename=resume_filename,
         )
 
+        # Re-extract text for embedding when we have file bytes (either new upload or kept existing)
+        if content_bytes and not resume_text_for_embedding:
+            resume_text_for_embedding = _strip_nul(_extract_resume_text(content_bytes, resume_filename))
         collection_name, document_id = index_user_embedding(
             user_id=user_id,
-            resume_text=resume_text,
+            resume_text=resume_text_for_embedding,
             skill_tags=skill_tags,
             preferred_roles=preferred_roles,
             industries=industries,
