@@ -179,16 +179,31 @@ def index_user_embedding(
     """
     import chromadb
 
+    from career_copilot.rag.embedding import get_embedding_function
+
     root = Path(__file__).resolve().parents[2]
     persist_path = root / "data" / "chroma"
     persist_path.mkdir(parents=True, exist_ok=True)
 
     client = chromadb.PersistentClient(path=str(persist_path))
     collection_name = "user_profiles"
-    coll = client.get_or_create_collection(
-        name=collection_name,
-        metadata={"description": "Career Copilot user profiles"},
-    )
+    ef = get_embedding_function()
+    try:
+        coll = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Career Copilot user profiles"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=collection_name)
+            coll = client.get_or_create_collection(
+                name=collection_name,
+                metadata={"description": "Career Copilot user profiles"},
+                embedding_function=ef,
+            )
+        else:
+            raise
 
     pieces = [
         resume_text or "",

@@ -20,6 +20,8 @@ if str(SRC_DIR) not in sys.path:
 
 import chromadb
 
+from career_copilot.rag.embedding import get_embedding_function
+
 
 def main() -> None:
     if not CHROMA_PATH.exists():
@@ -28,7 +30,15 @@ def main() -> None:
         sys.exit(1)
 
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    coll = client.get_collection(COLLECTION_NAME)
+    ef = get_embedding_function()
+    try:
+        coll = client.get_or_create_collection(COLLECTION_NAME, embedding_function=ef)
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=COLLECTION_NAME)
+            coll = client.get_or_create_collection(COLLECTION_NAME, embedding_function=ef)
+        else:
+            raise
 
     # Count
     n = coll.count()

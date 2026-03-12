@@ -44,7 +44,7 @@ Goal: **ingest jobs from multiple APIs → normalize → upsert into Postgres** 
 python -m pip install -r requirements.txt
 ```
 
-2) Create a `.env` file in the repo root (copy from `.env.example`). Required for DB; optional for Adzuna:
+2) Create a `.env` file in the repo root (copy from `.env.example`). Required: DB and OpenAI (for embeddings); optional: Adzuna:
 
 ```bash
 POSTGRES_HOST=localhost
@@ -52,6 +52,9 @@ POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_DB=career_copilot
 POSTGRES_PASSWORD=your_password_here
+
+# Required for embeddings (job + user profile RAG). Get key: https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-your-openai-key-here
 
 # Optional: more jobs from Adzuna
 # ADZUNA_APP_ID=your_app_id

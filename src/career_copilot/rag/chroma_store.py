@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from career_copilot.ingestion.common import NormalizedJob
+from career_copilot.rag.embedding import get_embedding_function
 
 
 def _job_to_document(job: NormalizedJob) -> str:
@@ -60,7 +61,7 @@ def index_jobs_into_chroma(
     """
     Index normalized jobs into a local Chroma collection for RAG.
 
-    Uses Chroma's default embedding model (runs locally). Data is persisted
+    Uses OpenAI text-embedding-3-large (set OPENAI_API_KEY). Data is persisted
     under `persist_path` for local runs.
 
     Args:
@@ -85,10 +86,23 @@ def index_jobs_into_chroma(
     persist_path.mkdir(parents=True, exist_ok=True)
 
     client = chromadb.PersistentClient(path=str(persist_path))
-    collection = client.get_or_create_collection(
-        name=collection_name,
-        metadata={"description": "Career Copilot job listings for RAG"},
-    )
+    ef = get_embedding_function()
+    try:
+        collection = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Career Copilot job listings for RAG"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=collection_name)
+            collection = client.get_or_create_collection(
+                name=collection_name,
+                metadata={"description": "Career Copilot job listings for RAG"},
+                embedding_function=ef,
+            )
+        else:
+            raise
 
     ids: list[str] = []
     documents: list[str] = []
