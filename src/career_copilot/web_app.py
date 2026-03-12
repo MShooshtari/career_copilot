@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from career_copilot.database.db import connect
+from career_copilot.resume_io import extract_resume_text
 
 
 def _strip_nul(s: str) -> str:
@@ -25,31 +26,6 @@ def _truncate_for_embedding(text: str, max_chars: int = EMBEDDING_MAX_CHARS) -> 
     if not text or len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip() + "…"
-
-
-def _extract_resume_text(content_bytes: bytes, filename: str | None) -> str:
-    """Extract plain text from uploaded resume (PDF or UTF-8 text)."""
-    if not content_bytes:
-        return ""
-    filename = (filename or "").lower()
-    is_pdf = filename.endswith(".pdf") or content_bytes.startswith(b"%PDF")
-    if is_pdf:
-        try:
-            from pypdf import PdfReader
-            from io import BytesIO
-            reader = PdfReader(BytesIO(content_bytes))
-            parts = []
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    parts.append(t)
-            return "\n\n".join(parts) if parts else ""
-        except Exception:
-            return ""
-    try:
-        return content_bytes.decode("utf-8", errors="replace")
-    except Exception:
-        return ""
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,16 +94,8 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_embeddings (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                collection_name TEXT NOT NULL,
-                document_id TEXT NOT NULL
-            );
-            """
-        )
+        # Embeddings live only in Chroma (user_profiles collection); no vector storage in Postgres
+        cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
         # Ensure demo user exists
         cur.execute("INSERT INTO users (email) VALUES (%s) ON CONFLICT (email) DO NOTHING", ("demo@example.com",))
@@ -261,6 +229,7 @@ def index_user_embedding(
         else:
             raise
 
+    # Resume is first so it is a central part of the user embedding; then preferences
     pieces = [
         resume_text or "",
         f"Skills: {skill_tags}",
@@ -385,7 +354,7 @@ async def post_profile(
 
     resume_text_for_embedding = ""
     if content_bytes:
-        resume_text_for_embedding = _strip_nul(_extract_resume_text(content_bytes, resume_filename))
+        resume_text_for_embedding = _strip_nul(extract_resume_text(content_bytes, resume_filename))
 
     conn = get_db()
     try:
@@ -421,8 +390,8 @@ async def post_profile(
 
         # Re-extract text for embedding when we have file bytes (either new upload or kept existing)
         if content_bytes and not resume_text_for_embedding:
-            resume_text_for_embedding = _strip_nul(_extract_resume_text(content_bytes, resume_filename))
-        collection_name, document_id = index_user_embedding(
+            resume_text_for_embedding = _strip_nul(extract_resume_text(content_bytes, resume_filename))
+        index_user_embedding(
             user_id=user_id,
             resume_text=resume_text_for_embedding,
             skill_tags=skill_tags,
@@ -433,14 +402,6 @@ async def post_profile(
             preferred_locations=preferred_locations,
         )
 
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO user_embeddings (user_id, collection_name, document_id)
-                VALUES (%s, %s, %s)
-                """,
-                (user_id, collection_name, document_id),
-            )
         conn.commit()
     finally:
         conn.close()
