@@ -16,6 +16,42 @@ def _strip_nul(s: str) -> str:
     return s.replace("\x00", "")
 
 
+# OpenAI text-embedding-3-large max context is 8192 tokens; ~4 chars/token → safe limit
+EMBEDDING_MAX_CHARS = 28_000
+
+
+def _truncate_for_embedding(text: str, max_chars: int = EMBEDDING_MAX_CHARS) -> str:
+    """Truncate text so it fits within the embedding model's token limit."""
+    if not text or len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "…"
+
+
+def _extract_resume_text(content_bytes: bytes, filename: str | None) -> str:
+    """Extract plain text from uploaded resume (PDF or UTF-8 text)."""
+    if not content_bytes:
+        return ""
+    filename = (filename or "").lower()
+    is_pdf = filename.endswith(".pdf") or content_bytes.startswith(b"%PDF")
+    if is_pdf:
+        try:
+            from pypdf import PdfReader
+            from io import BytesIO
+            reader = PdfReader(BytesIO(content_bytes))
+            parts = []
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    parts.append(t)
+            return "\n\n".join(parts) if parts else ""
+        except Exception:
+            return ""
+    try:
+        return content_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = ROOT / "templates"
 
@@ -215,6 +251,7 @@ def index_user_embedding(
         f"Preferred locations: {preferred_locations}",
     ]
     document = "\n\n".join(p for p in pieces if p.strip())
+    document = _truncate_for_embedding(document)
     document_id = f"user:{user_id}"
 
     coll.upsert(ids=[document_id], documents=[document], metadatas=[{"user_id": user_id}])
@@ -289,10 +326,7 @@ async def post_profile(
     resume_text = ""
     if resume_file is not None:
         content_bytes = await resume_file.read()
-        try:
-            resume_text = content_bytes.decode("utf-8", errors="ignore")
-        except Exception:
-            resume_text = ""
+        resume_text = _extract_resume_text(content_bytes, resume_file.filename)
 
     # PostgreSQL TEXT cannot contain NUL bytes; strip from all text inputs
     skill_tags = _strip_nul(skill_tags or "")
