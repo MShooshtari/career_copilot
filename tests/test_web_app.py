@@ -52,17 +52,10 @@ def test_profile_get_returns_html(client: TestClient) -> None:
 
 
 def test_jobs_detail_not_found_redirects(client: TestClient) -> None:
-    with patch("career_copilot.routers.jobs.get_db") as mock_get_db:
-        mock_conn = MagicMock()
-        mock_cur = MagicMock()
-        mock_cur.fetchone.return_value = None
-        mock_conn.cursor.return_value.__enter__ = lambda self: mock_cur
-        mock_conn.cursor.return_value.__exit__ = lambda *a: None
-        mock_get_db.return_value = mock_conn
-
-        response = client.get("/jobs/99999", follow_redirects=False)
-        assert response.status_code == 303
-        assert response.headers["location"] == "/recommendations"
+    # conftest patches db.connect to return a mock with fetchone() -> None
+    response = client.get("/jobs/99999", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/recommendations"
 
 
 def test_recommendations_get_returns_html(client: TestClient) -> None:
