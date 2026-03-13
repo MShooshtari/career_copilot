@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from career_copilot.agents.resume_improvement import (
     build_resume_improvement_context,
     chat_resume_improvement,
+    generate_full_resume,
     get_initial_resume_analysis,
 )
 from career_copilot.database.db import connect
@@ -418,6 +420,12 @@ class ResumeChatRequest(BaseModel):
     history: list[dict[str, str]] = []
 
 
+class ResumePdfRequest(BaseModel):
+    """Request body for generating a PDF of the updated resume."""
+
+    history: list[dict[str, str]] | None = None
+
+
 @app.get("/jobs/{job_id:int}/improve-resume", response_class=HTMLResponse, response_model=None)
 async def get_improve_resume(
     request: Request,
@@ -524,6 +532,75 @@ async def post_resume_improve_chat(
                 content={"reply": f"Sorry, something went wrong. ({e!s})"},
             )
     return JSONResponse(content={"reply": reply})
+
+
+@app.post("/jobs/{job_id:int}/improve-resume/download")
+async def post_resume_improve_download(
+    job_id: int,
+    body: ResumePdfRequest,
+) -> StreamingResponse:
+    """
+    Generate a simple PDF from the latest improved resume text.
+
+    The frontend sends the full chat history. We regenerate a clean, updated resume
+    (no commentary) from the original resume + job + RAG context + conversation,
+    then render that into a simple PDF.
+    """
+    user_id = 1
+    conn = get_db()
+    try:
+        ctx = build_resume_improvement_context(job_id, user_id, conn)
+    finally:
+        conn.close()
+    resume_text = ctx["resume_text"]
+    job = ctx["job"]
+    similar_jobs = ctx["similar_jobs"]
+    similar_resumes = ctx["similar_resumes"]
+
+    history = body.history or []
+    try:
+        text = generate_full_resume(history, resume_text, job, similar_jobs, similar_resumes)
+    except Exception:
+        # If the LLM call fails for any reason, fall back to the original resume text.
+        text = resume_text or ""
+
+    text = (text or "").strip()
+    if not text:
+        # As a final fallback, include a minimal default resume shell so the PDF is never empty.
+        text = (
+            "Updated resume could not be generated automatically.\n\n"
+            "Summary:\n"
+            "  (Add a brief summary of your experience and target role here.)\n\n"
+            "Experience:\n"
+            "  (List your roles, responsibilities, and impact here.)\n\n"
+            "Skills:\n"
+            "  (List your key skills here.)\n"
+        )
+
+    import pymupdf
+
+    buffer = BytesIO()
+    doc = pymupdf.open()
+    page = doc.new_page()
+
+    # Simple line-by-line text rendering so we avoid any textbox quirks.
+    # Start at 1 inch from top-left (72pt) and step down each line.
+    y = 72.0
+    for raw_line in (text.splitlines() or [" "]):
+        line = raw_line.rstrip() or " "
+        page.insert_text((72.0, y), line, fontsize=11)
+        y += 14.0
+
+    doc.save(buffer)
+    doc.close()
+    buffer.seek(0)
+
+    filename = f"improved_resume_job_{job_id}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/profile", response_class=HTMLResponse)

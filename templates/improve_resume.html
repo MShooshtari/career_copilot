@@ -147,6 +147,22 @@
         .chat-form button:hover { filter: brightness(1.08); }
         .chat-form button:disabled { opacity: 0.6; cursor: not-allowed; }
         .loading { color: var(--text-muted); font-style: italic; }
+        .download-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+        .download-btn {
+            padding: 10px 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-main);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .download-btn:hover { border-color: var(--accent); }
+        .download-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -182,6 +198,9 @@
                     <input type="text" id="chatInput" placeholder="e.g. Shorten bullet 2, add more ML experience, rewrite summary…" autocomplete="off" />
                     <button type="submit" id="sendBtn">Send</button>
                 </form>
+                <div class="download-row">
+                    <button type="button" id="downloadBtn" class="download-btn" disabled>Download PDF of latest version</button>
+                </div>
             </div>
         </article>
     </div>
@@ -193,6 +212,7 @@
             const chatInput = document.getElementById('chatInput');
             const sendBtn = document.getElementById('sendBtn');
             const initialLoading = document.getElementById('initialLoading');
+            const downloadBtn = document.getElementById('downloadBtn');
 
             let history = [];
 
@@ -245,6 +265,38 @@
                 return data.reply;
             }
 
+            async function downloadPdfFromLatest() {
+                if (!history.length) {
+                    alert('No conversation yet. Ask the assistant to analyze or rewrite your resume first.');
+                    return;
+                }
+                downloadBtn.disabled = true;
+                try {
+                    const res = await fetch('/jobs/' + jobId + '/improve-resume/download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ history: history }),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text || res.statusText);
+                    }
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'improved-resume-job-' + jobId + '.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Could not generate PDF: ' + err.message);
+                } finally {
+                    downloadBtn.disabled = false;
+                }
+            }
+
             chatForm.addEventListener('submit', async function (e) {
                 e.preventDefault();
                 const text = (chatInput.value || '').trim();
@@ -257,6 +309,7 @@
                     const reply = await postChat(text);
                     history.push({ role: 'assistant', content: reply });
                     addMessage('assistant', renderMarkdownLike(reply));
+                    downloadBtn.disabled = false;
                 } catch (err) {
                     addMessage('assistant', 'Error: ' + err.message);
                 }
@@ -270,11 +323,16 @@
                     initialLoading.remove();
                     history = [{ role: 'assistant', content: reply }];
                     addMessage('assistant', renderMarkdownLike(reply));
+                    downloadBtn.disabled = false;
                 } catch (err) {
                     initialLoading.textContent = 'Error: ' + err.message;
                 }
                 setLoading(false);
             })();
+
+            downloadBtn.addEventListener('click', function () {
+                downloadPdfFromLatest();
+            });
         })();
     </script>
 </body>
