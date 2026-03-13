@@ -17,4 +17,5 @@ if str(SRC) not in sys.path:
 def pytest_configure(config: pytest.Config) -> None:
     """Mark test runs so app startup skips DB init (no Postgres in CI / optional locally)."""
     import os
+
     os.environ["TESTING"] = "1"
