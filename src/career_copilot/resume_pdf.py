@@ -1,20 +1,20 @@
 """
 Generate a simple PDF from resume text (improved-resume download).
 
-Layout: A4, 1" margins, word-wrapped lines, section headers at 12pt.
+Layout: A4, tighter margins so content uses most of the page width/height.
 """
 from __future__ import annotations
 
 import re
 from io import BytesIO
 
-# A4 595x842 pt; 1" margins → content width ~451pt; ~72 chars at 11pt
-PDF_RESUME_MAX_LINE_CHARS = 72
-PDF_LINE_HEIGHT = 14.0
-PDF_HEADER_LINE_HEIGHT = 18.0
-PDF_PAGE_TOP = 72.0
-PDF_PAGE_BOTTOM = 772.0  # leave ~70pt bottom margin
-PDF_CONTENT_LEFT = 72.0
+# A4 595×842 pt; ~0.7" side margins (50pt) → content width ~495pt → ~85 chars at 11pt
+PDF_RESUME_MAX_LINE_CHARS = 85
+PDF_LINE_HEIGHT = 13.0
+PDF_HEADER_LINE_HEIGHT = 16.0
+PDF_PAGE_TOP = 50.0
+PDF_PAGE_BOTTOM = 792.0  # use most of the page height
+PDF_CONTENT_LEFT = 50.0
 
 PDF_SECTION_HEADERS = frozenset({
     "summary", "experience", "work experience", "education", "skills",
@@ -105,7 +105,7 @@ def build_resume_pdf(resume_text: str) -> bytes:
             page.insert_text((PDF_CONTENT_LEFT, y), part, fontsize=fontsize, fontname="helv")
             y += PDF_HEADER_LINE_HEIGHT if is_section_header else PDF_LINE_HEIGHT
         if is_section_header:
-            y += 4.0
+            y += 2.0
 
     doc.save(buffer)
     doc.close()
