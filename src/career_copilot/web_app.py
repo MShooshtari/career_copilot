@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+import psycopg
 from fastapi import FastAPI
 
 from career_copilot.database.db import connect
@@ -28,8 +29,12 @@ def get_db():
 def _startup() -> None:
     if os.environ.get("TESTING") == "1":
         return
-    conn = get_db()
     try:
-        init_schema(conn)
-    finally:
-        conn.close()
+        conn = get_db()
+        try:
+            init_schema(conn)
+        finally:
+            conn.close()
+    except psycopg.OperationalError:
+        # No DB available (e.g. CI or local test); continue without schema init
+        pass
