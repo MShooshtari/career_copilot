@@ -44,6 +44,14 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            min-width: 0;
+        }
+        .header-nav {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+            justify-content: flex-start;
+            padding-left: 24px;
         }
         .logo-pill {
             width: 34px;
@@ -279,7 +287,7 @@
                     <p>Tell Career Copilot who you are so we can match you to better roles.</p>
                 </div>
             </div>
-            <nav style="display: flex; gap: 8px;">
+            <nav class="header-nav">
                 <a href="/recommendations" class="nav-link">Recommendations</a>
             </nav>
             <div class="pill">
