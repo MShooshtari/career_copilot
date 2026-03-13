@@ -116,7 +116,7 @@
             border: 1px solid rgba(148, 163, 184, 0.4);
             color: #d1d5db;
         }
-        .actions { margin-top: 24px; }
+        .actions { margin-top: 20px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 10px; }
         .actions a {
             display: inline-flex;
             align-items: center;
@@ -185,16 +185,17 @@
             </div>
             {% endif %}
 
+            <div class="actions">
+                <a href="/jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
+                {% if job.url %}
+                <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
+                {% endif %}
+            </div>
+
             {% if job.description %}
             <div class="job-section">
                 <h3>Description</h3>
                 <div class="content">{{ job.description }}</div>
-            </div>
-            {% endif %}
-
-            {% if job.url %}
-            <div class="actions">
-                <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
             </div>
             {% endif %}
         </article>

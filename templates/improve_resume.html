@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Improve resume – {{ job.title }} – Career Copilot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+        .shell {
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 16px 48px;
+        }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .brand { display: flex; align-items: center; gap: 10px; }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .logo-pill {
+            width: 34px; height: 34px; border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .header-nav { display: flex; align-items: center; gap: 8px; }
+        .header-nav a {
+            color: var(--text-muted); text-decoration: none; font-size: 14px;
+            padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .back-link {
+            display: inline-block; margin-bottom: 16px;
+            color: var(--text-muted); font-size: 14px; text-decoration: none;
+        }
+        .back-link:hover { color: var(--accent); }
+        .card {
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%), var(--card-bg);
+            border-radius: 18px; border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 24px 24px 28px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.8);
+        }
+        .job-badge {
+            font-size: 13px; color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+        .job-badge strong { color: #d1d5db; }
+        .chat-container { display: flex; flex-direction: column; min-height: 420px; }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .msg {
+            max-width: 92%;
+            padding: 14px 18px;
+            border-radius: 14px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: var(--accent-soft);
+            border: 1px solid rgba(79, 70, 229, 0.4);
+        }
+        .msg.assistant {
+            align-self: flex-start;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--border-subtle);
+        }
+        .msg.assistant :first-child { margin-top: 0; }
+        .msg.assistant :last-child { margin-bottom: 0; }
+        .msg pre, .msg code {
+            background: rgba(15, 23, 42, 0.9);
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .msg pre { padding: 10px; overflow-x: auto; }
+        .msg ul, .msg ol { margin: 0.5em 0; padding-left: 1.2em; }
+        .chat-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .chat-form input {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--text-main);
+            font-size: 14px;
+        }
+        .chat-form input::placeholder { color: var(--text-muted); }
+        .chat-form input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .chat-form button {
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            color: #e5e7eb;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .chat-form button:hover { filter: brightness(1.08); }
+        .chat-form button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .loading { color: var(--text-muted); font-style: italic; }
+        .download-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+        .download-btn {
+            padding: 10px 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-main);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .download-btn:hover { border-color: var(--accent); }
+        .download-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Resume improvement</h1>
+                        <p>Chatbot for {{ job.title }} at {{ job.company }}</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                    <a href="/jobs/{{ job_id }}">Job details</a>
+                </nav>
+            </header>
+        </div>
+
+        <a href="/jobs/{{ job_id }}" class="back-link">← Back to job</a>
+
+        <article class="card">
+            <div class="job-badge">
+                Improving your resume for <strong>{{ job.title }}</strong> at <strong>{{ job.company }}</strong>
+            </div>
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="msg assistant loading" id="initialLoading">Loading analysis…</div>
+                </div>
+                <form class="chat-form" id="chatForm">
+                    <input type="text" id="chatInput" placeholder="e.g. Shorten bullet 2, add more ML experience, rewrite summary…" autocomplete="off" />
+                    <button type="submit" id="sendBtn">Send</button>
+                </form>
+                <div class="download-row">
+                    <button type="button" id="downloadBtn" class="download-btn" disabled>Download PDF of latest version</button>
+                </div>
+            </div>
+        </article>
+    </div>
+    <script>
+        (function () {
+            const jobId = {{ job_id }};
+            const chatMessages = document.getElementById('chatMessages');
+            const chatForm = document.getElementById('chatForm');
+            const chatInput = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const initialLoading = document.getElementById('initialLoading');
+            const downloadBtn = document.getElementById('downloadBtn');
+
+            let history = [];
+
+            function addMessage(role, content) {
+                const div = document.createElement('div');
+                div.className = 'msg ' + role;
+                const inner = document.createElement('div');
+                inner.innerHTML = content.replace(/\n/g, '<br>');
+                div.appendChild(inner);
+                chatMessages.appendChild(div);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function setLoading(show) {
+                if (show) {
+                    if (!document.getElementById('loadingRow')) {
+                        const row = document.createElement('div');
+                        row.id = 'loadingRow';
+                        row.className = 'msg assistant loading';
+                        row.textContent = 'Thinking…';
+                        chatMessages.appendChild(row);
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                } else {
+                    const row = document.getElementById('loadingRow');
+                    if (row) row.remove();
+                }
+                sendBtn.disabled = show;
+            }
+
+            function renderMarkdownLike(text) {
+                const div = document.createElement('div');
+                div.innerHTML = text
+                    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\n/g, '<br>');
+                return div.innerHTML;
+            }
+
+            async function postChat(message) {
+                const res = await fetch('/jobs/' + jobId + '/improve-resume/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, history: history }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.reply || res.statusText);
+                return data.reply;
+            }
+
+            async function downloadPdfFromLatest() {
+                if (!history.length) {
+                    alert('No conversation yet. Ask the assistant to analyze or rewrite your resume first.');
+                    return;
+                }
+                downloadBtn.disabled = true;
+                try {
+                    const res = await fetch('/jobs/' + jobId + '/improve-resume/download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ history: history }),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text || res.statusText);
+                    }
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'improved-resume-job-' + jobId + '.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Could not generate PDF: ' + err.message);
+                } finally {
+                    downloadBtn.disabled = false;
+                }
+            }
+
+            chatForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const text = (chatInput.value || '').trim();
+                if (!text) return;
+                chatInput.value = '';
+                history.push({ role: 'user', content: text });
+                addMessage('user', text.replace(/</g, '&lt;'));
+                setLoading(true);
+                try {
+                    const reply = await postChat(text);
+                    history.push({ role: 'assistant', content: reply });
+                    addMessage('assistant', renderMarkdownLike(reply));
+                    downloadBtn.disabled = false;
+                } catch (err) {
+                    addMessage('assistant', 'Error: ' + err.message);
+                }
+                setLoading(false);
+            });
+
+            (async function loadInitial() {
+                setLoading(true);
+                try {
+                    const reply = await postChat('initial');
+                    initialLoading.remove();
+                    history = [{ role: 'assistant', content: reply }];
+                    addMessage('assistant', renderMarkdownLike(reply));
+                    downloadBtn.disabled = false;
+                } catch (err) {
+                    initialLoading.textContent = 'Error: ' + err.message;
+                }
+                setLoading(false);
+            })();
+
+            downloadBtn.addEventListener('click', function () {
+                downloadPdfFromLatest();
+            });
+        })();
+    </script>
+</body>
+</html>
