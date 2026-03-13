@@ -192,11 +192,12 @@
             </div>
             {% endif %}
 
-            {% if job.url %}
             <div class="actions">
+                <a href="/jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
+                {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
+                {% endif %}
             </div>
-            {% endif %}
         </article>
     </div>
 </body>

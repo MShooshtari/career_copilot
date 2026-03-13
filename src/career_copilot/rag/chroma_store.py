@@ -240,3 +240,140 @@ def get_recommended_job_results(
             "distance": distances_[i] if i < len(distances_) else None,
         })
     return out
+
+
+def get_similar_jobs_for_resume_improvement(
+    job_document: str,
+    *,
+    n_results: int = 5,
+    persist_path: str | Path | None = None,
+    jobs_collection_name: str = "jobs",
+) -> list[dict[str, Any]]:
+    """
+    Retrieve jobs similar to the given job document (for RAG context in resume improvement).
+    Uses the jobs Chroma collection; query by text so the embedding is computed from job_document.
+    """
+    import chromadb
+
+    if not job_document or not job_document.strip():
+        return []
+    if persist_path is None:
+        root = Path(__file__).resolve().parents[3]
+        persist_path = root / "data" / "chroma"
+    persist_path = Path(persist_path)
+    if not persist_path.exists():
+        return []
+
+    client = chromadb.PersistentClient(path=str(persist_path))
+    ef = get_embedding_function()
+    try:
+        jobs_coll = client.get_or_create_collection(
+            name=jobs_collection_name,
+            metadata={"description": "Career Copilot job listings for RAG"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=jobs_collection_name)
+            jobs_coll = client.get_or_create_collection(
+                name=jobs_collection_name,
+                metadata={"description": "Career Copilot job listings for RAG"},
+                embedding_function=ef,
+            )
+        else:
+            raise
+
+    n = min(n_results, max(1, jobs_coll.count()))
+    if n == 0:
+        return []
+    results = jobs_coll.query(
+        query_texts=[job_document[: JOB_DOC_MAX_CHARS]],
+        n_results=n,
+        include=["documents", "metadatas", "distances"],
+    )
+    out: list[dict[str, Any]] = []
+    ids_ = results["ids"][0]
+    metadatas_ = results["metadatas"][0]
+    documents_ = results["documents"][0]
+    distances_ = results["distances"][0]
+    for i, doc_id in enumerate(ids_):
+        out.append({
+            "id": doc_id,
+            "metadata": metadatas_[i] if i < len(metadatas_) else {},
+            "document": documents_[i] if i < len(documents_) else "",
+            "distance": distances_[i] if i < len(distances_) else None,
+        })
+    return out
+
+
+def get_similar_resumes_for_resume_improvement(
+    job_document: str,
+    *,
+    exclude_user_id: int | None = None,
+    n_results: int = 5,
+    persist_path: str | Path | None = None,
+    user_profiles_collection_name: str = "user_profiles",
+) -> list[dict[str, Any]]:
+    """
+    Retrieve user profiles (resume-like documents) similar to the job for RAG context.
+    Optionally exclude one user_id (e.g. current user). Returns list of dicts with id, metadata, document, distance.
+    """
+    import chromadb
+
+    if not job_document or not job_document.strip():
+        return []
+    if persist_path is None:
+        root = Path(__file__).resolve().parents[3]
+        persist_path = root / "data" / "chroma"
+    persist_path = Path(persist_path)
+    if not persist_path.exists():
+        return []
+
+    client = chromadb.PersistentClient(path=str(persist_path))
+    ef = get_embedding_function()
+    try:
+        user_coll = client.get_or_create_collection(
+            name=user_profiles_collection_name,
+            metadata={"description": "Career Copilot user profiles"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=user_profiles_collection_name)
+            user_coll = client.get_or_create_collection(
+                name=user_profiles_collection_name,
+                metadata={"description": "Career Copilot user profiles"},
+                embedding_function=ef,
+            )
+        else:
+            raise
+
+    # Request extra so we can drop excluded user and still have n_results
+    n_query = n_results + (1 if exclude_user_id is not None else 0)
+    n_query = min(n_query, max(1, user_coll.count()))
+    if n_query == 0:
+        return []
+    results = user_coll.query(
+        query_texts=[job_document[: JOB_DOC_MAX_CHARS]],
+        n_results=n_query,
+        include=["documents", "metadatas", "distances"],
+    )
+    ids_ = results["ids"][0]
+    metadatas_ = results["metadatas"][0]
+    documents_ = results["documents"][0]
+    distances_ = results["distances"][0]
+    out: list[dict[str, Any]] = []
+    for i, doc_id in enumerate(ids_):
+        if exclude_user_id is not None:
+            meta = metadatas_[i] if i < len(metadatas_) else {}
+            if str(meta.get("user_id")) == str(exclude_user_id):
+                continue
+        out.append({
+            "id": doc_id,
+            "metadata": metadatas_[i] if i < len(metadatas_) else {},
+            "document": documents_[i] if i < len(documents_) else "",
+            "distance": distances_[i] if i < len(distances_) else None,
+        })
+        if len(out) >= n_results:
+            break
+    return out

@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
+from career_copilot.agents.resume_improvement import (
+    build_resume_improvement_context,
+    chat_resume_improvement,
+    get_initial_resume_analysis,
+)
 from career_copilot.database.db import connect
 from career_copilot.rag.chroma_store import get_recommended_job_results
 from career_copilot.resume_io import extract_resume_text
@@ -403,6 +409,121 @@ async def get_job_detail(
         "job_detail.html",
         {"request": request, "job": job, "user_id": 1},
     )
+
+
+class ResumeChatRequest(BaseModel):
+    """Request body for resume improvement chat."""
+
+    message: str = ""
+    history: list[dict[str, str]] = []
+
+
+@app.get("/jobs/{job_id:int}/improve-resume", response_class=HTMLResponse, response_model=None)
+async def get_improve_resume(
+    request: Request,
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> HTMLResponse | RedirectResponse:
+    """Resume improvement chatbot: user selects a job, gets RAG-backed suggestions and can chat."""
+    user_id = 1
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, source, source_id, title, company, location,
+                   salary_min, salary_max, description, skills, posted_at, url
+            FROM jobs WHERE id = %s
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+    conn.close()
+    if not row:
+        return RedirectResponse(url="/recommendations", status_code=303)
+    (
+        id_,
+        source,
+        source_id,
+        title,
+        company,
+        location,
+        salary_min,
+        salary_max,
+        description,
+        skills,
+        posted_at,
+        url,
+    ) = row
+    job = {
+        "id": id_,
+        "source": source,
+        "source_id": source_id,
+        "title": title or "Job",
+        "company": company or "",
+        "location": location or "",
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "description": (description or "")[:500],
+        "skills": list(skills) if skills else [],
+        "posted_at": posted_at,
+        "url": url or "",
+    }
+    return templates.TemplateResponse(
+        "improve_resume.html",
+        {"request": request, "job": job, "job_id": job_id, "user_id": user_id},
+    )
+
+
+@app.post("/jobs/{job_id:int}/improve-resume/chat")
+async def post_resume_improve_chat(
+    job_id: int,
+    body: ResumeChatRequest,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> JSONResponse:
+    """
+    Chat endpoint for resume improvement. Send message and optional history.
+    If history is empty and message is empty or 'initial', returns initial analysis.
+    """
+    user_id = 1
+    ctx = build_resume_improvement_context(job_id, user_id, conn)
+    conn.close()
+    resume_text = ctx["resume_text"]
+    job = ctx["job"]
+    similar_jobs = ctx["similar_jobs"]
+    similar_resumes = ctx["similar_resumes"]
+
+    if not job:
+        return JSONResponse(
+            status_code=404,
+            content={"reply": "Job not found. Please go back to recommendations."},
+        )
+
+    is_initial = not (body.history or []) and (not (body.message or "").strip() or (body.message or "").strip().lower() == "initial")
+    if is_initial:
+        try:
+            reply = get_initial_resume_analysis(
+                resume_text, job, similar_jobs, similar_resumes
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"reply": f"Sorry, I couldn't run the analysis. ({e!s})"},
+            )
+    else:
+        try:
+            reply = chat_resume_improvement(
+                body.message or "",
+                body.history or [],
+                resume_text,
+                job,
+                similar_jobs,
+                similar_resumes,
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"reply": f"Sorry, something went wrong. ({e!s})"},
+            )
+    return JSONResponse(content={"reply": reply})
 
 
 @app.get("/profile", response_class=HTMLResponse)
