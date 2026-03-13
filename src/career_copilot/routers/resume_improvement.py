@@ -16,7 +16,7 @@ from career_copilot.agents.resume_improvement import (
     get_initial_resume_analysis,
 )
 from career_copilot.database.deps import get_db
-from career_copilot.resume_pdf import build_resume_pdf
+from career_copilot.pdf_renderer import render_resume_pdf
 from career_copilot.schemas import ResumeChatRequest, ResumePdfRequest
 
 router = APIRouter(tags=["resume_improvement"])
@@ -104,7 +104,7 @@ async def post_resume_improve_download(
     except Exception:
         text = resume_text or ""
 
-    pdf_bytes = build_resume_pdf(text or "")
+    pdf_bytes = render_resume_pdf(text or "")
     filename = f"improved_resume_job_{job_id}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
