@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>{{ job.title }} – Career Copilot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+        .shell {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 32px 16px 48px;
+        }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .logo-pill {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .card {
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%),
+                        var(--card-bg);
+            border-radius: 18px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 24px 24px 28px;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.8);
+        }
+        .job-title { margin: 0 0 12px; font-size: 24px; font-weight: 600; line-height: 1.3; }
+        .job-meta {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+        .job-meta span + span::before { content: " · "; color: #6b7280; }
+        .job-section { margin-bottom: 22px; }
+        .job-section h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; color: #d1d5db; }
+        .job-section .content {
+            font-size: 14px;
+            line-height: 1.65;
+            color: #e5e7eb;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .job-section .content p { margin: 0 0 0.75em; }
+        .job-section .content p:last-child { margin-bottom: 0; }
+        .chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .chip {
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            background: rgba(51, 65, 85, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            color: #d1d5db;
+        }
+        .actions { margin-top: 24px; }
+        .actions a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            border-radius: 999px;
+            text-decoration: none;
+            box-shadow: 0 10px 25px rgba(55, 48, 163, 0.5);
+        }
+        .actions a:hover { filter: brightness(1.08); }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: var(--text-muted);
+            font-size: 14px;
+            text-decoration: none;
+        }
+        .back-link:hover { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Job details</h1>
+                        <p>Full listing from recommendations.</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                </nav>
+            </header>
+        </div>
+
+        <a href="/recommendations" class="back-link">← Back to recommendations</a>
+
+        <article class="card">
+            <h1 class="job-title">{{ job.title }}</h1>
+            <div class="job-meta">
+                <span>{{ job.company }}</span>
+                {% if job.location %}<span>{{ job.location }}</span>{% endif %}
+                {% if job.salary_min or job.salary_max %}
+                <span>
+                    {% if job.salary_min and job.salary_max %}{{ job.salary_min }} – {{ job.salary_max }}{% elif job.salary_min %}{{ job.salary_min }}+{% else %}Up to {{ job.salary_max }}{% endif %}
+                </span>
+                {% endif %}
+                {% if job.posted_at %}<span>Posted {{ job.posted_at.strftime('%Y-%m-%d') if job.posted_at else '' }}</span>{% endif %}
+            </div>
+
+            {% if job.skills %}
+            <div class="job-section">
+                <h3>Skills</h3>
+                <div class="chip-row">
+                    {% for skill in job.skills %}
+                    <span class="chip">{{ skill }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if job.description %}
+            <div class="job-section">
+                <h3>Description</h3>
+                <div class="content">{{ job.description }}</div>
+            </div>
+            {% endif %}
+
+            {% if job.url %}
+            <div class="actions">
+                <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
+            </div>
+            {% endif %}
+        </article>
+    </div>
+</body>
+</html>

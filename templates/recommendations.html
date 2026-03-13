@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Career Copilot - Job Recommendations</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+        .shell {
+            width: 100%;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 16px 48px;
+        }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-pill {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover {
+            color: var(--text-main);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .header-nav a.active {
+            color: #e5e7eb;
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .page-intro {
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 50%),
+                        var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+        }
+        .page-intro h2 { margin: 0 0 6px; font-size: 18px; }
+        .page-intro p { margin: 0; font-size: 14px; color: var(--text-muted); }
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .job-card {
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.1), transparent 50%),
+                        var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 18px 20px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .job-card:hover {
+            border-color: rgba(79, 70, 229, 0.5);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.6);
+        }
+        .job-card h3 {
+            margin: 0 0 6px;
+            font-size: 17px;
+            font-weight: 600;
+        }
+        .job-card h3 a {
+            color: var(--text-main);
+            text-decoration: none;
+        }
+        .job-card h3 a:hover { color: #a5b4fc; }
+        .job-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .job-meta span + span::before { content: " · "; color: #6b7280; }
+        .job-snippet {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #d1d5db;
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .job-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .job-skills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .job-skills .chip {
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 11px;
+            background: rgba(51, 65, 85, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            color: var(--text-muted);
+        }
+        .job-card a.view-details {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--accent);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(79, 70, 229, 0.5);
+            background: var(--accent-soft);
+        }
+        .job-card a.view-details:hover {
+            background: rgba(79, 70, 229, 0.35);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+        }
+        .empty-state p { margin: 0 0 12px; font-size: 15px; }
+        .empty-state a { color: var(--accent); text-decoration: none; }
+        .empty-state a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Job Recommendations</h1>
+                        <p>Top matches from your profile (candidate retrieval).</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations" class="active">Recommendations</a>
+                </nav>
+            </header>
+        </div>
+
+        <section class="page-intro">
+            <h2>Top 100 jobs for you</h2>
+            <p>These jobs are ranked by similarity to your profile embedding (skills, resume, preferences). Click a job to see full details.</p>
+        </section>
+
+        {% if jobs %}
+        <div class="job-list">
+            {% for job in jobs %}
+            <article class="job-card">
+                <h3>
+                    {% if job.job_id %}
+                    <a href="/jobs/{{ job.job_id }}">{{ job.title }}</a>
+                    {% else %}
+                    <span>{{ job.title }}</span>
+                    {% endif %}
+                </h3>
+                <div class="job-meta">
+                    <span>{{ job.company }}</span>
+                    {% if job.location %}<span>{{ job.location }}</span>{% endif %}
+                    {% if job.salary_min or job.salary_max %}
+                    <span>
+                        {% if job.salary_min and job.salary_max %}{{ job.salary_min }} – {{ job.salary_max }}{% elif job.salary_min %}{{ job.salary_min }}+{% else %}Up to {{ job.salary_max }}{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if job.snippet %}
+                <p class="job-snippet">{{ job.snippet }}</p>
+                {% endif %}
+                <div class="job-card-footer">
+                    <div class="job-skills">
+                        {% for skill in job.skills[:6] %}
+                        {% if skill.strip() %}
+                        <span class="chip">{{ skill.strip() }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% if job.job_id %}
+                    <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
+                    {% elif job.url %}
+                    <a href="{{ job.url }}" class="view-details" target="_blank" rel="noopener">View on source</a>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No recommendations yet.</p>
+            <p>Save your <a href="/profile">profile</a> (skills and resume) so we can build your embedding and match you to jobs. Then run the job index so the vector store has jobs: <code>python scripts/run_rag_index.py</code>.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

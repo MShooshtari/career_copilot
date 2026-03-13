@@ -136,3 +136,107 @@ def index_jobs_into_chroma(
         collection.upsert(ids=batch_ids, documents=batch_docs, metadatas=batch_meta)
         total += len(batch_ids)
     return total
+
+
+def get_recommended_job_results(
+    *,
+    user_id: int = 1,
+    n_results: int = 100,
+    persist_path: str | Path | None = None,
+    jobs_collection_name: str = "jobs",
+    user_profiles_collection_name: str = "user_profiles",
+) -> list[dict[str, Any]]:
+    """
+    Candidate retrieval: get top-n jobs by cosine similarity to the user's profile embedding.
+
+    Fetches the user embedding from Chroma user_profiles, then queries the jobs
+    collection with that vector. Chroma uses L2 distance; relative ordering is
+    used for recommendations.
+
+    Returns a list of dicts, each with:
+      - id: Chroma document id (e.g. "remotive:123")
+      - metadata: Chroma metadata (title, company, location, url, etc.)
+      - document: full indexed document text (for snippet)
+      - distance: Chroma distance (lower = more similar)
+    """
+    import chromadb
+
+    if persist_path is None:
+        root = Path(__file__).resolve().parents[3]
+        persist_path = root / "data" / "chroma"
+    persist_path = Path(persist_path)
+    if not persist_path.exists():
+        return []
+
+    client = chromadb.PersistentClient(path=str(persist_path))
+    ef = get_embedding_function()
+
+    # Get user embedding
+    try:
+        user_coll = client.get_or_create_collection(
+            name=user_profiles_collection_name,
+            metadata={"description": "Career Copilot user profiles"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=user_profiles_collection_name)
+            user_coll = client.get_or_create_collection(
+                name=user_profiles_collection_name,
+                metadata={"description": "Career Copilot user profiles"},
+                embedding_function=ef,
+            )
+        else:
+            raise
+
+    user_doc_id = f"user:{user_id}"
+    user_get = user_coll.get(ids=[user_doc_id], include=["embeddings"])
+    ids_list = user_get.get("ids") or []
+    embs = user_get.get("embeddings")
+    if not ids_list or embs is None or len(embs) == 0:
+        return []
+
+    user_embedding = embs[0]
+
+    # Get jobs collection and query by user embedding
+    try:
+        jobs_coll = client.get_or_create_collection(
+            name=jobs_collection_name,
+            metadata={"description": "Career Copilot job listings for RAG"},
+            embedding_function=ef,
+        )
+    except ValueError as e:
+        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
+            client.delete_collection(name=jobs_collection_name)
+            jobs_coll = client.get_or_create_collection(
+                name=jobs_collection_name,
+                metadata={"description": "Career Copilot job listings for RAG"},
+                embedding_function=ef,
+            )
+        else:
+            raise
+
+    n = min(n_results, jobs_coll.count())
+    if n == 0:
+        return []
+
+    results = jobs_coll.query(
+        query_embeddings=[user_embedding],
+        n_results=n,
+        include=["documents", "metadatas", "distances"],
+    )
+
+    out: list[dict[str, Any]] = []
+    ids_ = results["ids"][0]
+    metadatas_ = results["metadatas"][0]
+    documents_ = results["documents"][0]
+    distances_ = results["distances"][0]
+
+    for i, doc_id in enumerate(ids_):
+        out.append({
+            "id": doc_id,
+            "metadata": metadatas_[i] if i < len(metadatas_) else {},
+            "document": documents_[i] if i < len(documents_) else "",
+            "distance": distances_[i] if i < len(distances_) else None,
+        })
+    return out
