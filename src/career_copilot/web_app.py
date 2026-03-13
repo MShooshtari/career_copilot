@@ -1,4 +1,5 @@
 """FastAPI application: Career Copilot user profile and job recommendations."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI

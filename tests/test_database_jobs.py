@@ -1,10 +1,9 @@
 """Tests for career_copilot.database.jobs (pure helpers and with mocked DB)."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from unittest.mock import MagicMock
-
-import pytest
 
 from career_copilot.database.jobs import (
     _chroma_id_to_source_source_id,
@@ -14,7 +13,6 @@ from career_copilot.database.jobs import (
     row_to_job_dict,
     row_to_job_dict_snippet,
 )
-
 
 # --- _norm_sid (test via import; used by resolve_job_ids and format_recommendation_jobs) ---
 
@@ -75,7 +73,20 @@ def _job_row(
         skills = ["Python", "SQL"]
     if posted_at is None:
         posted_at = datetime(2025, 1, 15)
-    return (id_, source, source_id, title, company, location, salary_min, salary_max, description, skills, posted_at, url)
+    return (
+        id_,
+        source,
+        source_id,
+        title,
+        company,
+        location,
+        salary_min,
+        salary_max,
+        description,
+        skills,
+        posted_at,
+        url,
+    )
 
 
 def test_row_to_job_dict_full() -> None:

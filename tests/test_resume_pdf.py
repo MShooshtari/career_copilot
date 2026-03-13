@@ -1,4 +1,5 @@
 """Tests for career_copilot.resume_pdf."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -7,9 +8,9 @@ import pytest
 
 from career_copilot.resume_pdf import (
     PDF_RESUME_MAX_LINE_CHARS,
+    _wrap_line,
     build_resume_pdf,
     clean_resume_text_for_pdf,
-    _wrap_line,
 )
 
 
@@ -63,4 +64,3 @@ def test_build_resume_pdf_returns_bytes() -> None:
     pdf = build_resume_pdf("Name\nSummary line.")
     assert isinstance(pdf, bytes)
     assert pdf.startswith(b"%PDF")
-

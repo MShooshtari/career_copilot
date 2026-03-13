@@ -1,4 +1,5 @@
 """Remotive remote jobs API. No API key required. Rate limit: max ~4 requests/day recommended."""
+
 from __future__ import annotations
 
 from typing import Any

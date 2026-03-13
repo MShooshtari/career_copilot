@@ -1,4 +1,5 @@
 """Resume improvement chat and PDF download API."""
+
 from __future__ import annotations
 
 from io import BytesIO
@@ -51,9 +52,7 @@ async def post_resume_improve_chat(
     )
     if is_initial:
         try:
-            reply = get_initial_resume_analysis(
-                resume_text, job, similar_jobs, similar_resumes
-            )
+            reply = get_initial_resume_analysis(resume_text, job, similar_jobs, similar_resumes)
         except Exception as e:
             return JSONResponse(
                 status_code=500,

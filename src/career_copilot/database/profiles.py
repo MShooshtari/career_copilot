@@ -1,4 +1,5 @@
 """Profile and user skills database operations."""
+
 from __future__ import annotations
 
 import psycopg

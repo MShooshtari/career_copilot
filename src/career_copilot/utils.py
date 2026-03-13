@@ -1,4 +1,5 @@
 """Shared utilities used across the application."""
+
 from __future__ import annotations
 
 

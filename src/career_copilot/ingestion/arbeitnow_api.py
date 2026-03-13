@@ -1,4 +1,5 @@
 """Arbeitnow job board API (Europe, ATS-backed). No API key required."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -22,7 +23,9 @@ def normalize_arbeitnow_job(raw: dict[str, Any]) -> NormalizedJob:
         salary_max=None,
         description=html_to_plain_text(raw.get("description")),
         skills=raw.get("tags") if isinstance(raw.get("tags"), list) else None,
-        posted_at=parse_datetime(raw.get("published_at") or raw.get("posted") or raw.get("created_at")),
+        posted_at=parse_datetime(
+            raw.get("published_at") or raw.get("posted") or raw.get("created_at")
+        ),
         url=raw.get("url"),
         raw=raw,
     )

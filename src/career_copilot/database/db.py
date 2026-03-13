@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from getpass import getpass
+from pathlib import Path
 
-from dotenv import load_dotenv
 import psycopg
+from dotenv import load_dotenv
 
 
 def load_env() -> None:
@@ -49,4 +49,3 @@ def connect(*, dbname: str | None = None) -> psycopg.Connection:
     if "conninfo" in kwargs:
         return psycopg.connect(kwargs["conninfo"])
     return psycopg.connect(**kwargs)
-

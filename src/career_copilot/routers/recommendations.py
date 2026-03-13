@@ -1,4 +1,5 @@
 """Job recommendations (RAG similarity to user profile)."""
+
 from __future__ import annotations
 
 from typing import Annotated

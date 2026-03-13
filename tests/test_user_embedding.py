@@ -1,7 +1,6 @@
 """Tests for career_copilot.rag.user_embedding."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from career_copilot.rag.user_embedding import EMBEDDING_MAX_CHARS, truncate_for_embedding
 

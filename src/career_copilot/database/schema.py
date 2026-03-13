@@ -1,4 +1,5 @@
 """Database schema initialization and migrations."""
+
 from __future__ import annotations
 
 import psycopg
@@ -63,5 +64,8 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
         # Ensure demo user exists
-        cur.execute("INSERT INTO users (email) VALUES (%s) ON CONFLICT (email) DO NOTHING", ("demo@example.com",))
+        cur.execute(
+            "INSERT INTO users (email) VALUES (%s) ON CONFLICT (email) DO NOTHING",
+            ("demo@example.com",),
+        )
     conn.commit()

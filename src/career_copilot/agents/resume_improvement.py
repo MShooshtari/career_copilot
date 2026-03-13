@@ -4,6 +4,7 @@ Resume Improvement Chatbot Agent (Chatbot Agent #1).
 RAG pipeline: job description, similar jobs, similar resumes (user profiles).
 LLM: improve resume to match job, suggest bullets, rewrites, ATS score; then conversational follow-ups.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -130,7 +131,9 @@ def _get_openai_client():
     load_env()
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
-        raise RuntimeError("OPENAI_API_KEY is not set. Add it to .env for the resume improvement chatbot.")
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Add it to .env for the resume improvement chatbot."
+        )
     from openai import OpenAI
 
     return OpenAI()
@@ -143,7 +146,9 @@ def _build_system_prompt(
     similar_resumes: list[dict],
 ) -> str:
     """Build the system prompt for the resume improvement agent."""
-    company_info = f"Company: {job.get('company') or 'Unknown'}. Role: {job.get('title') or 'Position'}."
+    company_info = (
+        f"Company: {job.get('company') or 'Unknown'}. Role: {job.get('title') or 'Position'}."
+    )
     if job.get("location"):
         company_info += f" Location: {job['location']}."
     job_desc = (job.get("description") or "")[:4000]
@@ -161,7 +166,9 @@ def _build_system_prompt(
 
     similar_resumes_text = ""
     if similar_resumes:
-        similar_resumes_text = "\n\n--- Example profiles/resumes similar to this role (for style/level) ---\n"
+        similar_resumes_text = (
+            "\n\n--- Example profiles/resumes similar to this role (for style/level) ---\n"
+        )
         for i, r in enumerate(similar_resumes[:3], 1):
             doc = (r.get("document") or "")[:600]
             if doc:
@@ -289,7 +296,7 @@ def generate_full_resume(
             "role": "user",
             "content": (
                 "Using the conversation above, output the complete updated resume as plain text.\n\n"
-                "Critical: Where you already gave specific text in your replies (e.g. under \"After:\", "
+                'Critical: Where you already gave specific text in your replies (e.g. under "After:", '
                 "rewritten bullets, or suggested wording), use that exact wording in the resume so "
                 "the document matches what the user saw in the chat. Do not invent new wording for "
                 "those sections.\n\n"

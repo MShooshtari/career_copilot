@@ -1,4 +1,5 @@
 """Tests for FastAPI web app and routes."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -73,7 +74,9 @@ def test_recommendations_get_returns_html(client: TestClient) -> None:
 
     with (
         patch("career_copilot.routers.recommendations.get_db", return_value=mock_conn),
-        patch("career_copilot.routers.recommendations.get_recommended_job_results", return_value=[]),
+        patch(
+            "career_copilot.routers.recommendations.get_recommended_job_results", return_value=[]
+        ),
     ):
         response = client.get("/recommendations")
         assert response.status_code == 200

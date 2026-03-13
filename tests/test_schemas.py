@@ -1,7 +1,6 @@
 """Tests for career_copilot.schemas (Pydantic API models)."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from career_copilot.schemas import ResumeChatRequest, ResumePdfRequest
 

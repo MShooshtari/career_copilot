@@ -1,12 +1,10 @@
 """Tests for career_copilot.ingestion.common."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC
 
 from career_copilot.ingestion.common import coerce_int, html_to_plain_text, parse_datetime
-
 
 # --- html_to_plain_text ---
 
@@ -68,7 +66,7 @@ def test_parse_datetime_timestamp() -> None:
     ts = 1736942400  # 2025-01-15 12:00:00 UTC
     dt = parse_datetime(ts)
     assert dt is not None
-    assert dt.tzinfo == timezone.utc
+    assert dt.tzinfo == UTC
 
 
 def test_parse_datetime_invalid_string() -> None:

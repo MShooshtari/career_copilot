@@ -1,4 +1,5 @@
 """FastAPI dependencies for database access."""
+
 from __future__ import annotations
 
 import psycopg

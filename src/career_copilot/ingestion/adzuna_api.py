@@ -1,4 +1,5 @@
 """Adzuna job search API. Requires free app_id and app_key from https://developer.adzuna.com/signup."""
+
 from __future__ import annotations
 
 import os

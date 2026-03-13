@@ -1,4 +1,5 @@
 """Shared app configuration (paths, templates) for the web app and routers."""
+
 from __future__ import annotations
 
 from pathlib import Path

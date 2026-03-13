@@ -45,4 +45,3 @@ def fetch_remoteok_jobs(timeout_s: int = 30) -> list[dict[str, Any]]:
         data = data[1:]
 
     return [x for x in data if isinstance(x, dict)]
-

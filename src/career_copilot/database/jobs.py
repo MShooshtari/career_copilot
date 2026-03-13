@@ -1,4 +1,5 @@
 """Job-related database operations and Chroma result resolution."""
+
 from __future__ import annotations
 
 import psycopg
@@ -40,7 +41,7 @@ def resolve_job_ids(
     pairs = list(dict.fromkeys(pairs))  # unique
     out: dict[tuple[str | None, str | None], int] = {}
     with conn.cursor() as cur:
-        for (src, sid) in pairs:
+        for src, sid in pairs:
             if src is None:
                 continue
             cur.execute(
@@ -125,16 +126,18 @@ def format_recommendation_jobs(
         doc = (r.get("document") or "")[:snippet_max_chars]
         if len(r.get("document") or "") > snippet_max_chars:
             doc = doc.rstrip() + "…"
-        jobs_for_template.append({
-            "job_id": postgres_id,
-            "title": meta.get("title") or "Job",
-            "company": meta.get("company") or "",
-            "location": meta.get("location") or "",
-            "url": meta.get("url") or "",
-            "snippet": doc,
-            "distance": r.get("distance"),
-            "salary_min": meta.get("salary_min"),
-            "salary_max": meta.get("salary_max"),
-            "skills": (meta.get("skills") or "").split(",") if meta.get("skills") else [],
-        })
+        jobs_for_template.append(
+            {
+                "job_id": postgres_id,
+                "title": meta.get("title") or "Job",
+                "company": meta.get("company") or "",
+                "location": meta.get("location") or "",
+                "url": meta.get("url") or "",
+                "snippet": doc,
+                "distance": r.get("distance"),
+                "salary_min": meta.get("salary_min"),
+                "salary_max": meta.get("salary_max"),
+                "skills": (meta.get("skills") or "").split(",") if meta.get("skills") else [],
+            }
+        )
     return jobs_for_template

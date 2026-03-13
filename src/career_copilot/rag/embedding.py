@@ -4,6 +4,7 @@ profiles) use OpenAI text-embedding-3-large via this module.
 
 Used by: chroma_store (job indexing), web_app (profile embedding), explore_embeddings.
 """
+
 from __future__ import annotations
 
 import os

@@ -1,7 +1,6 @@
 """Tests for career_copilot.utils."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from career_copilot.utils import strip_nul
 

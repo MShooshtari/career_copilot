@@ -1,4 +1,5 @@
 """User profile and resume upload routes."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -118,7 +119,9 @@ async def post_profile(
         )
 
         if content_bytes and not resume_text_for_embedding:
-            resume_text_for_embedding = strip_nul(extract_resume_text(content_bytes, resume_filename))
+            resume_text_for_embedding = strip_nul(
+                extract_resume_text(content_bytes, resume_filename)
+            )
         index_user_embedding(
             user_id=USER_ID,
             resume_text=resume_text_for_embedding,
