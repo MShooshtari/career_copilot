@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from getpass import getpass
 from pathlib import Path
 
@@ -37,8 +38,10 @@ def get_connection_kwargs(*, dbname: str | None = None) -> dict:
     user = _env("POSTGRES_USER", "postgres")
     db = dbname or _env("POSTGRES_DB", "career_copilot")
     password = _env("POSTGRES_PASSWORD")
-    if password is None:
+    if password is None and sys.stdin.isatty():
         password = getpass(f"Password for PostgreSQL user {user}: ")
+    elif password is None:
+        password = ""
 
     return {"host": host, "port": port, "user": user, "password": password, "dbname": db}
 
