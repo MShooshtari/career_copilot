@@ -18,6 +18,7 @@ from career_copilot.agents.resume_improvement import (
 )
 from career_copilot.database.db import connect
 from career_copilot.rag.chroma_store import get_recommended_job_results
+from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.resume_io import extract_resume_text
 
 
@@ -561,43 +562,12 @@ async def post_resume_improve_download(
     try:
         text = generate_full_resume(history, resume_text, job, similar_jobs, similar_resumes)
     except Exception:
-        # If the LLM call fails for any reason, fall back to the original resume text.
         text = resume_text or ""
 
-    text = (text or "").strip()
-    if not text:
-        # As a final fallback, include a minimal default resume shell so the PDF is never empty.
-        text = (
-            "Updated resume could not be generated automatically.\n\n"
-            "Summary:\n"
-            "  (Add a brief summary of your experience and target role here.)\n\n"
-            "Experience:\n"
-            "  (List your roles, responsibilities, and impact here.)\n\n"
-            "Skills:\n"
-            "  (List your key skills here.)\n"
-        )
-
-    import pymupdf
-
-    buffer = BytesIO()
-    doc = pymupdf.open()
-    page = doc.new_page()
-
-    # Simple line-by-line text rendering so we avoid any textbox quirks.
-    # Start at 1 inch from top-left (72pt) and step down each line.
-    y = 72.0
-    for raw_line in (text.splitlines() or [" "]):
-        line = raw_line.rstrip() or " "
-        page.insert_text((72.0, y), line, fontsize=11)
-        y += 14.0
-
-    doc.save(buffer)
-    doc.close()
-    buffer.seek(0)
-
+    pdf_bytes = build_resume_pdf(text or "")
     filename = f"improved_resume_job_{job_id}.pdf"
     return StreamingResponse(
-        buffer,
+        BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
