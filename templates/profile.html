@@ -253,6 +253,20 @@
         .muted {
             color: #6b7280;
         }
+        nav a.nav-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        nav a.nav-link:hover {
+            color: var(--text-main);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
     </style>
 </head>
 <body>
@@ -265,6 +279,9 @@
                     <p>Tell Career Copilot who you are so we can match you to better roles.</p>
                 </div>
             </div>
+            <nav style="display: flex; gap: 8px;">
+                <a href="/recommendations" class="nav-link">Recommendations</a>
+            </nav>
             <div class="pill">
                 <span class="pill-dot"></span>
                 <span>Signed in as user {{ user_id }}</span>

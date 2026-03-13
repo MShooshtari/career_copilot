@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from career_copilot.database.db import connect
+from career_copilot.rag.chroma_store import get_recommended_job_results
 from career_copilot.resume_io import extract_resume_text
 
 
@@ -256,9 +257,152 @@ def _startup() -> None:
         conn.close()
 
 
+def _norm_sid(sid: str | int | float | None) -> str | None:
+    """Normalize source_id to str for consistent map keys."""
+    if sid is None:
+        return None
+    if isinstance(sid, str):
+        return sid or None
+    return str(int(sid))
+
+
+def _chroma_id_to_source_source_id(chroma_id: str) -> tuple[str | None, str | None]:
+    """Parse Chroma doc id 'source:source_id' into (source, source_id)."""
+    if ":" in chroma_id:
+        a, b = chroma_id.split(":", 1)
+        return (a or None, b or None)
+    return (chroma_id or None, None)
+
+
+def _resolve_job_ids(
+    conn: psycopg.Connection,
+    results: list[dict],
+) -> dict[tuple[str | None, str | None], int]:
+    """Map (source, source_id) to Postgres job id for each result. Returns dict keyed by (source, source_id) -> id."""
+    if not results:
+        return {}
+    pairs: list[tuple[str | None, str | None]] = []
+    for r in results:
+        meta = r.get("metadata") or {}
+        src = meta.get("source")
+        sid = _norm_sid(meta.get("source_id"))
+        if src is None and sid is None:
+            chroma_id = r.get("id") or ""
+            src, sid = _chroma_id_to_source_source_id(chroma_id)
+        pairs.append((src, sid))
+    pairs = list(dict.fromkeys(pairs))  # unique
+    out: dict[tuple[str | None, str | None], int] = {}
+    with conn.cursor() as cur:
+        for (src, sid) in pairs:
+            if src is None:
+                continue
+            cur.execute(
+                "SELECT id FROM jobs WHERE source = %s AND source_id = %s",
+                (src, sid),
+            )
+            row = cur.fetchone()
+            if row:
+                out[(src, sid)] = int(row[0])
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     return RedirectResponse(url="/profile", status_code=303)
+
+
+@app.get("/recommendations", response_class=HTMLResponse)
+async def get_recommendations(
+    request: Request,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> HTMLResponse:
+    """Candidate retrieval: top 100 jobs by similarity to current user's profile embedding."""
+    user_id = 1
+    raw = get_recommended_job_results(user_id=user_id, n_results=100)
+    id_map = _resolve_job_ids(conn, raw)
+
+    jobs_for_template: list[dict] = []
+    for r in raw:
+        meta = r.get("metadata") or {}
+        src = meta.get("source")
+        sid = _norm_sid(meta.get("source_id"))
+        postgres_id = id_map.get((src, sid)) if src is not None else None
+        doc = (r.get("document") or "")[:400]
+        if len(r.get("document") or "") > 400:
+            doc = doc.rstrip() + "…"
+        jobs_for_template.append({
+            "job_id": postgres_id,
+            "title": meta.get("title") or "Job",
+            "company": meta.get("company") or "",
+            "location": meta.get("location") or "",
+            "url": meta.get("url") or "",
+            "snippet": doc,
+            "distance": r.get("distance"),
+            "salary_min": meta.get("salary_min"),
+            "salary_max": meta.get("salary_max"),
+            "skills": (meta.get("skills") or "").split(",") if meta.get("skills") else [],
+        })
+
+    return templates.TemplateResponse(
+        "recommendations.html",
+        {"request": request, "jobs": jobs_for_template, "user_id": user_id},
+    )
+
+
+@app.get("/jobs/{job_id:int}", response_class=HTMLResponse, response_model=None)
+async def get_job_detail(
+    request: Request,
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> HTMLResponse | RedirectResponse:
+    """Full job details for a single job (by Postgres id)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, source, source_id, title, company, location,
+                   salary_min, salary_max, description, skills,
+                   posted_at, url
+            FROM jobs
+            WHERE id = %s
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+    conn.close()
+    if not row:
+        return RedirectResponse(url="/recommendations", status_code=303)
+    (
+        id_,
+        source,
+        source_id,
+        title,
+        company,
+        location,
+        salary_min,
+        salary_max,
+        description,
+        skills,
+        posted_at,
+        url,
+    ) = row
+    job = {
+        "id": id_,
+        "source": source,
+        "source_id": source_id,
+        "title": title or "Job",
+        "company": company or "",
+        "location": location or "",
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "description": description or "",
+        "skills": list(skills) if skills else [],
+        "posted_at": posted_at,
+        "url": url or "",
+    }
+    return templates.TemplateResponse(
+        "job_detail.html",
+        {"request": request, "job": job},
+    )
 
 
 @app.get("/profile", response_class=HTMLResponse)
