@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 
 from career_copilot.database.db import connect
@@ -24,6 +26,8 @@ def get_db():
 
 @app.on_event("startup")
 def _startup() -> None:
+    if os.environ.get("TESTING") == "1":
+        return
     conn = get_db()
     try:
         init_schema(conn)
