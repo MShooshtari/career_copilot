@@ -16,9 +16,9 @@ if str(SRC) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _mock_db_connect_at_startup():
-    """Avoid real DB connection and getpass during app startup in tests (no TTY in CI)."""
+def _mock_db_at_startup():
+    """Avoid real DB connection during app startup in tests (CI has no Postgres)."""
     mock_conn = MagicMock()
-    # Patch where connect is used (web_app.get_db calls this), not where it's defined.
-    with patch("career_copilot.web_app.connect", return_value=mock_conn):
+    # Patch get_db so startup never calls connect() — reliable across import order / CI.
+    with patch("career_copilot.web_app.get_db", return_value=mock_conn):
         yield
