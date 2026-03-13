@@ -146,6 +146,8 @@ The **pr-checks** GitHub Action runs on pull requests and pushes to `main`/`mast
 - **Test** — Pytest on Python 3.11 and 3.12
 - **Security** — `pip-audit` on dependencies
 
+To **block merging until all checks pass**, configure [branch protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) and require the pr-checks status checks. See [.github/REQUIRE_CHECKS_BEFORE_MERGE.md](.github/REQUIRE_CHECKS_BEFORE_MERGE.md) for step-by-step instructions.
+
 ## License
 
 See [LICENSE](LICENSE) (if present).
