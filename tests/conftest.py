@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 import pytest
 
 # Ensure src is on path so career_copilot is importable
