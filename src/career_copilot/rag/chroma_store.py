@@ -1,4 +1,5 @@
 """Chroma-based RAG store for job listings (local persistence)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -233,12 +234,14 @@ def get_recommended_job_results(
     distances_ = results["distances"][0]
 
     for i, doc_id in enumerate(ids_):
-        out.append({
-            "id": doc_id,
-            "metadata": metadatas_[i] if i < len(metadatas_) else {},
-            "document": documents_[i] if i < len(documents_) else "",
-            "distance": distances_[i] if i < len(distances_) else None,
-        })
+        out.append(
+            {
+                "id": doc_id,
+                "metadata": metadatas_[i] if i < len(metadatas_) else {},
+                "document": documents_[i] if i < len(documents_) else "",
+                "distance": distances_[i] if i < len(distances_) else None,
+            }
+        )
     return out
 
 
@@ -287,7 +290,7 @@ def get_similar_jobs_for_resume_improvement(
     if n == 0:
         return []
     results = jobs_coll.query(
-        query_texts=[job_document[: JOB_DOC_MAX_CHARS]],
+        query_texts=[job_document[:JOB_DOC_MAX_CHARS]],
         n_results=n,
         include=["documents", "metadatas", "distances"],
     )
@@ -297,12 +300,14 @@ def get_similar_jobs_for_resume_improvement(
     documents_ = results["documents"][0]
     distances_ = results["distances"][0]
     for i, doc_id in enumerate(ids_):
-        out.append({
-            "id": doc_id,
-            "metadata": metadatas_[i] if i < len(metadatas_) else {},
-            "document": documents_[i] if i < len(documents_) else "",
-            "distance": distances_[i] if i < len(distances_) else None,
-        })
+        out.append(
+            {
+                "id": doc_id,
+                "metadata": metadatas_[i] if i < len(metadatas_) else {},
+                "document": documents_[i] if i < len(documents_) else "",
+                "distance": distances_[i] if i < len(distances_) else None,
+            }
+        )
     return out
 
 
@@ -354,7 +359,7 @@ def get_similar_resumes_for_resume_improvement(
     if n_query == 0:
         return []
     results = user_coll.query(
-        query_texts=[job_document[: JOB_DOC_MAX_CHARS]],
+        query_texts=[job_document[:JOB_DOC_MAX_CHARS]],
         n_results=n_query,
         include=["documents", "metadatas", "distances"],
     )
@@ -368,12 +373,14 @@ def get_similar_resumes_for_resume_improvement(
             meta = metadatas_[i] if i < len(metadatas_) else {}
             if str(meta.get("user_id")) == str(exclude_user_id):
                 continue
-        out.append({
-            "id": doc_id,
-            "metadata": metadatas_[i] if i < len(metadatas_) else {},
-            "document": documents_[i] if i < len(documents_) else "",
-            "distance": distances_[i] if i < len(distances_) else None,
-        })
+        out.append(
+            {
+                "id": doc_id,
+                "metadata": metadatas_[i] if i < len(metadatas_) else {},
+                "document": documents_[i] if i < len(documents_) else "",
+                "distance": distances_[i] if i < len(distances_) else None,
+            }
+        )
         if len(out) >= n_results:
             break
     return out

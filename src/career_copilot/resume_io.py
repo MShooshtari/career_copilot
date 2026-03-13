@@ -1,4 +1,5 @@
 """Extract plain text from resume files (PDF or UTF-8 text). Used for embedding and display."""
+
 from __future__ import annotations
 
 

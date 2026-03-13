@@ -3,6 +3,7 @@ Generate a simple PDF from resume text (improved-resume download).
 
 Layout: A4, tighter margins so content uses most of the page width/height.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,10 +17,20 @@ PDF_PAGE_TOP = 50.0
 PDF_PAGE_BOTTOM = 792.0  # use most of the page height
 PDF_CONTENT_LEFT = 50.0
 
-PDF_SECTION_HEADERS = frozenset({
-    "summary", "experience", "work experience", "education", "skills",
-    "technical skills", "core competencies", "projects", "contact", "objective",
-})
+PDF_SECTION_HEADERS = frozenset(
+    {
+        "summary",
+        "experience",
+        "work experience",
+        "education",
+        "skills",
+        "technical skills",
+        "core competencies",
+        "projects",
+        "contact",
+        "objective",
+    }
+)
 
 
 def _wrap_line(line: str, max_chars: int = PDF_RESUME_MAX_LINE_CHARS) -> list[str]:
@@ -93,9 +104,7 @@ def build_resume_pdf(resume_text: str) -> bytes:
             y += PDF_LINE_HEIGHT * 0.5
             continue
         is_section_header = (
-            len(wrapped) == 1
-            and len(line) < 50
-            and line.lower().rstrip(":") in PDF_SECTION_HEADERS
+            len(wrapped) == 1 and len(line) < 50 and line.lower().rstrip(":") in PDF_SECTION_HEADERS
         )
         for part in wrapped:
             if y > PDF_PAGE_BOTTOM:
