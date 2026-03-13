@@ -158,7 +158,14 @@
             border: 1px solid rgba(148, 163, 184, 0.35);
             color: var(--text-muted);
         }
-        .job-card a.view-details {
+        .job-card-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .job-card a.view-details,
+        .job-card a.card-btn {
             font-size: 13px;
             font-weight: 500;
             color: var(--accent);
@@ -168,8 +175,17 @@
             border: 1px solid rgba(79, 70, 229, 0.5);
             background: var(--accent-soft);
         }
-        .job-card a.view-details:hover {
+        .job-card a.view-details:hover,
+        .job-card a.card-btn:hover {
             background: rgba(79, 70, 229, 0.35);
+        }
+        .job-card a.card-btn.primary {
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            border-color: rgba(79, 70, 229, 0.6);
+        }
+        .job-card a.card-btn.primary:hover {
+            filter: brightness(1.08);
         }
         .empty-state {
             text-align: center;
@@ -235,11 +251,15 @@
                         {% endif %}
                         {% endfor %}
                     </div>
-                    {% if job.job_id %}
-                    <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
-                    {% elif job.url %}
-                    <a href="{{ job.url }}" class="view-details" target="_blank" rel="noopener">View on source</a>
-                    {% endif %}
+                    <div class="job-card-actions">
+                        {% if job.job_id %}
+                        <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
+                        <a href="/jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
+                        {% endif %}
+                        {% if job.url %}
+                        <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                        {% endif %}
+                    </div>
                 </div>
             </article>
             {% endfor %}
