@@ -19,5 +19,6 @@ if str(SRC) not in sys.path:
 def _mock_db_connect_at_startup():
     """Avoid real DB connection and getpass during app startup in tests (no TTY in CI)."""
     mock_conn = MagicMock()
-    with patch("career_copilot.database.db.connect", return_value=mock_conn):
+    # Patch where connect is used (web_app.get_db calls this), not where it's defined.
+    with patch("career_copilot.web_app.connect", return_value=mock_conn):
         yield
