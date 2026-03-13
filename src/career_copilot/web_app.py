@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-import psycopg
 from fastapi import FastAPI
 
 from career_copilot.database.db import connect
@@ -35,6 +34,6 @@ def _startup() -> None:
             init_schema(conn)
         finally:
             conn.close()
-    except psycopg.OperationalError:
-        # No DB available (e.g. CI or local test); continue without schema init
+    except Exception:
+        # No DB available or connection failed (e.g. CI); continue without schema init
         pass
