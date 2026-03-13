@@ -28,11 +28,18 @@
             margin: 0 auto;
             padding: 32px 16px 48px;
         }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
         header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 24px;
             gap: 12px;
             flex-wrap: wrap;
         }
@@ -41,6 +48,7 @@
             align-items: center;
             gap: 10px;
         }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
         .logo-pill {
             width: 34px;
             height: 34px;
@@ -52,8 +60,13 @@
             box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
         }
         .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
-        .brand-text h1 { font-size: 18px; margin: 0; font-weight: 600; }
-        nav a {
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header-nav a {
             color: var(--text-muted);
             text-decoration: none;
             font-size: 14px;
@@ -62,7 +75,8 @@
             border: 1px solid var(--border-subtle);
             background: rgba(15, 23, 42, 0.8);
         }
-        nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
         .card {
             background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%),
                         var(--card-bg);
@@ -129,16 +143,21 @@
 </head>
 <body>
     <div class="shell">
-        <header>
-            <div class="brand">
-                <div class="logo-pill"><span>CC</span></div>
-                <div class="brand-text"><h1>Job details</h1></div>
-            </div>
-            <nav>
-                <a href="/profile">Profile</a>
-                <a href="/recommendations">Recommendations</a>
-            </nav>
-        </header>
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Job details</h1>
+                        <p>Full listing from recommendations.</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                </nav>
+            </header>
+        </div>
 
         <a href="/recommendations" class="back-link">← Back to recommendations</a>
 

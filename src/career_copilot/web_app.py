@@ -401,7 +401,7 @@ async def get_job_detail(
     }
     return templates.TemplateResponse(
         "job_detail.html",
-        {"request": request, "job": job},
+        {"request": request, "job": job, "user_id": 1},
     )
 
 

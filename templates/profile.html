@@ -33,11 +33,18 @@
             max-width: 1080px;
             padding: 32px 16px 40px;
         }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
         header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 24px;
             gap: 12px;
         }
         .brand {
@@ -48,10 +55,27 @@
         }
         .header-nav {
             display: flex;
+            align-items: center;
             gap: 8px;
-            flex: 1;
-            justify-content: flex-start;
-            padding-left: 24px;
+        }
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover {
+            color: var(--text-main);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .header-nav a.active {
+            color: #e5e7eb;
+            border-color: var(--accent);
+            background: var(--accent-soft);
         }
         .logo-pill {
             width: 34px;
@@ -261,40 +285,25 @@
         .muted {
             color: #6b7280;
         }
-        nav a.nav-link {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 14px;
-            padding: 8px 14px;
-            border-radius: 10px;
-            border: 1px solid var(--border-subtle);
-            background: rgba(15, 23, 42, 0.8);
-        }
-        nav a.nav-link:hover {
-            color: var(--text-main);
-            border-color: var(--accent);
-            background: var(--accent-soft);
-        }
     </style>
 </head>
 <body>
     <div class="shell">
-        <header>
-            <div class="brand">
-                <div class="logo-pill"><span>CC</span></div>
-                <div class="brand-text">
-                    <h1>User Profile</h1>
-                    <p>Tell Career Copilot who you are so we can match you to better roles.</p>
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>User Profile</h1>
+                        <p>Tell Career Copilot who you are so we can match you to better roles.</p>
+                    </div>
                 </div>
-            </div>
-            <nav class="header-nav">
-                <a href="/recommendations" class="nav-link">Recommendations</a>
-            </nav>
-            <div class="pill">
-                <span class="pill-dot"></span>
-                <span>Signed in as user {{ user_id }}</span>
-            </div>
-        </header>
+                <nav class="header-nav">
+                    <a href="/profile" class="active">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                </nav>
+            </header>
+        </div>
 
         <main>
             <section class="card">
