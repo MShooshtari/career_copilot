@@ -8,7 +8,14 @@ from fastapi import FastAPI
 
 from career_copilot.database.db import connect
 from career_copilot.database.schema import init_schema
-from career_copilot.routers import home, jobs, profile, recommendations, resume_improvement
+from career_copilot.routers import (
+    home,
+    interview_preparation,
+    jobs,
+    profile,
+    recommendations,
+    resume_improvement,
+)
 
 app = FastAPI(title="Career Copilot - User Profile")
 
@@ -17,6 +24,7 @@ app.include_router(recommendations.router)
 app.include_router(jobs.router)
 app.include_router(profile.router)
 app.include_router(resume_improvement.router)
+app.include_router(interview_preparation.router)
 
 
 def get_db():
