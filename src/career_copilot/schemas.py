@@ -16,3 +16,10 @@ class ResumePdfRequest(BaseModel):
     """Request body for generating a PDF of the updated resume."""
 
     history: list[dict[str, str]] | None = None
+
+
+class InterviewChatRequest(BaseModel):
+    """Request body for interview preparation chat."""
+
+    message: str = ""
+    history: list[dict[str, str]] = []

@@ -51,3 +51,21 @@ async def get_improve_resume(
         "improve_resume.html",
         {"request": request, "job": job, "job_id": job_id, "user_id": USER_ID},
     )
+
+
+@router.get("/{job_id:int}/prepare-interview", response_class=HTMLResponse, response_model=None)
+async def get_prepare_interview(
+    request: Request,
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> HTMLResponse | RedirectResponse:
+    """Interview preparation chatbot: user picks interview type, gets tailored prep using job, resume, and web research."""
+    row = get_job_by_id(conn, job_id)
+    conn.close()
+    if not row:
+        return RedirectResponse(url="/recommendations", status_code=303)
+    job = row_to_job_dict_snippet(row, description_max_chars=500)
+    return templates.TemplateResponse(
+        "prepare_interview.html",
+        {"request": request, "job": job, "job_id": job_id, "user_id": USER_ID},
+    )
