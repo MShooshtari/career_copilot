@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,7 +27,7 @@ def test_build_interview_prep_context_uses_resume_improvement_context() -> None:
         return_value={"resume_text": "resume", "job": {"id": 1}},
     ) as mock_build:
         ctx = agent_mod.build_interview_prep_context(job_id=1, user_id=2, conn=MagicMock())
-    mock_build.assert_called_once_with(1, 2, pytest.ANY)
+    mock_build.assert_called_once_with(1, 2, ANY)
     assert ctx == {"resume_text": "resume", "job": {"id": 1}}
 
 
