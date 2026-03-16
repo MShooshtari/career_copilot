@@ -45,8 +45,7 @@ async def post_prepare_interview_chat(
         )
 
     is_initial = not (body.history or []) and (
-        not (body.message or "").strip()
-        or (body.message or "").strip().lower() == "initial"
+        not (body.message or "").strip() or (body.message or "").strip().lower() == "initial"
     )
     if is_initial:
         try:

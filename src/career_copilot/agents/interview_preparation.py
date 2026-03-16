@@ -228,8 +228,7 @@ def search_web_for_company(
         )
         context_text += (
             "\n\n--- EXACT URLs to cite (copy these URLs exactly in your markdown links; "
-            "do not use a generic homepage like glassdoor.com or reddit.com) ---\n"
-            + exact_urls
+            "do not use a generic homepage like glassdoor.com or reddit.com) ---\n" + exact_urls
         )
 
     return {
@@ -310,8 +309,7 @@ def chat_interview_preparation(
 
     client = _get_openai_client()
     is_first_user_reply = (
-        len(conversation_history) == 1
-        and conversation_history[0].get("role") == "assistant"
+        len(conversation_history) == 1 and conversation_history[0].get("role") == "assistant"
     )
 
     if is_first_user_reply:
@@ -332,9 +330,7 @@ def chat_interview_preparation(
         found_glassdoor = True  # avoid prompting to "mention not found" in follow-ups
         found_reddit = True
 
-    system = _build_system_prompt(
-        job, resume_text, web_context, found_glassdoor, found_reddit
-    )
+    system = _build_system_prompt(job, resume_text, web_context, found_glassdoor, found_reddit)
     messages: list[dict[str, str]] = [{"role": "system", "content": system}]
     for h in conversation_history:
         role = h.get("role")
