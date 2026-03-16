@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from career_copilot.agents import resume_improvement as agent_mod
 
 
