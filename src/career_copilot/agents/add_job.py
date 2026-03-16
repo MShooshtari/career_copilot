@@ -466,7 +466,7 @@ def _indeed_company_from_path(url: str) -> str:
 
     parsed = urlparse(url)
     path = (parsed.path or "").strip("/")
-    if "/cmp/" not in path.lower():
+    if "/cmp/" not in path.lower() and not path.lower().startswith("cmp/"):
         return ""
     parts = path.split("/")
     try:
@@ -517,7 +517,7 @@ def _company_from_bamboohr_subdomain(url: str) -> str:
     sub = host.removesuffix(".bamboohr.com").strip()
     if not sub:
         return ""
-    # Convert subdomain to title: tractionrec -> Traction Rec
+    # Convert subdomain to title: tractionrec -> Tractionrec; my-company -> My Company
     name = sub.replace("-", " ").replace("_", " ").strip()
     if 2 <= len(name) <= 80:
         return name.title()
