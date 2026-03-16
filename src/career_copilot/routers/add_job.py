@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from career_copilot.agents.add_job import (
+    _generic_title_from_url,
     extract_job_from_file,
     extract_job_from_text,
     extract_job_from_url,
@@ -120,10 +121,10 @@ async def post_add_job(
     url_out = extracted.get("url")
 
     title = (html_to_plain_text(raw_title) or raw_title or "").strip() or "Untitled Job"
-    if title in ("Careers", "Jobs", "Apply", "Home", "Career", "Job") and url_clean:
+    generic_titles = ("Careers", "Jobs", "Apply", "Home", "Career", "Job", "Viewjob", "View job", "Job from Indeed", "Job from LinkedIn", "Job from BambooHR", "Job from link", "Job from listing")
+    if title in generic_titles and url_clean:
         from_url = title_from_url_path(url_clean)
-        if from_url:
-            title = from_url
+        title = from_url if from_url else _generic_title_from_url(url_clean)
 
     try:
         job_id = insert_user_job(
