@@ -8,6 +8,7 @@ rounds, and feedback to tailor preparation advice.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -246,9 +247,6 @@ def get_initial_interview_message() -> str:
 def _build_system_prompt(
     job: dict[str, Any],
     resume_text: str,
-    web_search_context: str,
-    found_glassdoor: bool,
-    found_reddit: bool,
 ) -> str:
     company = job.get("company") or "the company"
     title = job.get("title") or "the role"
@@ -257,24 +255,15 @@ def _build_system_prompt(
     if job.get("skills"):
         skills_line = "Mentioned skills: " + ", ".join(job["skills"]) + "."
 
-    search_note = ""
-    if not found_glassdoor or not found_reddit:
-        parts = []
-        if not found_glassdoor:
-            parts.append("Glassdoor")
-        if not found_reddit:
-            parts.append("Reddit")
-        search_note = f" We explicitly searched Glassdoor and Reddit. We did NOT find any reviews or comments on: {', '.join(parts)}. In your 'From searching online' section you MUST state that you didn't find any reviews or comments on {', '.join(parts)} for this company."
-
     return f"""You are an interview preparation coach for Career Copilot. The user is preparing for an interview at a specific company for a specific role. Your job is to:
 
 1. Use the interview type they shared (e.g. Technical, HR/Behavioural, Coding) to focus your advice.
 2. Use the job description and the user's resume to tailor tips (e.g. which skills to emphasize, which projects to mention).
-3. Use the web search results below (from Glassdoor, Reddit, Fishbowl, company site, etc.) to add company-specific advice when available.
+3. When you need company-specific advice (culture, interview process, reviews, tips), call the `search_company_interview_context` tool to run a web search (Glassdoor, Reddit, Fishbowl, company site, etc.) and then use those results.
 4. When giving the main preparation plan (in response to their interview type), you MUST structure your response in three clearly labelled sections:
    - **From the job description:** List points you derived from reviewing the job description (requirements, keywords, focus areas).
    - **From your resume:** List points you derived from reviewing their resume (stories to highlight, skills to mention, projects to discuss).
-   - **From searching online:** List points from the web search results. For each point use the matching link from the "EXACT URLs to cite" list (copy the URL exactly). If no URL in the list clearly matches that source, or you are unsure, do NOT invent or reuse a different link — instead say "I couldn't find a reliable link for this source." Do NOT use generic URLs like https://glassdoor.com or https://reddit.com.{search_note}
+   - **From searching online:** List points from the web search results (tool output). For each point use the matching link from the tool output's "EXACT URLs to cite" list (copy the URL exactly). If no URL in the list clearly matches that source, or you are unsure, do NOT invent or reuse a different link — instead say "I couldn't find a reliable link for this source." Do NOT use generic URLs like https://glassdoor.com or https://reddit.com.
 5. After these three sections, you may add a short "Suggested next steps" or "Questions to ask" if helpful.
 6. In follow-up messages, answer their questions and deepen the preparation; you may use a simpler format unless they ask for the full structured breakdown again.
 
@@ -285,10 +274,7 @@ Company: {company}. Role: {title}. {skills_line}
 {job_desc}
 
 --- User's resume (for tailoring stories and talking points) ---
-{resume_text or "(No resume uploaded yet.)"}
-
---- Web search results and EXACT URLs to cite (in "From searching online" use only the numbered URLs from the list below; copy each URL exactly) ---
-{web_search_context}"""
+{resume_text or "(No resume uploaded yet.)"}"""
 
 
 def chat_interview_preparation(
@@ -312,26 +298,23 @@ def chat_interview_preparation(
         len(conversation_history) == 1 and conversation_history[0].get("role") == "assistant"
     )
 
-    if is_first_user_reply:
-        interview_type = user_message.strip()
-        search_result = search_web_for_company(
-            company_name=job.get("company") or "",
-            job_title=job.get("title") or "",
-            interview_type=interview_type,
-        )
-        web_context = search_result["context"]
-        found_glassdoor = search_result.get("found_glassdoor", False)
-        found_reddit = search_result.get("found_reddit", False)
-    else:
-        web_context = (
-            "(Use any company/interview context already discussed in the conversation. "
-            "No new web search was run for this follow-up.)"
-        )
-        found_glassdoor = True  # avoid prompting to "mention not found" in follow-ups
-        found_reddit = True
+    system = _build_system_prompt(job, resume_text)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_company_interview_context",
+                "description": (
+                    "Run a web search for this company and role to gather interview "
+                    "reviews, company culture notes, and role-specific questions "
+                    "from sources like Glassdoor and Reddit."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    ]
 
-    system = _build_system_prompt(job, resume_text, web_context, found_glassdoor, found_reddit)
-    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     for h in conversation_history:
         role = h.get("role")
         content = h.get("content") or ""
@@ -350,17 +333,57 @@ def chat_interview_preparation(
             "## From your resume\n"
             "List 3–5 points you derived from reviewing their resume (which experiences to highlight, stories to tell, skills to mention). Use bullet points.\n\n"
             "## From searching online\n"
-            "List points from the web search results. For each point use the matching URL from the 'EXACT URLs to cite' list (copy it exactly). If no URL in the list matches that source, say 'I couldn't find a reliable link for this source' — do not guess or reuse another link. Do NOT use https://glassdoor.com or https://reddit.com. Use bullet points. If we did not find any reviews on Glassdoor or Reddit for this company, say so.\n\n"
+            "If you have web search results (from the `search_company_interview_context` tool), list points from those results. "
+            "For each point use the matching URL from the tool output's 'EXACT URLs to cite' list (copy it exactly). "
+            "If no URL in the list matches that source, say 'I couldn't find a reliable link for this source' — do not guess or reuse another link. "
+            "Do NOT use https://glassdoor.com or https://reddit.com. Use bullet points. If we did not find any reviews on Glassdoor or Reddit for this company, say so.\n\n"
             "You may add a short ## Suggested next steps or ## Questions to ask the interviewer at the end. Keep everything actionable and specific to their background and the role."
         )
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        temperature=0.4,
-    )
-    msg = response.choices[0].message
-    return (msg.content or "").strip()
+    interview_type_for_search = user_message.strip()
+
+    while True:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.4,
+        )
+        msg = response.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+
+        if tool_calls:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [tc.model_dump() for tc in tool_calls],
+                }
+            )
+            for tool_call in tool_calls:
+                name = tool_call.function.name
+                if name == "search_company_interview_context":
+                    search_result = search_web_for_company(
+                        company_name=job.get("company") or "",
+                        job_title=job.get("title") or "",
+                        interview_type=interview_type_for_search,
+                    )
+                    result = search_result
+                else:
+                    result = {"error": f"Unknown tool {name}"}
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": name,
+                        "content": json.dumps(result),
+                    }
+                )
+            continue
+
+        return (msg.content or "").strip()
 
 
 def build_interview_prep_context(job_id: int, user_id: int, conn: Any) -> dict[str, Any]:
