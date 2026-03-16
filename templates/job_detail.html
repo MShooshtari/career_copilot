@@ -191,8 +191,13 @@
             {% endif %}
 
             <div class="actions">
+                {% if is_user_job %}
+                <a href="/my-jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
+                <a href="/my-jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
+                {% else %}
                 <a href="/jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
                 <a href="/jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
+                {% endif %}
                 {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
                 {% endif %}

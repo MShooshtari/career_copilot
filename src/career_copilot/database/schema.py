@@ -63,6 +63,33 @@ def init_schema(conn: psycopg.Connection) -> None:
         # Embeddings live only in Chroma (user_profiles collection); no vector storage in Postgres
         cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
+        # User-added jobs (separate from ingested jobs table)
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_jobs (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NULL,
+                company TEXT NULL,
+                location TEXT NULL,
+                salary_min INTEGER NULL,
+                salary_max INTEGER NULL,
+                description TEXT NULL,
+                skills TEXT[] NULL,
+                url TEXT NULL,
+                raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS user_jobs_user_id_idx ON user_jobs (user_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS user_jobs_created_at_idx ON user_jobs (created_at DESC)"
+        )
+
         # Ensure demo user exists
         cur.execute(
             "INSERT INTO users (email) VALUES (%s) ON CONFLICT (email) DO NOTHING",

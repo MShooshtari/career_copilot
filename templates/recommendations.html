@@ -85,6 +85,22 @@
             border-color: var(--accent);
             background: var(--accent-soft);
         }
+        .header-nav a.add-job-btn {
+            color: #e5e7eb;
+            border-color: var(--accent);
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+        }
+        .header-nav a.add-job-btn:hover {
+            filter: brightness(1.08);
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 12px;
+            color: var(--text-muted);
+        }
+        .section-title span { color: var(--text-main); }
+        .job-section { margin-bottom: 32px; }
         .page-intro {
             margin-bottom: 24px;
             padding: 16px 20px;
@@ -217,6 +233,7 @@
                     </div>
                 </div>
                 <nav class="header-nav">
+                    <a href="/add-job" class="add-job-btn">Add Job</a>
                     <a href="/profile">Profile</a>
                     <a href="/recommendations" class="active">Recommendations</a>
                 </nav>
@@ -224,59 +241,108 @@
         </div>
 
         <section class="page-intro">
-            <h2>Top 100 jobs for you</h2>
-            <p>These jobs are ranked by similarity to your profile embedding (skills, resume, preferences). Click a job to see full details.</p>
+            <h2>Recommended jobs for you</h2>
+            <p>Jobs you added appear first; below are top matches from the web ranked by similarity to your profile.</p>
         </section>
 
-        {% if jobs %}
-        <div class="job-list">
-            {% for job in jobs %}
-            <article class="job-card">
-                <h3>
-                    {% if job.job_id %}
-                    <a href="/jobs/{{ job.job_id }}">{{ job.title }}</a>
-                    {% else %}
-                    <span>{{ job.title }}</span>
-                    {% endif %}
-                </h3>
-                <div class="job-meta">
-                    <span>{{ job.company }}</span>
-                    {% if job.location %}<span>{{ job.location }}</span>{% endif %}
-                    {% if job.salary_min or job.salary_max %}
-                    <span>
-                        {% if job.salary_min and job.salary_max %}{{ job.salary_min }} – {{ job.salary_max }}{% elif job.salary_min %}{{ job.salary_min }}+{% else %}Up to {{ job.salary_max }}{% endif %}
-                    </span>
-                    {% endif %}
-                </div>
-                {% if job.snippet %}
-                <p class="job-snippet">{{ job.snippet }}</p>
-                {% endif %}
-                <div class="job-card-footer">
-                    <div class="job-skills">
-                        {% for skill in job.skills[:6] %}
-                        {% if skill.strip() %}
-                        <span class="chip">{{ skill.strip() }}</span>
+        {% if jobs_added %}
+        <section class="job-section">
+            <h2 class="section-title">Jobs you added</h2>
+            <div class="job-list">
+                {% for job in jobs_added %}
+                <article class="job-card">
+                    <h3>
+                        <a href="/my-jobs/{{ job.job_id }}">{{ job.title }}</a>
+                    </h3>
+                    <div class="job-meta">
+                        <span>{{ job.company }}</span>
+                        {% if job.location %}<span>{{ job.location }}</span>{% endif %}
+                        {% if job.salary_min or job.salary_max %}
+                        <span>
+                            {% if job.salary_min and job.salary_max %}{{ job.salary_min }} – {{ job.salary_max }}{% elif job.salary_min %}{{ job.salary_min }}+{% else %}Up to {{ job.salary_max }}{% endif %}
+                        </span>
                         {% endif %}
-                        {% endfor %}
                     </div>
-                    <div class="job-card-actions">
+                    {% if job.snippet %}
+                    <p class="job-snippet">{{ job.snippet }}</p>
+                    {% endif %}
+                    <div class="job-card-footer">
+                        <div class="job-skills">
+                            {% for skill in job.skills[:6] %}
+                            {% if skill.strip() %}
+                            <span class="chip">{{ skill.strip() }}</span>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        <div class="job-card-actions">
+                            <a href="/my-jobs/{{ job.job_id }}" class="view-details">View details</a>
+                            <a href="/my-jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
+                            <a href="/my-jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
+                            {% if job.url %}
+                            <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if jobs_online %}
+        <section class="job-section">
+            <h2 class="section-title">Recommended from the web</h2>
+            <div class="job-list">
+                {% for job in jobs_online %}
+                <article class="job-card">
+                    <h3>
                         {% if job.job_id %}
-                        <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
-                        <a href="/jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
-                        <a href="/jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
+                        <a href="/jobs/{{ job.job_id }}">{{ job.title }}</a>
+                        {% else %}
+                        <span>{{ job.title }}</span>
                         {% endif %}
-                        {% if job.url %}
-                        <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                    </h3>
+                    <div class="job-meta">
+                        <span>{{ job.company }}</span>
+                        {% if job.location %}<span>{{ job.location }}</span>{% endif %}
+                        {% if job.salary_min or job.salary_max %}
+                        <span>
+                            {% if job.salary_min and job.salary_max %}{{ job.salary_min }} – {{ job.salary_max }}{% elif job.salary_min %}{{ job.salary_min }}+{% else %}Up to {{ job.salary_max }}{% endif %}
+                        </span>
                         {% endif %}
                     </div>
-                </div>
-            </article>
-            {% endfor %}
-        </div>
-        {% else %}
+                    {% if job.snippet %}
+                    <p class="job-snippet">{{ job.snippet }}</p>
+                    {% endif %}
+                    <div class="job-card-footer">
+                        <div class="job-skills">
+                            {% for skill in job.skills[:6] %}
+                            {% if skill.strip() %}
+                            <span class="chip">{{ skill.strip() }}</span>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        <div class="job-card-actions">
+                            {% if job.job_id %}
+                            <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
+                            <a href="/jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
+                            <a href="/jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
+                            {% endif %}
+                            {% if job.url %}
+                            <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if not jobs_added and not jobs_online %}
         <div class="empty-state">
             <p>No recommendations yet.</p>
-            <p>Save your <a href="/profile">profile</a> (skills and resume) so we can build your embedding and match you to jobs. Then run the job index so the vector store has jobs: <code>python scripts/run_rag_index.py</code>.</p>
+            <p><a href="/add-job">Add a job</a> to compare with your resume, or save your <a href="/profile">profile</a> (skills and resume) and run the job index so we can match you to jobs: <code>python scripts/run_rag_index.py</code>.</p>
         </div>
         {% endif %}
     </div>

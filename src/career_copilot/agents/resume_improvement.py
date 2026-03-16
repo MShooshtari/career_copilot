@@ -124,6 +124,41 @@ def build_resume_improvement_context(
     }
 
 
+def build_resume_improvement_context_from_job_dict(
+    job: dict[str, Any],
+    user_id: int,
+    conn: Any,
+) -> dict[str, Any]:
+    """
+    Build same context as build_resume_improvement_context but from an existing job dict
+    (e.g. from user_jobs). Loads resume from profile and RAG similar jobs/resumes.
+    """
+    resume_text = ""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT resume_file, resume_filename FROM profiles WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            from career_copilot.resume_io import extract_resume_text
+
+            resume_text = extract_resume_text(row[0], row[1]) or ""
+
+    job_document = _job_dict_to_document(job)
+    similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+    similar_resumes = get_similar_resumes_for_resume_improvement(
+        job_document, exclude_user_id=user_id, n_results=5
+    )
+    return {
+        "resume_text": resume_text,
+        "job": job,
+        "job_document": job_document,
+        "similar_jobs": similar_jobs,
+        "similar_resumes": similar_resumes,
+    }
+
+
 def _get_openai_client():
     import os
 

@@ -179,12 +179,12 @@
                 <nav class="header-nav">
                     <a href="/profile">Profile</a>
                     <a href="/recommendations">Recommendations</a>
-                    <a href="/jobs/{{ job_id }}">Job details</a>
+                    <a href="{% if is_user_job %}/my-jobs/{{ job_id }}{% else %}/jobs/{{ job_id }}{% endif %}">Job details</a>
                 </nav>
             </header>
         </div>
 
-        <a href="/jobs/{{ job_id }}" class="back-link">← Back to job</a>
+        <a href="{% if is_user_job %}/my-jobs/{{ job_id }}{% else %}/jobs/{{ job_id }}{% endif %}" class="back-link">← Back to job</a>
 
         <article class="card">
             <div class="job-badge">
@@ -207,6 +207,7 @@
     <script>
         (function () {
             const jobId = {{ job_id }};
+            const jobBase = "{{ '/my-jobs' if is_user_job else '/jobs' }}";
             const chatMessages = document.getElementById('chatMessages');
             const chatForm = document.getElementById('chatForm');
             const chatInput = document.getElementById('chatInput');
@@ -255,7 +256,7 @@
             }
 
             async function postChat(message) {
-                const res = await fetch('/jobs/' + jobId + '/improve-resume/chat', {
+                const res = await fetch(jobBase + '/' + jobId + '/improve-resume/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: message, history: history }),
@@ -272,7 +273,7 @@
                 }
                 downloadBtn.disabled = true;
                 try {
-                    const res = await fetch('/jobs/' + jobId + '/improve-resume/download', {
+                    const res = await fetch(jobBase + '/' + jobId + '/improve-resume/download', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ history: history }),

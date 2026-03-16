@@ -13,7 +13,10 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 # Reuse resume + job loading from resume_improvement
-from career_copilot.agents.resume_improvement import build_resume_improvement_context
+from career_copilot.agents.resume_improvement import (
+    build_resume_improvement_context,
+    build_resume_improvement_context_from_job_dict,
+)
 
 INTERVIEW_TYPE_PROMPT = """What type of interview are you preparing for?
 
@@ -389,6 +392,17 @@ def chat_interview_preparation(
 def build_interview_prep_context(job_id: int, user_id: int, conn: Any) -> dict[str, Any]:
     """Load job and user resume for interview prep. Reuses resume_improvement context (job + resume only)."""
     ctx = build_resume_improvement_context(job_id, user_id, conn)
+    return {
+        "resume_text": ctx["resume_text"],
+        "job": ctx["job"],
+    }
+
+
+def build_interview_prep_context_from_job_dict(
+    job: dict[str, Any], user_id: int, conn: Any
+) -> dict[str, Any]:
+    """Build interview prep context from a job dict (e.g. from user_jobs)."""
+    ctx = build_resume_improvement_context_from_job_dict(job, user_id, conn)
     return {
         "resume_text": ctx["resume_text"],
         "job": ctx["job"],
