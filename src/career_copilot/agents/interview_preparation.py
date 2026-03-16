@@ -8,6 +8,8 @@ rounds, and feedback to tailor preparation advice.
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, unquote, urlparse
+
 from typing import Any
 
 # Reuse resume + job loading from resume_improvement
@@ -25,6 +27,72 @@ You can pick one of these common types, or describe your own:
 - **Final / Negotiations** — Offer discussion, compensation, start date
 
 Reply with the type (e.g. "Technical" or "Coding") or describe your interview in your own words. I'll then search for company-specific insights and tailor a preparation plan for you."""
+
+
+def _resolve_result_url(href: str) -> str:
+    """
+    Resolve DuckDuckGo redirect/tracking URLs by extracting the real destination
+    from the uddg (or url/u) query parameter. We do NOT follow HTTP redirects:
+    sites like Glassdoor often redirect to a different company page when hit
+    server-side, which would attach the wrong link to the snippet.
+    """
+    if not (href or "").strip():
+        return href or ""
+    href = href.strip()
+    try:
+        parsed = urlparse(href)
+        if "duckduckgo.com" in (parsed.netloc or "").lower() and (
+            (parsed.path or "").rstrip("/") in ("/l", "")
+        ):
+            qs = parse_qs(parsed.query)
+            for key in ("uddg", "url", "u"):
+                if key in qs and qs[key]:
+                    raw = qs[key][0]
+                    resolved = unquote(raw)
+                    if resolved.startswith("http://") or resolved.startswith("https://"):
+                        return resolved
+        return href
+    except Exception:
+        return href
+
+
+def _is_generic_or_low_value_url(url: str) -> bool:
+    """
+    Filter out homepage/generic URLs that are not useful as citations
+    (e.g. glassdoor.com, reddit.com with no specific page).
+    """
+    if not url or not url.startswith("http"):
+        return True
+    try:
+        parsed = urlparse(url)
+        path = (parsed.path or "").strip().rstrip("/").lower()
+        netloc = (parsed.netloc or "").lower()
+
+        if "glassdoor" in netloc:
+            # Filter only bare homepage or top-level nav (no specific company/page)
+            if not path or path == "/":
+                return True
+            if path in ("/overview", "/employer-list", "/reviews", "/interviews"):
+                return True
+            # Single segment like /Overview (no company slug)
+            if path.count("/") <= 1:
+                return True
+            return False
+
+        if "reddit.com" in netloc:
+            if not path or path == "/":
+                return True
+            # Must have at least /r/SubredditName or /r/.../comments/...
+            parts = [p for p in path.split("/") if p]
+            if len(parts) < 2:  # e.g. just ["r"]
+                return True
+            if parts[0] != "r":
+                return True
+            return False
+
+        return False
+    except Exception:
+        return False
 
 
 def _get_openai_client():
@@ -48,13 +116,16 @@ def search_web_for_company(
     job_title: str,
     interview_type: str,
     max_results_per_query: int = 5,
-) -> str:
+) -> dict[str, Any]:
     """
     Search the web for company culture, interview process, reviews, and tips.
-    Uses DuckDuckGo (no API key). Queries target Glassdoor, Reddit, Fishbowl, company site, and general search.
-    Returns a single string of concatenated snippets for the LLM context.
+    Explicitly searches Glassdoor and Reddit; also Fishbowl, company culture, and role-specific questions.
+    Returns dict with: context (str), found_glassdoor (bool), found_reddit (bool).
     """
-    queries = [
+    # Explicit Glassdoor and Reddit queries first so we can track if we got any results from each
+    glassdoor_query = f"{company_name} interview review site:glassdoor.com"
+    reddit_query = f"{company_name} interview experience site:reddit.com"
+    other_queries = [
         f"{company_name} interview process Glassdoor",
         f"{company_name} interview experience Reddit",
         f"{company_name} interview Fishbowl",
@@ -62,13 +133,59 @@ def search_web_for_company(
         f"{company_name} {job_title} interview questions",
     ]
     snippets: list[str] = []
+    source_list: list[tuple[str, str]] = []  # (label, resolved_url) for exact citation
     seen_bodies: set[str] = set()
+    found_glassdoor = False
+    found_reddit = False
+
+    def is_glassdoor_url(href: str) -> bool:
+        return "glassdoor" in (href or "").lower()
+
+    def is_reddit_url(href: str) -> bool:
+        return "reddit.com" in (href or "").lower()
+
+    def add_snippet(label: str, body: str, link: str, is_gd: bool, is_rd: bool) -> None:
+        if not link or _is_generic_or_low_value_url(link):
+            return
+        nonlocal found_glassdoor, found_reddit
+        if is_gd:
+            found_glassdoor = True
+        if is_rd:
+            found_reddit = True
+        seen_bodies.add(body)
+        snippets.append(f"[{label}]\n{body[:600]}{'…' if len(body) > 600 else ''}\nSource: {link}")
+        source_list.append((label, link))
 
     try:
         from duckduckgo_search import DDGS
 
         with DDGS() as ddgs:
-            for q in queries:
+            # Dedicated Glassdoor search
+            try:
+                for r in ddgs.text(glassdoor_query, max_results=max_results_per_query):
+                    title = (r.get("title") or "").strip()
+                    body = (r.get("body") or "").strip()
+                    href = (r.get("href") or "").strip()
+                    if not body or body in seen_bodies or not is_glassdoor_url(href):
+                        continue
+                    link = _resolve_result_url(href)
+                    add_snippet(f"Glassdoor - {title}", body, link, True, False)
+            except Exception:
+                pass
+            # Dedicated Reddit search
+            try:
+                for r in ddgs.text(reddit_query, max_results=max_results_per_query):
+                    title = (r.get("title") or "").strip()
+                    body = (r.get("body") or "").strip()
+                    href = (r.get("href") or "").strip()
+                    if not body or body in seen_bodies or not is_reddit_url(href):
+                        continue
+                    link = _resolve_result_url(href)
+                    add_snippet(f"Reddit - {title}", body, link, False, True)
+            except Exception:
+                pass
+            # Other queries (may also return Glassdoor/Reddit)
+            for q in other_queries:
                 try:
                     for r in ddgs.text(q, max_results=max_results_per_query):
                         title = (r.get("title") or "").strip()
@@ -76,23 +193,51 @@ def search_web_for_company(
                         href = (r.get("href") or "").strip()
                         if not body or body in seen_bodies:
                             continue
-                        seen_bodies.add(body)
-                        snippet = f"[{title}]\n{body[:600]}{'…' if len(body) > 600 else ''}"
-                        if href:
-                            snippet += f"\nSource: {href}"
-                        snippets.append(snippet)
+                        link = _resolve_result_url(href) if href else ""
+                        if not link:
+                            continue
+                        add_snippet(
+                            title,
+                            body,
+                            link,
+                            is_glassdoor_url(href),
+                            is_reddit_url(href),
+                        )
                 except Exception:
                     continue
     except ImportError:
-        return (
-            "Web search is not available (install duckduckgo-search: pip install duckduckgo-search). "
-            "Preparation will be based on the job description and your resume only."
-        )
+        return {
+            "context": (
+                "Web search is not available (install duckduckgo-search: pip install duckduckgo-search). "
+                "Preparation will be based on the job description and your resume only."
+            ),
+            "found_glassdoor": False,
+            "found_reddit": False,
+        }
 
     if not snippets:
-        return "No web results found. Preparation will be based on the job description and your resume only."
+        return {
+            "context": "No web results found. Preparation will be based on the job description and your resume only.",
+            "found_glassdoor": False,
+            "found_reddit": False,
+        }
 
-    return "\n\n---\n\n".join(snippets[:20])  # cap total context
+    context_text = "\n\n---\n\n".join(snippets[:20])
+    if source_list:
+        exact_urls = "\n".join(
+            f"{i}. {label}: {url}" for i, (label, url) in enumerate(source_list[:25], 1)
+        )
+        context_text += (
+            "\n\n--- EXACT URLs to cite (copy these URLs exactly in your markdown links; "
+            "do not use a generic homepage like glassdoor.com or reddit.com) ---\n"
+            + exact_urls
+        )
+
+    return {
+        "context": context_text,
+        "found_glassdoor": found_glassdoor,
+        "found_reddit": found_reddit,
+    }
 
 
 def get_initial_interview_message() -> str:
@@ -104,6 +249,8 @@ def _build_system_prompt(
     job: dict[str, Any],
     resume_text: str,
     web_search_context: str,
+    found_glassdoor: bool,
+    found_reddit: bool,
 ) -> str:
     company = job.get("company") or "the company"
     title = job.get("title") or "the role"
@@ -112,17 +259,26 @@ def _build_system_prompt(
     if job.get("skills"):
         skills_line = "Mentioned skills: " + ", ".join(job["skills"]) + "."
 
+    search_note = ""
+    if not found_glassdoor or not found_reddit:
+        parts = []
+        if not found_glassdoor:
+            parts.append("Glassdoor")
+        if not found_reddit:
+            parts.append("Reddit")
+        search_note = f" We explicitly searched Glassdoor and Reddit. We did NOT find any reviews or comments on: {', '.join(parts)}. In your 'From searching online' section you MUST state that you didn't find any reviews or comments on {', '.join(parts)} for this company."
+
     return f"""You are an interview preparation coach for Career Copilot. The user is preparing for an interview at a specific company for a specific role. Your job is to:
 
 1. Use the interview type they shared (e.g. Technical, HR/Behavioural, Coding) to focus your advice.
 2. Use the job description and the user's resume to tailor tips (e.g. which skills to emphasize, which projects to mention).
-3. Use the web search results below (from Glassdoor, Reddit, Fishbowl, company site, Google) to add company-specific advice: typical interview rounds, culture, common questions, and candidate feedback when available.
-4. When giving the main preparation plan (in response to their interview type), you MUST structure your response in three clearly labelled sections so the user knows where each point came from:
+3. Use the web search results below (from Glassdoor, Reddit, Fishbowl, company site, etc.) to add company-specific advice when available.
+4. When giving the main preparation plan (in response to their interview type), you MUST structure your response in three clearly labelled sections:
    - **From the job description:** List points you derived from reviewing the job description (requirements, keywords, focus areas).
    - **From your resume:** List points you derived from reviewing their resume (stories to highlight, skills to mention, projects to discuss).
-   - **From searching online:** List points from the web search results (company culture, interview reviews, common questions, tips). For each point that comes from a specific source, include the link. The web search results below include "Source: <url>" — use that exact URL when citing (e.g. "Glassdoor review: ... [link](url)" or "As mentioned on Reddit: ... (source: url)").
+   - **From searching online:** List points from the web search results. For each point use the matching link from the "EXACT URLs to cite" list (copy the URL exactly). If no URL in the list clearly matches that source, or you are unsure, do NOT invent or reuse a different link — instead say "I couldn't find a reliable link for this source." Do NOT use generic URLs like https://glassdoor.com or https://reddit.com.{search_note}
 5. After these three sections, you may add a short "Suggested next steps" or "Questions to ask" if helpful.
-6. In follow-up messages, answer their questions and deepen the preparation (e.g. mock questions, deeper dives); you may use a simpler format in follow-ups unless they ask for the full structured breakdown again.
+6. In follow-up messages, answer their questions and deepen the preparation; you may use a simpler format unless they ask for the full structured breakdown again.
 
 --- Company and role ---
 Company: {company}. Role: {title}. {skills_line}
@@ -133,10 +289,8 @@ Company: {company}. Role: {title}. {skills_line}
 --- User's resume (for tailoring stories and talking points) ---
 {resume_text or "(No resume uploaded yet.)"}
 
---- Web search results (company culture, interview process, reviews, tips). Each block ends with "Source: <url>" when available — cite these URLs in your "From searching online" section. ---
-{web_search_context}
-
-Respond in clear, helpful markdown. Be specific to the company and role. When search results are missing, the "From searching online" section can say "No specific results found; consider checking Glassdoor and Reddit for [company] interviews." and still give strong advice from the job description and resume in the first two sections."""
+--- Web search results and EXACT URLs to cite (in "From searching online" use only the numbered URLs from the list below; copy each URL exactly) ---
+{web_search_context}"""
 
 
 def chat_interview_preparation(
@@ -163,19 +317,25 @@ def chat_interview_preparation(
 
     if is_first_user_reply:
         interview_type = user_message.strip()
-        web_context = search_web_for_company(
+        search_result = search_web_for_company(
             company_name=job.get("company") or "",
             job_title=job.get("title") or "",
             interview_type=interview_type,
         )
+        web_context = search_result["context"]
+        found_glassdoor = search_result.get("found_glassdoor", False)
+        found_reddit = search_result.get("found_reddit", False)
     else:
-        # For follow-ups we don't re-search; use a short note so the model doesn't expect fresh search data
         web_context = (
             "(Use any company/interview context already discussed in the conversation. "
             "No new web search was run for this follow-up.)"
         )
+        found_glassdoor = True  # avoid prompting to "mention not found" in follow-ups
+        found_reddit = True
 
-    system = _build_system_prompt(job, resume_text, web_context)
+    system = _build_system_prompt(
+        job, resume_text, web_context, found_glassdoor, found_reddit
+    )
     messages: list[dict[str, str]] = [{"role": "system", "content": system}]
     for h in conversation_history:
         role = h.get("role")
@@ -195,7 +355,7 @@ def chat_interview_preparation(
             "## From your resume\n"
             "List 3–5 points you derived from reviewing their resume (which experiences to highlight, stories to tell, skills to mention). Use bullet points.\n\n"
             "## From searching online\n"
-            "List points from the web search results (company culture, interview process, reviews, common questions). For each point that comes from a specific source, include the link (the search results have 'Source: <url>' — use that URL). Use bullet points; e.g. 'Glassdoor reviews mention X ([link](url)).' If no relevant results were found, say so and suggest they check Glassdoor/Reddit for the company name.\n\n"
+            "List points from the web search results. For each point use the matching URL from the 'EXACT URLs to cite' list (copy it exactly). If no URL in the list matches that source, say 'I couldn't find a reliable link for this source' — do not guess or reuse another link. Do NOT use https://glassdoor.com or https://reddit.com. Use bullet points. If we did not find any reviews on Glassdoor or Reddit for this company, say so.\n\n"
             "You may add a short ## Suggested next steps or ## Questions to ask the interviewer at the end. Keep everything actionable and specific to their background and the role."
         )
 
