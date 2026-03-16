@@ -7,6 +7,7 @@ LLM: improve resume to match job, suggest bullets, rewrites, ATS score; then con
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from career_copilot.rag.chroma_store import (
@@ -220,16 +221,83 @@ def get_initial_resume_analysis(
 
 Keep it concise and actionable."""
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=0.3,
-    )
-    msg = response.choices[0].message
-    return (msg.content or "").strip()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_more_similar_jobs",
+                "description": (
+                    "Fetch additional similar job listings from the RAG store. "
+                    "Use this if you need more examples of how other companies "
+                    "describe similar roles."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_more_similar_resumes",
+                "description": (
+                    "Fetch additional example resumes/profiles similar to this role "
+                    "from the RAG store. Use this when you want more style/level "
+                    "examples to base your suggestions on."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    ]
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_message},
+    ]
+
+    job_document = _job_dict_to_document(job)
+
+    while True:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.3,
+        )
+        msg = response.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+
+        if tool_calls:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [tc.model_dump() for tc in tool_calls],
+                }
+            )
+            for tool_call in tool_calls:
+                name = tool_call.function.name
+                if name == "get_more_similar_jobs":
+                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+                elif name == "get_more_similar_resumes":
+                    # Exclude current user if present in metadata; user id is not
+                    # strictly required for usefulness here.
+                    result = get_similar_resumes_for_resume_improvement(
+                        job_document, exclude_user_id=None, n_results=5
+                    )
+                else:
+                    result = {"error": f"Unknown tool {name}"}
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": name,
+                        "content": json.dumps(result),
+                    }
+                )
+            continue
+
+        return (msg.content or "").strip()
 
 
 def chat_resume_improvement(
@@ -251,7 +319,35 @@ def chat_resume_improvement(
 
     client = _get_openai_client()
     system = _build_system_prompt(resume_text, job, similar_jobs, similar_resumes)
-    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_more_similar_jobs",
+                "description": (
+                    "Fetch additional similar job listings from the RAG store. "
+                    "Use this if you need more examples of how other companies "
+                    "describe similar roles."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_more_similar_resumes",
+                "description": (
+                    "Fetch additional example resumes/profiles similar to this role "
+                    "from the RAG store. Use this when you want more style/level "
+                    "examples to base your suggestions on."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+    ]
+
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     for h in conversation_history:
         role = h.get("role")
         content = h.get("content") or ""
@@ -259,13 +355,49 @@ def chat_resume_improvement(
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": user_message.strip()})
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        temperature=0.3,
-    )
-    msg = response.choices[0].message
-    return (msg.content or "").strip()
+    job_document = _job_dict_to_document(job)
+
+    while True:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.3,
+        )
+        msg = response.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+
+        if tool_calls:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [tc.model_dump() for tc in tool_calls],
+                }
+            )
+            for tool_call in tool_calls:
+                name = tool_call.function.name
+                if name == "get_more_similar_jobs":
+                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+                elif name == "get_more_similar_resumes":
+                    result = get_similar_resumes_for_resume_improvement(
+                        job_document, exclude_user_id=None, n_results=5
+                    )
+                else:
+                    result = {"error": f"Unknown tool {name}"}
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": name,
+                        "content": json.dumps(result),
+                    }
+                )
+            continue
+
+        return (msg.content or "").strip()
 
 
 def generate_full_resume(

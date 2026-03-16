@@ -7,13 +7,14 @@
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
 - **Job recommendations** — Top jobs by vector similarity to your profile (resume + preferences) via Chroma + OpenAI embeddings
 - **Job detail** — View full job description, skills, and salary
-- **Resume improvement** — For a chosen job: RAG-backed chat (similar jobs + similar resumes) and one-click PDF export of the improved resume
+- **Resume improvement agent** — For a chosen job: RAG-backed chat (similar jobs + similar resumes) and one-click PDF export of the improved resume. The agent can call tools to pull extra similar jobs/resumes from the vector store when it decides more context is useful.
+- **Interview preparation agent** — Structured prep plan for a specific role and company. The agent can call a web-search tool (Glassdoor, Reddit, etc.) to fetch company-specific interview insights and weave them into the guidance.
 
 ## Tech stack
 
 - **Backend:** FastAPI, PostgreSQL (jobs + profiles), Chroma (vector store)
 - **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
-- **LLM:** OpenAI for resume analysis and chat
+- **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement + interview prep)
 
 ## Prerequisites
 
