@@ -161,4 +161,3 @@ def test_prepare_interview_chat_calls_agent(client: TestClient) -> None:
     data = response.json()
     assert data["reply"] == "reply from agent"
     mock_chat.assert_called_once()
-
