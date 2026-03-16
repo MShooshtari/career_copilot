@@ -8,9 +8,8 @@ rounds, and feedback to tailor preparation advice.
 
 from __future__ import annotations
 
-from urllib.parse import parse_qs, unquote, urlparse
-
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 # Reuse resume + job loading from resume_improvement
 from career_copilot.agents.resume_improvement import build_resume_improvement_context
