@@ -203,6 +203,20 @@
         .job-card a.card-btn.prepare-interview:hover {
             filter: brightness(1.08);
         }
+        .job-card-actions form { display: inline; }
+        .job-card-actions .delete-btn {
+            font-size: 13px;
+            font-weight: 500;
+            color: #f87171;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(248, 113, 113, 0.5);
+            background: rgba(248, 113, 113, 0.15);
+        }
+        .job-card-actions .delete-btn:hover {
+            background: rgba(248, 113, 113, 0.25);
+        }
         .empty-state {
             text-align: center;
             padding: 48px 24px;
@@ -273,6 +287,9 @@
                             {% if job.url %}
                             <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
                             {% endif %}
+                            <form action="/my-jobs/{{ job.job_id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Remove this job from your list?');">
+                                <button type="submit" class="card-btn delete-btn">Delete</button>
+                            </form>
                         </div>
                     </div>
                 </article>

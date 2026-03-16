@@ -12,10 +12,12 @@ from career_copilot.agents.add_job import (
     extract_job_from_file,
     extract_job_from_text,
     extract_job_from_url,
+    title_from_url_path,
 )
 from career_copilot.app_config import templates
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import insert_user_job
+from career_copilot.ingestion.common import html_to_plain_text
 
 router = APIRouter(tags=["add_job"])
 
@@ -107,14 +109,21 @@ async def post_add_job(
             },
         )
 
-    title = extracted.get("title") or "Untitled Job"
-    company = extracted.get("company") or ""
-    location_out = extracted.get("location") or ""
+    raw_title = extracted.get("title") or "Untitled Job"
+    company = (html_to_plain_text(extracted.get("company")) or extracted.get("company") or "").strip()
+    location_out = (html_to_plain_text(extracted.get("location")) or extracted.get("location") or "").strip()
     salary_min_out = extracted.get("salary_min")
     salary_max_out = extracted.get("salary_max")
-    description = extracted.get("description") or ""
+    raw_description = extracted.get("description") or ""
+    description = html_to_plain_text(raw_description) if raw_description else ""
     skills = extracted.get("skills") or []
     url_out = extracted.get("url")
+
+    title = (html_to_plain_text(raw_title) or raw_title or "").strip() or "Untitled Job"
+    if title in ("Careers", "Jobs", "Apply", "Home", "Career", "Job") and url_clean:
+        from_url = title_from_url_path(url_clean)
+        if from_url:
+            title = from_url
 
     try:
         job_id = insert_user_job(
@@ -125,7 +134,7 @@ async def post_add_job(
             location=location_out,
             salary_min=salary_min_out,
             salary_max=salary_max_out,
-            description=description,
+            description=description or None,
             skills=skills,
             url=url_out,
             raw=extracted,

@@ -167,8 +167,63 @@ def extract_job_from_file(content: bytes, filename: str) -> dict[str, Any]:
     return _extract_with_llm(text)
 
 
+def _parse_jsonld_location(loc: Any) -> str:
+    """Turn JSON-LD jobLocation (object or list) into a single location string."""
+    if not loc:
+        return ""
+    if isinstance(loc, str):
+        return loc.strip()
+    if isinstance(loc, list):
+        parts = []
+        for x in loc:
+            p = _parse_jsonld_location(x)
+            if p:
+                parts.append(p)
+        return ", ".join(parts) if parts else ""
+    if isinstance(loc, dict):
+        addr = loc.get("address") or loc
+        if isinstance(addr, dict):
+            locality = (addr.get("addressLocality") or "").strip()
+            region = (addr.get("addressRegion") or "").strip()
+            country = (addr.get("addressCountry") or "").strip()
+            if isinstance(country, dict):
+                country = (country.get("name") or "").strip()
+            return ", ".join(x for x in (locality, region, country) if x)
+        if isinstance(addr, str):
+            return addr
+    return ""
+
+
+def _parse_jsonld_salary(item: dict) -> tuple[int | None, int | None]:
+    """Extract salary_min, salary_max from JSON-LD baseSalary if present."""
+    base = item.get("baseSalary")
+    if not isinstance(base, dict):
+        return (None, None)
+    val = base.get("value")
+    if not isinstance(val, dict):
+        return (None, None)
+    min_v = val.get("minValue") or val.get("value")
+    max_v = val.get("maxValue") or val.get("value")
+    unit = (val.get("unitText") or "").upper() or "YEAR"
+    try:
+        mn = int(min_v) if min_v is not None else None
+        mx = int(max_v) if max_v is not None else None
+    except (TypeError, ValueError):
+        return (None, None)
+    # Convert to annual if needed
+    if "HOUR" in unit and mn is not None:
+        mn = mn * 2080
+    if "HOUR" in unit and mx is not None:
+        mx = mx * 2080
+    if "MONTH" in unit and mn is not None:
+        mn = mn * 12
+    if "MONTH" in unit and mx is not None:
+        mx = mx * 12
+    return (mn, mx)
+
+
 def _extract_jsonld_job(html: str) -> dict[str, Any] | None:
-    """Extract job fields from JSON-LD JobPosting if present."""
+    """Extract job fields from JSON-LD JobPosting if present (Indeed, Rippling, etc.)."""
     try:
         from bs4 import BeautifulSoup
 
@@ -183,24 +238,31 @@ def _extract_jsonld_job(html: str) -> dict[str, Any] | None:
                 if not isinstance(data, list):
                     continue
                 for item in data:
-                    if isinstance(item, dict):
-                        t = item.get("@type") or item.get("type")
-                        if t == "JobPosting" or (isinstance(t, list) and "JobPosting" in t):
-                            out: dict[str, Any] = {}
-                            if item.get("title"):
-                                out["title"] = item["title"]
-                            if item.get("hiringOrganization", {}).get("name"):
-                                out["company"] = item["hiringOrganization"]["name"]
-                            if item.get("jobLocation"):
-                                loc = item["jobLocation"]
-                                if isinstance(loc, dict) and loc.get("address", {}).get("addressLocality"):
-                                    out["location"] = loc["address"].get("addressLocality") or ""
-                                elif isinstance(loc, str):
-                                    out["location"] = loc
-                            if item.get("description"):
-                                out["description"] = item["description"]
-                            if out:
-                                return out
+                    if not isinstance(item, dict):
+                        continue
+                    t = item.get("@type") or item.get("type")
+                    if t != "JobPosting" and not (isinstance(t, list) and "JobPosting" in t):
+                        continue
+                    out: dict[str, Any] = {}
+                    if item.get("title"):
+                        out["title"] = item["title"]
+                    org = item.get("hiringOrganization")
+                    if isinstance(org, dict) and org.get("name"):
+                        out["company"] = org["name"]
+                    elif isinstance(org, str):
+                        out["company"] = org
+                    loc = item.get("jobLocation")
+                    if loc:
+                        out["location"] = _parse_jsonld_location(loc)
+                    if item.get("description"):
+                        out["description"] = item["description"]
+                    salary_min, salary_max = _parse_jsonld_salary(item)
+                    if salary_min is not None:
+                        out["salary_min"] = salary_min
+                    if salary_max is not None:
+                        out["salary_max"] = salary_max
+                    if out:
+                        return out
             except (json.JSONDecodeError, TypeError, KeyError):
                 continue
     except ImportError:
@@ -209,28 +271,70 @@ def _extract_jsonld_job(html: str) -> dict[str, Any] | None:
 
 
 def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
-    """Try to find job title/description in Workday-style or other embedded JSON."""
-    # Workday and similar ATS often embed a large JSON blob in a script tag
-    # Look for patterns like "title" : "..." or "jobTitle" or "headline"
+    """Try to find job title/description in Workday, Rippling, Indeed, or other embedded JSON."""
     found: dict[str, Any] = {}
-    # Match script content that might be JSON (avoid inline event handlers)
+
+    def dig(d: Any, depth: int) -> None:
+        if depth > 6:
+            return
+        if isinstance(d, dict):
+            for k, v in d.items():
+                klo = k.lower()
+                if klo in ("title", "jobtitle", "headline", "positiontitle") and isinstance(v, str) and 2 < len(v) < 300:
+                    found.setdefault("title", v)
+                if klo == "description" and isinstance(v, str) and len(v) > 50:
+                    found.setdefault("description", v[:12000])
+                if klo in ("company", "companyname", "organization", "employer") and isinstance(v, str):
+                    found.setdefault("company", v)
+                if klo in ("location", "joblocation", "city", "place") and isinstance(v, str) and len(v) < 200:
+                    found.setdefault("location", v)
+                if klo in ("salarymin", "salary_min", "minpay", "minimum") and isinstance(v, (int, float)):
+                    found.setdefault("salary_min", int(v))
+                if klo in ("salarymax", "salary_max", "maxpay", "maximum") and isinstance(v, (int, float)):
+                    found.setdefault("salary_max", int(v))
+                dig(v, depth + 1)
+        elif isinstance(d, list):
+            for x in d[:5]:
+                dig(x, depth + 1)
+
+    # Prefer __NEXT_DATA__ (Next.js / Rippling-style) and similar known payloads
+    for script_id in ("__NEXT_DATA__", "__NUXT_DATA__", "window.__INITIAL_STATE__", "window.__data"):
+        m = re.search(rf'<script[^>]*id=["\']?{re.escape(script_id)}["\']?[^>]*>([\s\S]*?)</script>', html, re.IGNORECASE)
+        if not m:
+            m = re.search(rf'{re.escape(script_id)}\s*=\s*(\{{[\s\S]*?\}});', html)
+        if m:
+            blob = m.group(1).strip()
+            if blob.startswith("{"):
+                try:
+                    data = json.loads(blob)
+                    dig(data, 0)
+                    if found:
+                        return found
+                except json.JSONDecodeError:
+                    pass
+
     for match in re.finditer(r"<script[^>]*>([\s\S]*?)</script>", html, re.IGNORECASE):
         blob = match.group(1)
-        if len(blob) < 100 or "job" not in blob.lower():
+        if len(blob) < 150:
+            continue
+        blob_lower = blob.lower()
+        if "job" not in blob_lower and "title" not in blob_lower and "position" not in blob_lower:
             continue
         try:
             data = json.loads(blob)
         except json.JSONDecodeError:
-            # Try to find "title":"..." or "jobTitle":"..." in raw string
             for name in ("title", "jobTitle", "headline", "positionTitle"):
                 m = re.search(rf'["\']?{name}["\']?\s*:\s*["\']([^"\']{{3,200}})["\']', blob, re.IGNORECASE)
                 if m:
                     found["title"] = m.group(1).strip()
                     break
-            if "description" in blob.lower():
+            if "description" in blob_lower:
                 m = re.search(r'"description"\s*:\s*"((?:[^"\\]|\\.)*)"', blob)
                 if m:
-                    desc = m.group(1).encode().decode("unicode_escape")
+                    try:
+                        desc = m.group(1).encode("utf-8").decode("unicode_escape")
+                    except Exception:
+                        desc = m.group(1)
                     if len(desc) > 50:
                         found["description"] = desc[:8000]
             if found:
@@ -238,24 +342,6 @@ def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
             continue
         if not isinstance(data, dict):
             continue
-        # Recurse into nested objects (e.g. initial state)
-        def dig(d: Any, depth: int) -> None:
-            if depth > 5:
-                return
-            if isinstance(d, dict):
-                for k, v in d.items():
-                    klo = k.lower()
-                    if klo in ("title", "jobtitle", "headline") and isinstance(v, str) and len(v) > 2:
-                        found.setdefault("title", v)
-                    if klo == "description" and isinstance(v, str) and len(v) > 50:
-                        found.setdefault("description", v[:8000])
-                    if klo == "company" and isinstance(v, str):
-                        found.setdefault("company", v)
-                    dig(v, depth + 1)
-            elif isinstance(d, list):
-                for x in d[:3]:
-                    dig(x, depth + 1)
-
         dig(data, 0)
         if found:
             return found
@@ -270,27 +356,57 @@ def _title_from_url_path(url: str) -> str:
     path = (parsed.path or "").strip("/")
     if not path:
         return ""
-    # Take last meaningful segment (often job slug)
     segments = [s for s in path.split("/") if s and not s.startswith("en-")]
     if not segments:
         return ""
     slug = segments[-1]
+    # Skip UUID-like segments (Rippling, Greenhouse, etc.)
+    if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", slug, re.IGNORECASE):
+        return ""
     # Remove common suffixes like _REQ-6008-1 or -REQ-6008
     slug = re.sub(r"_?REQ[-_]?\d+[-_]?\d*$", "", slug, flags=re.IGNORECASE)
     slug = re.sub(r"[-_]?\d+$", "", slug)
-    # Replace hyphens/underscores with spaces and title-case
     slug = slug.replace("-", " ").replace("_", " ").strip()
     if not slug:
         return ""
     return slug.title()
 
 
+def title_from_url_path(url: str) -> str:
+    """Public helper: derive a readable job title from URL path."""
+    return _title_from_url_path(url)
+
+
 def _html_to_text(html: str) -> str:
-    """Extract main text from HTML (strip scripts, styles, nav, etc.)."""
+    """Extract main text from HTML. Prefer main/content regions (Rippling, Indeed, etc.)."""
     try:
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html, "html.parser")
+        # Prefer job content containers used by many ATS (Rippling, Indeed, Greenhouse)
+        for selector in (
+            "main",
+            "[role='main']",
+            "article",
+            ".job-description",
+            ".job-details",
+            ".job-content",
+            "[data-qa='job-description']",
+            ".description",
+            "#job-description",
+        ):
+            try:
+                main = soup.select_one(selector)
+                if main and len(main.get_text(strip=True)) > 300:
+                    for tag in main(["script", "style", "nav", "footer", "header"]):
+                        tag.decompose()
+                    text = main.get_text(separator="\n")
+                    lines = [line.strip() for line in text.splitlines() if line.strip()]
+                    if lines:
+                        return "\n".join(lines)
+            except Exception:
+                pass
+        # Fallback: full body without script/style/nav/footer/header
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n")
@@ -302,6 +418,23 @@ def _html_to_text(html: str) -> str:
         text = re.sub(r"<[^>]+>", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text
+
+
+def _is_search_results_url(url: str) -> bool:
+    """True if URL looks like a job search/list page rather than a single job."""
+    from urllib.parse import urlparse, parse_qs
+
+    parsed = urlparse(url)
+    path = (parsed.path or "").lower()
+    qs = parse_qs(parsed.query)
+    if "indeed.com" in (parsed.netloc or "").lower():
+        if "/viewjob" in path or "jk=" in (parsed.query or ""):
+            return False
+        if "/jobs" in path or (path in ("/", "") and "q" in qs):
+            return True
+    if "linkedin.com" in (parsed.netloc or "").lower() and "/jobs/view" not in path:
+        return True
+    return False
 
 
 def _fetch_page_html(url: str) -> str:
@@ -337,15 +470,15 @@ def extract_job_from_url(url: str) -> dict[str, Any]:
         url = "https://" + url
 
     html = _fetch_page_html(url)
-    # 1) Try JSON-LD JobPosting
+    # 1) Try JSON-LD JobPosting (Indeed, Rippling, many ATS)
     jsonld = _extract_jsonld_job(html)
     if jsonld:
         result = {
             "title": jsonld.get("title"),
             "company": jsonld.get("company"),
             "location": jsonld.get("location"),
-            "salary_min": None,
-            "salary_max": None,
+            "salary_min": jsonld.get("salary_min"),
+            "salary_max": jsonld.get("salary_max"),
             "description": jsonld.get("description"),
             "skills": _coerce_skills(jsonld.get("skills")) if jsonld.get("skills") else [],
             "url": url,
@@ -354,15 +487,15 @@ def extract_job_from_url(url: str) -> dict[str, Any]:
             result["title"] = _title_from_url_path(url)
         return result
 
-    # 2) Try Workday-style or other embedded JSON
+    # 2) Try Workday / Rippling / Indeed embedded JSON
     embedded = _extract_workday_like_json(html)
     if embedded:
         result = {
             "title": embedded.get("title"),
             "company": embedded.get("company"),
-            "location": None,
-            "salary_min": None,
-            "salary_max": None,
+            "location": embedded.get("location"),
+            "salary_min": embedded.get("salary_min"),
+            "salary_max": embedded.get("salary_max"),
             "description": embedded.get("description"),
             "skills": [],
             "url": url,
@@ -375,6 +508,8 @@ def extract_job_from_url(url: str) -> dict[str, Any]:
     # 3) Main text from same HTML + LLM
     text = _html_to_text(html)
     url_hint = f"Source URL: {url}"
+    if _is_search_results_url(url):
+        url_hint += "\nThis URL may be a job search results page (e.g. Indeed list). Extract any job listing snippets you find (title, company, location, salary). If multiple jobs appear, pick the first or most prominent one. If no clear single job is found, use a generic title from the page or query (e.g. 'Data Scientist jobs - Vancouver')."
     if not text or len(text.strip()) < 200:
         # JS-heavy or login wall: derive title from URL so we don't get "Untitled Job"
         title_from_url = _title_from_url_path(url)

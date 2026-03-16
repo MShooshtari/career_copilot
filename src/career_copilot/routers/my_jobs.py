@@ -22,7 +22,8 @@ from career_copilot.agents.resume_improvement import (
 )
 from career_copilot.app_config import templates
 from career_copilot.database.deps import get_db
-from career_copilot.database.jobs import get_user_job_by_id, user_job_row_to_dict
+from career_copilot.database.jobs import delete_user_job, get_user_job_by_id, user_job_row_to_dict
+from career_copilot.ingestion.common import html_to_plain_text
 from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, ResumePdfRequest
 
@@ -38,6 +39,18 @@ def _get_user_job_dict(conn: psycopg.Connection, job_id: int) -> dict | None:
     return user_job_row_to_dict(row)
 
 
+@router.post("/{job_id:int}/delete", response_class=RedirectResponse, response_model=None)
+async def post_my_job_delete(
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> RedirectResponse:
+    """Delete a user-added job and redirect to recommendations."""
+    deleted = delete_user_job(conn, USER_ID, job_id)
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/recommendations", status_code=303)
+
+
 @router.get("/{job_id:int}", response_class=HTMLResponse, response_model=None)
 async def get_my_job_detail(
     request: Request,
@@ -49,6 +62,8 @@ async def get_my_job_detail(
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
+    if job.get("description"):
+        job = {**job, "description": html_to_plain_text(job["description"]) or job["description"]}
     return templates.TemplateResponse(
         "job_detail.html",
         {"request": request, "job": job, "user_id": USER_ID, "is_user_job": True},

@@ -191,6 +191,16 @@ def insert_user_job(
         return int(row[0])
 
 
+def delete_user_job(conn: psycopg.Connection, user_id: int, job_id: int) -> bool:
+    """Delete a user-added job. Returns True if a row was deleted."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM user_jobs WHERE id = %s AND user_id = %s",
+            (job_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
 def user_job_row_to_dict(row: tuple) -> dict:
     """Convert a user_jobs row to the same dict shape as row_to_job_dict (for templates/agents)."""
     (
@@ -225,11 +235,15 @@ def format_user_jobs_for_recommendations(
     rows: list[tuple], snippet_max_chars: int = 400
 ) -> list[dict]:
     """Build list of job dicts for recommendations template from user_jobs rows."""
+    from career_copilot.ingestion.common import html_to_plain_text
+
     out: list[dict] = []
     for row in rows:
         d = user_job_row_to_dict(row)
-        desc = (d.get("description") or "")[:snippet_max_chars]
-        if len(d.get("description") or "") > snippet_max_chars:
+        raw_desc = d.get("description") or ""
+        plain = html_to_plain_text(raw_desc) if raw_desc else ""
+        desc = (plain or "")[:snippet_max_chars]
+        if len(plain or "") > snippet_max_chars:
             desc = desc.rstrip() + "…"
         out.append(
             {

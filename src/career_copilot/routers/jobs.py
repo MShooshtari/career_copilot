@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from career_copilot.app_config import templates
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import get_job_by_id, row_to_job_dict, row_to_job_dict_snippet
+from career_copilot.ingestion.common import html_to_plain_text
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -29,6 +30,8 @@ async def get_job_detail(
     if not row:
         return RedirectResponse(url="/recommendations", status_code=303)
     job = row_to_job_dict(row)
+    if job.get("description"):
+        job = {**job, "description": html_to_plain_text(job["description"]) or job["description"]}
     return templates.TemplateResponse(
         "job_detail.html",
         {"request": request, "job": job, "user_id": USER_ID},
