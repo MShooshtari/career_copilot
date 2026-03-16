@@ -45,7 +45,7 @@ async def post_my_job_delete(
     conn: Annotated[psycopg.Connection, Depends(get_db)],
 ) -> RedirectResponse:
     """Delete a user-added job and redirect to recommendations."""
-    deleted = delete_user_job(conn, USER_ID, job_id)
+    delete_user_job(conn, USER_ID, job_id)
     conn.commit()
     conn.close()
     return RedirectResponse(url="/recommendations", status_code=303)

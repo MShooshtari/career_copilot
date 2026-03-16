@@ -651,7 +651,7 @@ def _html_to_text(html: str) -> str:
 
 def _is_search_results_url(url: str) -> bool:
     """True if URL looks like a job search/list page rather than a single job."""
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlparse
 
     parsed = urlparse(url)
     path = (parsed.path or "").lower()
@@ -694,7 +694,6 @@ def _fetch_page_html(url: str) -> str:
         "Accept-Language": "en-US,en;q=0.9",
     }
     max_attempts = 3
-    last_error: Exception | None = None
 
     # Indeed company page (/cmp/.../jobs?jk=) shows a listing; fetch embedded job URL to get single-job content
     fetch_url = url
@@ -722,8 +721,7 @@ def _fetch_page_html(url: str) -> str:
                             except Exception:
                                 pass
                 return html
-        except Exception as e:
-            last_error = e
+        except Exception:
             if attempt < max_attempts - 1:
                 time.sleep(1.5)
             continue
