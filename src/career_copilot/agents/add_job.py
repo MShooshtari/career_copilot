@@ -167,18 +167,126 @@ def extract_job_from_file(content: bytes, filename: str) -> dict[str, Any]:
     return _extract_with_llm(text)
 
 
-def _fetch_page_text(url: str) -> str:
-    """Fetch URL and return main text content (strip HTML)."""
-    import httpx
-
+def _extract_jsonld_job(html: str) -> dict[str, Any] | None:
+    """Extract job fields from JSON-LD JobPosting if present."""
     try:
-        with httpx.Client(follow_redirects=True, timeout=15.0) as client:
-            resp = client.get(url, headers={"User-Agent": "CareerCopilot/1.0 (Job parser)"})
-            resp.raise_for_status()
-            html = resp.text
-    except Exception:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        for script in soup.find_all("script", type="application/ld+json"):
+            if not script.string:
+                continue
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict):
+                    data = [data]
+                if not isinstance(data, list):
+                    continue
+                for item in data:
+                    if isinstance(item, dict):
+                        t = item.get("@type") or item.get("type")
+                        if t == "JobPosting" or (isinstance(t, list) and "JobPosting" in t):
+                            out: dict[str, Any] = {}
+                            if item.get("title"):
+                                out["title"] = item["title"]
+                            if item.get("hiringOrganization", {}).get("name"):
+                                out["company"] = item["hiringOrganization"]["name"]
+                            if item.get("jobLocation"):
+                                loc = item["jobLocation"]
+                                if isinstance(loc, dict) and loc.get("address", {}).get("addressLocality"):
+                                    out["location"] = loc["address"].get("addressLocality") or ""
+                                elif isinstance(loc, str):
+                                    out["location"] = loc
+                            if item.get("description"):
+                                out["description"] = item["description"]
+                            if out:
+                                return out
+            except (json.JSONDecodeError, TypeError, KeyError):
+                continue
+    except ImportError:
+        pass
+    return None
+
+
+def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
+    """Try to find job title/description in Workday-style or other embedded JSON."""
+    # Workday and similar ATS often embed a large JSON blob in a script tag
+    # Look for patterns like "title" : "..." or "jobTitle" or "headline"
+    found: dict[str, Any] = {}
+    # Match script content that might be JSON (avoid inline event handlers)
+    for match in re.finditer(r"<script[^>]*>([\s\S]*?)</script>", html, re.IGNORECASE):
+        blob = match.group(1)
+        if len(blob) < 100 or "job" not in blob.lower():
+            continue
+        try:
+            data = json.loads(blob)
+        except json.JSONDecodeError:
+            # Try to find "title":"..." or "jobTitle":"..." in raw string
+            for name in ("title", "jobTitle", "headline", "positionTitle"):
+                m = re.search(rf'["\']?{name}["\']?\s*:\s*["\']([^"\']{{3,200}})["\']', blob, re.IGNORECASE)
+                if m:
+                    found["title"] = m.group(1).strip()
+                    break
+            if "description" in blob.lower():
+                m = re.search(r'"description"\s*:\s*"((?:[^"\\]|\\.)*)"', blob)
+                if m:
+                    desc = m.group(1).encode().decode("unicode_escape")
+                    if len(desc) > 50:
+                        found["description"] = desc[:8000]
+            if found:
+                return found
+            continue
+        if not isinstance(data, dict):
+            continue
+        # Recurse into nested objects (e.g. initial state)
+        def dig(d: Any, depth: int) -> None:
+            if depth > 5:
+                return
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    klo = k.lower()
+                    if klo in ("title", "jobtitle", "headline") and isinstance(v, str) and len(v) > 2:
+                        found.setdefault("title", v)
+                    if klo == "description" and isinstance(v, str) and len(v) > 50:
+                        found.setdefault("description", v[:8000])
+                    if klo == "company" and isinstance(v, str):
+                        found.setdefault("company", v)
+                    dig(v, depth + 1)
+            elif isinstance(d, list):
+                for x in d[:3]:
+                    dig(x, depth + 1)
+
+        dig(data, 0)
+        if found:
+            return found
+    return found if found else None
+
+
+def _title_from_url_path(url: str) -> str:
+    """Derive a readable job title from URL path (e.g. Senior-Data-Scientist-II -> Senior Data Scientist II)."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    path = (parsed.path or "").strip("/")
+    if not path:
         return ""
-    # Prefer BeautifulSoup if available for cleaner text
+    # Take last meaningful segment (often job slug)
+    segments = [s for s in path.split("/") if s and not s.startswith("en-")]
+    if not segments:
+        return ""
+    slug = segments[-1]
+    # Remove common suffixes like _REQ-6008-1 or -REQ-6008
+    slug = re.sub(r"_?REQ[-_]?\d+[-_]?\d*$", "", slug, flags=re.IGNORECASE)
+    slug = re.sub(r"[-_]?\d+$", "", slug)
+    # Replace hyphens/underscores with spaces and title-case
+    slug = slug.replace("-", " ").replace("_", " ").strip()
+    if not slug:
+        return ""
+    return slug.title()
+
+
+def _html_to_text(html: str) -> str:
+    """Extract main text from HTML (strip scripts, styles, nav, etc.)."""
     try:
         from bs4 import BeautifulSoup
 
@@ -189,7 +297,6 @@ def _fetch_page_text(url: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         return "\n".join(lines)
     except ImportError:
-        # Fallback: crude tag strip
         text = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", html, flags=re.IGNORECASE)
         text = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
@@ -197,22 +304,86 @@ def _fetch_page_text(url: str) -> str:
         return text
 
 
+def _fetch_page_html(url: str) -> str:
+    """Fetch URL and return raw HTML (for JSON-LD / embedded JSON extraction)."""
+    import httpx
+
+    try:
+        with httpx.Client(follow_redirects=True, timeout=15.0) as client:
+            resp = client.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            )
+            resp.raise_for_status()
+            return resp.text
+    except Exception:
+        return ""
+
+
 def extract_job_from_url(url: str) -> dict[str, Any]:
     """
-    Fetch job page (Indeed, LinkedIn, company site, etc.) and extract job details.
-    Returns dict with keys: title, company, location, salary_min, salary_max, description, skills, url.
+    Fetch job page (Indeed, LinkedIn, Workday, company site, etc.) and extract job details.
+    Tries JSON-LD JobPosting, then embedded JSON (e.g. Workday), then HTML text + LLM.
+    If the page is JS-heavy and empty, derives title from URL path so we don't save "Untitled Job".
     """
     if not (url or "").strip():
         return {}
     url = url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
-    text = _fetch_page_text(url)
-    if not text.strip():
-        return {"title": None, "company": None, "location": None, "salary_min": None,
-                "salary_max": None, "description": None, "skills": [], "url": url}
-    # Pass URL so LLM can set it in output
-    result = _extract_with_llm(text, f"Source URL: {url}")
+
+    html = _fetch_page_html(url)
+    # 1) Try JSON-LD JobPosting
+    jsonld = _extract_jsonld_job(html)
+    if jsonld:
+        result = {
+            "title": jsonld.get("title"),
+            "company": jsonld.get("company"),
+            "location": jsonld.get("location"),
+            "salary_min": None,
+            "salary_max": None,
+            "description": jsonld.get("description"),
+            "skills": _coerce_skills(jsonld.get("skills")) if jsonld.get("skills") else [],
+            "url": url,
+        }
+        if not result.get("title"):
+            result["title"] = _title_from_url_path(url)
+        return result
+
+    # 2) Try Workday-style or other embedded JSON
+    embedded = _extract_workday_like_json(html)
+    if embedded:
+        result = {
+            "title": embedded.get("title"),
+            "company": embedded.get("company"),
+            "location": None,
+            "salary_min": None,
+            "salary_max": None,
+            "description": embedded.get("description"),
+            "skills": [],
+            "url": url,
+        }
+        if result.get("title") or result.get("description"):
+            if not result.get("title"):
+                result["title"] = _title_from_url_path(url)
+            return result
+
+    # 3) Main text from same HTML + LLM
+    text = _html_to_text(html)
+    url_hint = f"Source URL: {url}"
+    if not text or len(text.strip()) < 200:
+        # JS-heavy or login wall: derive title from URL so we don't get "Untitled Job"
+        title_from_url = _title_from_url_path(url)
+        if title_from_url:
+            url_hint += f"\nThe page content could not be read (e.g. JavaScript-rendered or login required). Use this title derived from the URL: {title_from_url}. Set company/location/description to null if unknown."
+        text = text.strip() or title_from_url or "Job posting (content not available from URL)."
+    result = _extract_with_llm(text, url_hint)
     if not result.get("url"):
         result["url"] = url
+    if not (result.get("title") or "").strip():
+        result["title"] = _title_from_url_path(url) or "Job from link"
     return result

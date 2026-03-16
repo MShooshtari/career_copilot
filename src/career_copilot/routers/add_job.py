@@ -31,7 +31,7 @@ async def get_add_job(request: Request) -> HTMLResponse:
     )
 
 
-@router.post("/add-job", response_class=HTMLResponse)
+@router.post("/add-job", response_class=HTMLResponse, response_model=None)
 async def post_add_job(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
