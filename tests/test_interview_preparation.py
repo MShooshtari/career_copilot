@@ -61,29 +61,43 @@ def test_chat_interview_preparation_without_job_returns_error() -> None:
     assert "don't have the job context" in reply
 
 
-def test_chat_interview_preparation_first_reply_uses_search_and_openai() -> None:
+def test_chat_interview_preparation_first_reply_uses_tool_and_openai() -> None:
+    class _FakeToolCall:
+        def __init__(self) -> None:
+            self.id = "tool-1"
+
+            class _Func:
+                def __init__(self) -> None:
+                    self.name = "search_company_interview_context"
+
+            self.function = _Func()
+
+        def model_dump(self) -> dict[str, Any]:  # type: ignore[override]
+            return {"id": self.id, "function": {"name": self.function.name}}
+
     class _FakeMessage:
-        def __init__(self, content: str) -> None:
+        def __init__(self, content: str, tool_calls: list[_FakeToolCall] | None) -> None:
             self.content = content
+            if tool_calls is not None:
+                self.tool_calls = tool_calls
 
     class _FakeChoice:
-        def __init__(self, content: str) -> None:
-            self.message = _FakeMessage(content)
+        def __init__(self, msg: _FakeMessage) -> None:
+            self.message = msg
 
     class _FakeResponse:
-        def __init__(self, content: str) -> None:
-            self.choices = [_FakeChoice(content)]
+        def __init__(self, msg: _FakeMessage) -> None:
+            self.choices = [_FakeChoice(msg)]
 
     class _FakeChat:
         def __init__(self) -> None:
-            self.last_args: dict[str, Any] | None = None
+            self.call_index = 0
 
-        def completions(self) -> None:  # pragma: no cover - not used directly
-            raise AssertionError("Should not call completions without create()")
-
-        def create(self, **kwargs: Any) -> _FakeResponse:
-            self.last_args = kwargs
-            return _FakeResponse("prep plan")
+        def create(self, **_: Any) -> _FakeResponse:
+            self.call_index += 1
+            if self.call_index == 1:
+                return _FakeResponse(_FakeMessage("", [_FakeToolCall()]))
+            return _FakeResponse(_FakeMessage("prep plan", None))
 
     class _FakeClient:
         def __init__(self) -> None:

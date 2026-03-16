@@ -277,9 +277,7 @@ Keep it concise and actionable."""
             for tool_call in tool_calls:
                 name = tool_call.function.name
                 if name == "get_more_similar_jobs":
-                    result = get_similar_jobs_for_resume_improvement(
-                        job_document, n_results=5
-                    )
+                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
                 elif name == "get_more_similar_resumes":
                     # Exclude current user if present in metadata; user id is not
                     # strictly required for usefulness here.
@@ -381,9 +379,7 @@ def chat_resume_improvement(
             for tool_call in tool_calls:
                 name = tool_call.function.name
                 if name == "get_more_similar_jobs":
-                    result = get_similar_jobs_for_resume_improvement(
-                        job_document, n_results=5
-                    )
+                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
                 elif name == "get_more_similar_resumes":
                     result = get_similar_resumes_for_resume_improvement(
                         job_document, exclude_user_id=None, n_results=5
