@@ -131,6 +131,11 @@
             box-shadow: 0 10px 25px rgba(55, 48, 163, 0.5);
         }
         .actions a:hover { filter: brightness(1.08); }
+        .actions a.action-prepare {
+            background: linear-gradient(135deg, #0d9488, #10b981);
+            box-shadow: 0 10px 25px rgba(13, 148, 136, 0.35);
+        }
+        .actions a.action-prepare:hover { filter: brightness(1.08); }
         .back-link {
             display: inline-block;
             margin-bottom: 16px;
@@ -187,7 +192,7 @@
 
             <div class="actions">
                 <a href="/jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
-                <a href="/jobs/{{ job.id }}/prepare-interview">Prepare for interview</a>
+                <a href="/jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
                 {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
                 {% endif %}

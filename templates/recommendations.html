@@ -187,6 +187,14 @@
         .job-card a.card-btn.primary:hover {
             filter: brightness(1.08);
         }
+        .job-card a.card-btn.prepare-interview {
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #0d9488, #10b981);
+            border-color: rgba(13, 148, 136, 0.6);
+        }
+        .job-card a.card-btn.prepare-interview:hover {
+            filter: brightness(1.08);
+        }
         .empty-state {
             text-align: center;
             padding: 48px 24px;
@@ -255,7 +263,7 @@
                         {% if job.job_id %}
                         <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
                         <a href="/jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
-                        <a href="/jobs/{{ job.job_id }}/prepare-interview" class="card-btn">Prepare for interview</a>
+                        <a href="/jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
                         {% endif %}
                         {% if job.url %}
                         <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
