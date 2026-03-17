@@ -218,6 +218,7 @@
             const downloadBtn = document.getElementById('downloadBtn');
 
             let history = [];
+            const jobSource = (jobBase === '/my-jobs') ? 'user' : 'ingested';
 
             function addMessage(role, content) {
                 const div = document.createElement('div');
@@ -255,6 +256,16 @@
                     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                     .replace(/\n/g, '<br>');
                 return div.innerHTML;
+            }
+
+            async function loadTrackedContext() {
+                const url = '/applications/context?job_id=' + encodeURIComponent(jobId)
+                    + '&job_source=' + encodeURIComponent(jobSource)
+                    + '&stage=' + encodeURIComponent('resume_improvement');
+                const res = await fetch(url);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data && data.detail ? data.detail : res.statusText);
+                return data;
             }
 
             async function postChat(message) {
@@ -322,6 +333,24 @@
             (async function loadInitial() {
                 setLoading(true);
                 try {
+                    // If this job+stage is tracked, preload its persisted history.
+                    try {
+                        const ctx = await loadTrackedContext();
+                        if (ctx && ctx.found && Array.isArray(ctx.history) && ctx.history.length) {
+                            initialLoading.remove();
+                            history = ctx.history;
+                            history.forEach(function (h) {
+                                const role = (h.role === 'user') ? 'user' : 'assistant';
+                                addMessage(role, renderMarkdownLike(h.content || ''));
+                            });
+                            downloadBtn.disabled = false;
+                            setLoading(false);
+                            return;
+                        }
+                    } catch (_) {
+                        // fall back to initial analysis
+                    }
+
                     const reply = await postChat('initial');
                     initialLoading.remove();
                     history = [{ role: 'assistant', content: reply }];

@@ -98,6 +98,9 @@ def init_schema(conn: psycopg.Connection) -> None:
                 job_source TEXT NOT NULL CHECK (job_source IN ('ingested', 'user')),
                 stage TEXT NOT NULL CHECK (stage IN ('resume_improvement', 'interview_preparation')),
                 status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done')),
+                history JSONB NOT NULL DEFAULT '[]'::jsonb,
+                application_memory JSONB NOT NULL DEFAULT '{}'::jsonb,
+                last_resume_text TEXT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 UNIQUE (user_id, job_id, job_source, stage)
@@ -108,6 +111,19 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS applications_created_at_idx ON applications (created_at DESC)"
         )
+        # Migrations for applications (safe if columns already exist)
+        for sql in (
+            "ALTER TABLE applications ADD COLUMN history JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "ALTER TABLE applications ADD COLUMN application_memory JSONB NOT NULL DEFAULT '{}'::jsonb",
+            "ALTER TABLE applications ADD COLUMN last_resume_text TEXT",
+        ):
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except psycopg.ProgrammingError as e:
+                conn.rollback()
+                if e.sqlstate != "42701":  # duplicate_column
+                    raise
 
         # Ensure demo user exists
         cur.execute(

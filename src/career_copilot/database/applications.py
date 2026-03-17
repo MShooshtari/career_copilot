@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import psycopg
 
 
@@ -19,7 +20,7 @@ def list_applications(
     """
     with conn.cursor() as cur:
         sql = """
-            SELECT id, user_id, job_id, job_source, stage, status, created_at, updated_at
+            SELECT id, user_id, job_id, job_source, stage, status, history, application_memory, last_resume_text, created_at, updated_at
             FROM applications
             WHERE user_id = %s
         """
@@ -79,13 +80,90 @@ def get_application(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, user_id, job_id, job_source, stage, status, created_at, updated_at
+            SELECT id, user_id, job_id, job_source, stage, status, history, application_memory, last_resume_text, created_at, updated_at
             FROM applications
             WHERE id = %s AND user_id = %s
             """,
             (application_id, user_id),
         )
         return cur.fetchone()
+
+
+def get_application_by_key(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_id: int,
+    job_source: str,
+    stage: str,
+) -> tuple | None:
+    """Fetch one application by (user_id, job_id, job_source, stage). Returns row or None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, user_id, job_id, job_source, stage, status, history, application_memory, last_resume_text, created_at, updated_at
+            FROM applications
+            WHERE user_id = %s AND job_id = %s AND job_source = %s AND stage = %s
+            """,
+            (user_id, job_id, job_source, stage),
+        )
+        return cur.fetchone()
+
+
+def set_application_history(
+    conn: psycopg.Connection,
+    user_id: int,
+    application_id: int,
+    history: list[dict],
+) -> bool:
+    """Persist chat history JSON for an application. Returns True if updated."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE applications
+            SET history = %s::jsonb, updated_at = now()
+            WHERE id = %s AND user_id = %s
+            """,
+            (json.dumps(history or []), application_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def set_application_memory(
+    conn: psycopg.Connection,
+    user_id: int,
+    application_id: int,
+    memory: dict,
+) -> bool:
+    """Persist compact memory JSON for an application. Returns True if updated."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE applications
+            SET application_memory = %s::jsonb, updated_at = now()
+            WHERE id = %s AND user_id = %s
+            """,
+            (json.dumps(memory or {}), application_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def set_application_last_resume_text(
+    conn: psycopg.Connection,
+    user_id: int,
+    application_id: int,
+    last_resume_text: str | None,
+) -> bool:
+    """Persist last generated resume text for an application. Returns True if updated."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE applications
+            SET last_resume_text = %s, updated_at = now()
+            WHERE id = %s AND user_id = %s
+            """,
+            (last_resume_text, application_id, user_id),
+        )
+        return cur.rowcount > 0
 
 
 def remove_application(conn: psycopg.Connection, user_id: int, application_id: int) -> bool:
@@ -107,6 +185,9 @@ def application_row_to_dict(row: tuple) -> dict:
         job_source,
         stage,
         status,
+        history,
+        application_memory,
+        last_resume_text,
         created_at,
         updated_at,
     ) = row
@@ -117,6 +198,9 @@ def application_row_to_dict(row: tuple) -> dict:
         "job_source": job_source,
         "stage": stage,
         "status": status,
+        "history": history or [],
+        "application_memory": application_memory or {},
+        "last_resume_text": last_resume_text,
         "created_at": created_at,
         "updated_at": updated_at,
     }
