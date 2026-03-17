@@ -857,3 +857,310 @@ def extract_job_from_url(url: str) -> dict[str, Any]:
     if not (result.get("title") or "").strip():
         result["title"] = _title_from_url_path(url) or _generic_title_from_url(url)
     return result
+
+
+# --- Agentic add-job: tool-calling loop and tools ---
+
+ADD_JOB_AGENT_SYSTEM = """You are a job ingestion agent. Your goal is to extract a complete job record (title, company, location, salary_min, salary_max, description, skills, url) from the user's input (URL, pasted text, or file).
+
+You have tools at your disposal. Use them when the initial extraction failed or returned empty/weak data:
+1. **fetch_page_content** – Fetch a URL and get the main text from the page. Use when you have a URL and need to (re)fetch or try an alternative URL.
+2. **extract_from_text** – Run the LLM extractor on raw text. Use after you get page content or when the user pasted text. Pass optional hints (e.g. "Source URL: ...", "Indeed search query: ...").
+3. **try_indeed_embedded** – For Indeed URLs with job id (jk=), fetch the embedded job view which often has better content. Use when the main page returned little text.
+4. **try_bamboohr_api** – For BambooHR career URLs (*.bamboohr.com/careers/123), try the list API to get job data. Use when the URL looks like BambooHR.
+5. **web_search** – Search the web for job title or company + role. Use when you need to disambiguate or find missing fields (e.g. company name from a vague page).
+6. **finalize_proposal** – When you have the best job record you can produce (even if some fields are null), call this with all fields. The user will then see the details and confirm before the job is added. Always call finalize_proposal exactly once when you are done; do not skip it.
+
+Strategy: start with the input you were given. If it's a URL, try fetch_page_content first. If the result is empty or too short, try try_indeed_embedded (for Indeed) or try_bamboohr_api (for BambooHR). Then run extract_from_text on the text you have. If key fields are still missing, try web_search. Then call finalize_proposal with whatever you have (use null for unknown fields; the user can edit on the confirmation screen)."""
+
+
+def _tool_fetch_page_content(url: str) -> dict[str, Any]:
+    """Fetch URL and return main text content (for agent tool)."""
+    if not (url or "").strip():
+        return {"error": "URL is required", "text": ""}
+    url = url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+    html = _fetch_page_html(url)
+    text = _html_to_text(html)
+    return {"url": url, "text": (text or "")[:12000], "success": bool(text and len(text.strip()) > 100)}
+
+
+def _tool_extract_from_text(text: str, hints: str = "") -> dict[str, Any]:
+    """Run LLM extraction on text (for agent tool)."""
+    if not (text or text.strip()):
+        return {"error": "Text is required", "extracted": {}}
+    extracted = _extract_with_llm(text.strip()[:30000], hints)
+    return {"extracted": extracted, "has_title": bool(extracted.get("title")), "has_description": bool(extracted.get("description"))}
+
+
+def _tool_try_indeed_embedded(url: str) -> dict[str, Any]:
+    """Fetch Indeed embedded job view if URL has jk= (for agent tool)."""
+    embedded_url = _build_indeed_embedded_url(url)
+    if not embedded_url:
+        return {"error": "Not an Indeed URL with job id (jk=)", "text": ""}
+    html = _fetch_page_html(embedded_url)
+    text = _html_to_text(html)
+    return {"url": embedded_url, "text": (text or "")[:12000], "success": bool(text and len(text.strip()) > 100)}
+
+
+def _tool_try_bamboohr_api(url: str) -> dict[str, Any]:
+    """Try BambooHR careers list API (for agent tool)."""
+    result = _try_bamboohr_job_api(url)
+    if result and (result.get("title") or result.get("description")):
+        return {"found": True, "job": result}
+    return {"found": False, "job": None}
+
+
+def _tool_web_search(query: str) -> dict[str, Any]:
+    """Search the web for job/company info. Can be backed by MCP or search API (for agent tool)."""
+    import os
+
+    # Optional: Tavily, SerpAPI, or MCP – check env
+    api_key = os.environ.get("TAVILY_API_KEY") or os.environ.get("SERPAPI_API_KEY")
+    if api_key and os.environ.get("TAVILY_API_KEY"):
+        try:
+            import httpx
+            r = httpx.post(
+                "https://api.tavily.com/search",
+                json={"api_key": api_key, "query": query, "search_depth": "basic", "max_results": 5},
+                timeout=10.0,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                results = data.get("results") or []
+                snippets = [{"title": x.get("title"), "url": x.get("url"), "content": (x.get("content") or "")[:500]} for x in results[:5]]
+                return {"success": True, "results": snippets}
+        except Exception as e:
+            return {"success": False, "error": str(e), "results": []}
+    # Placeholder when no search API: return empty so agent can still finalize
+    return {"success": False, "results": [], "hint": "Set TAVILY_API_KEY in .env for web search. You can still finalize with the data you have."}
+
+
+def _tool_finalize_proposal(
+    title: str | None = None,
+    company: str | None = None,
+    location: str | None = None,
+    salary_min: int | None = None,
+    salary_max: int | None = None,
+    description: str | None = None,
+    skills: list[str] | None = None,
+    url: str | None = None,
+) -> dict[str, Any]:
+    """Submit the proposed job for user confirmation (for agent tool). Called by the model when done."""
+    skills_list = skills if isinstance(skills, list) else ([str(skills)] if skills else [])
+    return {
+        "status": "proposal_ready",
+        "proposal": {
+            "title": (title or "").strip() or None,
+            "company": (company or "").strip() or None,
+            "location": (location or "").strip() or None,
+            "salary_min": _coerce_int(salary_min),
+            "salary_max": _coerce_int(salary_max),
+            "description": (description or "").strip() or None,
+            "skills": [str(s).strip() for s in skills_list if str(s).strip()],
+            "url": (url or "").strip() or None,
+        },
+    }
+
+
+ADD_JOB_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_page_content",
+            "description": "Fetch a URL and return the main text content of the page. Use when you need to load or retry loading a job page.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "Full URL to fetch (e.g. https://ca.indeed.com/viewjob?jk=...)"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_from_text",
+            "description": "Extract job fields (title, company, location, salary, description, skills) from raw text using the LLM. Use after you have page content or pasted text. Pass optional hints (e.g. source URL, search query) to improve extraction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The job description or page text to extract from"},
+                    "hints": {"type": "string", "description": "Optional hints, e.g. 'Source URL: ...', 'Indeed search query: ...'"},
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "try_indeed_embedded",
+            "description": "For Indeed job URLs that contain jk= (job id), fetch the embedded job view which often has better content when the main page is JavaScript-heavy. Call this when the URL is Indeed and fetch_page_content returned little or no text.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "The Indeed URL (e.g. viewjob or /cmp/.../jobs?jk=...)"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "try_bamboohr_api",
+            "description": "For BambooHR career URLs (*.bamboohr.com/careers/123), try to get job data from the public list API. Use when the URL looks like a BambooHR careers page.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "The BambooHR careers URL"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for job title, company name, or role information. Use when you need to fill in missing fields (e.g. company name from a vague page) or disambiguate. Requires TAVILY_API_KEY in .env to work.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "Search query (e.g. 'Acme Corp Software Engineer job')"}},
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "finalize_proposal",
+            "description": "Call this when you have the best job record you can produce. Pass all fields you extracted (use null for unknown). The user will see the details and confirm before the job is added. You MUST call this exactly once when done.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "company": {"type": "string"},
+                    "location": {"type": "string"},
+                    "salary_min": {"type": "integer"},
+                    "salary_max": {"type": "integer"},
+                    "description": {"type": "string"},
+                    "skills": {"type": "array", "items": {"type": "string"}},
+                    "url": {"type": "string"},
+                },
+                "required": [],
+            },
+        },
+    },
+]
+
+
+def run_add_job_agent(
+    mode: str,
+    *,
+    url: str | None = None,
+    text: str | None = None,
+    file_content: bytes | None = None,
+    filename: str | None = None,
+    location: str | None = None,
+    salary_min: int | None = None,
+    salary_max: int | None = None,
+) -> dict[str, Any] | None:
+    """
+    Run the agentic add-job flow with tool calling. Returns a proposal dict (title, company, ...)
+    for user confirmation, or None if the agent gave up or errored.
+    """
+    user_parts = []
+    if mode == "url" and url:
+        url_clean = url.strip()
+        if not url_clean.startswith("http"):
+            url_clean = "https://" + url_clean
+        user_parts.append(f"The user wants to add a job from this URL: {url_clean}")
+        user_parts.append("Fetch the page, extract job details, and use try_indeed_embedded or try_bamboohr_api if the first fetch returns empty or poor content. Then call finalize_proposal with the best job record you can produce.")
+    elif mode == "file" and file_content and filename:
+        raw_text = _extract_text_from_file(file_content, filename or "")
+        user_parts.append(f"The user uploaded a file: {filename}. Extracted text (first 8000 chars):\n{(raw_text or '')[:8000]}")
+        user_parts.append("Run extract_from_text on this text, then call finalize_proposal with the result. If extraction is weak, you can try web_search to fill gaps.")
+    elif mode == "manual" and text:
+        hints = []
+        if location:
+            hints.append(f"Location: {location}")
+        if salary_min is not None or salary_max is not None:
+            hints.append(f"Salary: {salary_min or '?'} - {salary_max or '?'}")
+        hint_str = "\n".join(hints) if hints else ""
+        user_parts.append(f"The user pasted a job description:\n{(text or '')[:8000]}")
+        user_parts.append("Run extract_from_text with the text and optional hints, then call finalize_proposal. If fields are missing, you can try web_search.")
+    else:
+        return None
+
+    user_message = "\n\n".join(user_parts)
+
+    client = _get_openai_client()
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": ADD_JOB_AGENT_SYSTEM},
+        {"role": "user", "content": user_message},
+    ]
+
+    max_steps = 15
+    for _ in range(max_steps):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=ADD_JOB_TOOLS,
+            tool_choice="auto",
+            temperature=0.2,
+        )
+        msg = response.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+
+        if not tool_calls:
+            break
+
+        messages.append(
+            {
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [tc.model_dump() for tc in tool_calls],
+            }
+        )
+
+        for tc in tool_calls:
+            name = tc.function.name
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+
+            if name == "fetch_page_content":
+                result = _tool_fetch_page_content(args.get("url") or "")
+            elif name == "extract_from_text":
+                result = _tool_extract_from_text(args.get("text") or "", args.get("hints") or "")
+            elif name == "try_indeed_embedded":
+                result = _tool_try_indeed_embedded(args.get("url") or "")
+            elif name == "try_bamboohr_api":
+                result = _tool_try_bamboohr_api(args.get("url") or "")
+            elif name == "web_search":
+                result = _tool_web_search(args.get("query") or "")
+            elif name == "finalize_proposal":
+                result = _tool_finalize_proposal(
+                    title=args.get("title"),
+                    company=args.get("company"),
+                    location=args.get("location"),
+                    salary_min=args.get("salary_min"),
+                    salary_max=args.get("salary_max"),
+                    description=args.get("description"),
+                    skills=args.get("skills"),
+                    url=args.get("url"),
+                )
+                if result.get("status") == "proposal_ready" and result.get("proposal"):
+                    return result["proposal"]
+            else:
+                result = {"error": f"Unknown tool: {name}"}
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "name": name,
+                    "content": json.dumps(result),
+                }
+            )
+
+    return None

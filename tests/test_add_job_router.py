@@ -46,92 +46,97 @@ def test_post_add_job_no_data_returns_error(client: TestClient, mock_db: MagicMo
     assert b"error" in response.content.lower() or b"provide" in response.content.lower()
 
 
-def test_post_add_job_url_mode_invalid_url_returns_error(client: TestClient, mock_db: MagicMock) -> None:
+def test_post_add_job_agent_raises_returns_error(client: TestClient) -> None:
+    with patch("career_copilot.routers.add_job.run_add_job_agent") as mock_agent:
+        mock_agent.side_effect = Exception("fetch failed")
+        response = client.post(
+            "/add-job",
+            data={"mode": "url", "job_url": "https://invalid.example.com/nonexistent"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert b"error" in response.content.lower() or b"extract" in response.content.lower()
+
+
+def test_post_add_job_manual_mode_returns_confirm_page(client: TestClient) -> None:
+    with patch("career_copilot.routers.add_job.run_add_job_agent") as mock_agent:
+        mock_agent.return_value = {
+            "title": "Test Engineer",
+            "company": "TestCo",
+            "location": "Remote",
+            "salary_min": None,
+            "salary_max": None,
+            "description": "Test job.",
+            "skills": [],
+            "url": None,
+        }
+        response = client.post(
+            "/add-job",
+            data={"mode": "manual", "job_text": "We need a Test Engineer at TestCo. Remote."},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert b"Confirm" in response.content or b"confirm" in response.content
+    assert b"Test Engineer" in response.content
+    assert b"TestCo" in response.content
+
+
+def test_post_add_job_url_mode_returns_confirm_page(client: TestClient) -> None:
+    with patch("career_copilot.routers.add_job.run_add_job_agent") as mock_agent:
+        mock_agent.return_value = {
+            "title": "Data Engineer",
+            "company": "DataCo",
+            "location": "NYC",
+            "salary_min": 120000,
+            "salary_max": 180000,
+            "description": "Build pipelines.",
+            "skills": ["Python", "SQL"],
+            "url": "https://example.com/job/1",
+        }
+        response = client.post(
+            "/add-job",
+            data={"mode": "url", "job_url": "https://example.com/job/1"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert b"Data Engineer" in response.content
+    assert b"add-job/confirm" in response.content
+
+
+def test_post_add_job_agent_returns_empty_shows_error(client: TestClient) -> None:
+    with patch("career_copilot.routers.add_job.run_add_job_agent") as mock_agent:
+        mock_agent.return_value = None
+        response = client.post(
+            "/add-job",
+            data={"mode": "manual", "job_text": "Some text"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert b"couldn't" in response.content.lower() or b"error" in response.content.lower()
+
+
+def test_post_add_job_confirm_saves_and_redirects(client: TestClient, mock_db: MagicMock) -> None:
     with patch("career_copilot.routers.add_job.get_db", return_value=mock_db):
-        with patch("career_copilot.routers.add_job.extract_job_from_url") as mock_extract:
-            mock_extract.side_effect = Exception("fetch failed")
+        with patch("career_copilot.routers.add_job.insert_user_job", return_value=42) as mock_insert:
             response = client.post(
-                "/add-job",
-                data={"mode": "url", "job_url": "https://invalid.example.com/nonexistent"},
+                "/add-job/confirm",
+                data={
+                    "title": "Software Engineer",
+                    "company": "Acme",
+                    "location": "Remote",
+                    "salary_min": "100000",
+                    "salary_max": "150000",
+                    "description": "Build things.",
+                    "skills": "Python, AWS",
+                    "url": "https://example.com/job",
+                },
                 follow_redirects=False,
             )
-    assert response.status_code == 200
-    assert b"Could not fetch" in response.content or b"error" in response.content.lower()
-
-
-def test_post_add_job_manual_mode_success_redirects(client: TestClient, mock_db: MagicMock) -> None:
-    with patch("career_copilot.routers.add_job.get_db", return_value=mock_db):
-        with patch("career_copilot.routers.add_job.extract_job_from_text") as mock_extract:
-            mock_extract.return_value = {
-                "title": "Test Engineer",
-                "company": "TestCo",
-                "location": "Remote",
-                "salary_min": None,
-                "salary_max": None,
-                "description": "Test job.",
-                "skills": [],
-                "url": None,
-            }
-            with patch("career_copilot.routers.add_job.insert_user_job", return_value=42) as mock_insert:
-                response = client.post(
-                    "/add-job",
-                    data={"mode": "manual", "job_text": "We need a Test Engineer at TestCo. Remote."},
-                    follow_redirects=False,
-                )
     assert response.status_code == 303
     assert "/recommendations" in response.headers.get("location", "")
     assert "added=42" in response.headers.get("location", "")
     mock_insert.assert_called_once()
     call_kw = mock_insert.call_args[1]
-    assert call_kw["title"] == "Test Engineer"
-    assert call_kw["company"] == "TestCo"
-
-
-def test_post_add_job_url_mode_success_redirects(client: TestClient, mock_db: MagicMock) -> None:
-    with patch("career_copilot.routers.add_job.get_db", return_value=mock_db):
-        with patch("career_copilot.routers.add_job.extract_job_from_url") as mock_extract:
-            mock_extract.return_value = {
-                "title": "Data Engineer",
-                "company": "DataCo",
-                "location": "NYC",
-                "salary_min": 120000,
-                "salary_max": 180000,
-                "description": "Build pipelines.",
-                "skills": ["Python", "SQL"],
-                "url": "https://example.com/job/1",
-            }
-            with patch("career_copilot.routers.add_job.insert_user_job", return_value=99) as mock_insert:
-                response = client.post(
-                    "/add-job",
-                    data={"mode": "url", "job_url": "https://example.com/job/1"},
-                    follow_redirects=False,
-                )
-    assert response.status_code == 303
-    assert "added=99" in response.headers.get("location", "")
-    mock_insert.assert_called_once()
-    call_kw = mock_insert.call_args[1]
-    assert call_kw["title"] == "Data Engineer"
-    assert call_kw["url"] == "https://example.com/job/1"
-    assert call_kw["skills"] == ["Python", "SQL"]
-
-
-def test_post_add_job_generic_title_replaced_by_url(client: TestClient, mock_db: MagicMock) -> None:
-    with patch("career_copilot.routers.add_job.get_db", return_value=mock_db):
-        with patch("career_copilot.routers.add_job.extract_job_from_url") as mock_extract:
-            mock_extract.return_value = {
-                "title": "Job from Indeed",
-                "company": None,
-                "location": None,
-                "description": "Some description.",
-                "skills": [],
-                "url": "https://ca.indeed.com/viewjob?jk=1&q=machine+learning",
-            }
-            with patch("career_copilot.routers.add_job.insert_user_job", return_value=1) as mock_insert:
-                response = client.post(
-                    "/add-job",
-                    data={"mode": "url", "job_url": "https://ca.indeed.com/viewjob?jk=1&q=machine+learning"},
-                    follow_redirects=False,
-                )
-    assert response.status_code == 303
-    call_kw = mock_insert.call_args[1]
-    assert call_kw["title"] == "Machine Learning"
+    assert call_kw["title"] == "Software Engineer"
+    assert call_kw["company"] == "Acme"
+    assert call_kw["skills"] == ["Python", "AWS"]

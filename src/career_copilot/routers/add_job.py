@@ -1,4 +1,4 @@
-"""Add Job: user can add a job via manual text, file upload, or URL."""
+"""Add Job: user can add a job via manual text, file upload, or URL. Uses an agentic flow with tool calling and a confirmation step."""
 
 from __future__ import annotations
 
@@ -8,13 +8,7 @@ import psycopg
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from career_copilot.agents.add_job import (
-    _generic_title_from_url,
-    extract_job_from_file,
-    extract_job_from_text,
-    extract_job_from_url,
-    title_from_url_path,
-)
+from career_copilot.agents.add_job import run_add_job_agent
 from career_copilot.app_config import templates
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import insert_user_job
@@ -28,16 +22,17 @@ USER_ID = 1
 @router.get("/add-job", response_class=HTMLResponse)
 async def get_add_job(request: Request) -> HTMLResponse:
     """Show Add Job form: manual entry, file upload, or URL."""
+    error = request.query_params.get("error")
+    msg = "Failed to save the job. Please try again." if error == "save_failed" else None
     return templates.TemplateResponse(
         "add_job.html",
-        {"request": request, "user_id": USER_ID},
+        {"request": request, "user_id": USER_ID, "error": msg},
     )
 
 
 @router.post("/add-job", response_class=HTMLResponse, response_model=None)
 async def post_add_job(
     request: Request,
-    conn: Annotated[psycopg.Connection, Depends(get_db)],
     mode: str = Form("manual"),
     job_text: str = Form(""),
     location: str = Form(""),
@@ -46,115 +41,121 @@ async def post_add_job(
     job_url: str = Form(""),
     manual_url: str = Form(""),
     file: UploadFile | None = None,
-) -> HTMLResponse | RedirectResponse:
+) -> HTMLResponse:
     """
-    Add a job from manual text, uploaded file, or URL.
-    Extracts details via the add_job agent and saves to user_jobs.
+    Run the agentic add-job flow (tool calling). On success, show the confirmation page
+    with extracted fields so the user can review and edit before adding.
     """
+    url_clean = (job_url or manual_url or "").strip() or None
     salary_min_int = int(salary_min) if salary_min.strip().isdigit() else None
     salary_max_int = int(salary_max) if salary_max.strip().isdigit() else None
-    # For URL mode use job_url; for manual mode optional hint is manual_url
-    url_clean = (job_url or manual_url or "").strip() or None
 
-    extracted: dict = {}
-    if mode == "url" and url_clean:
-        try:
-            extracted = extract_job_from_url(url_clean)
-        except Exception:
-            return templates.TemplateResponse(
-                "add_job.html",
-                {
-                    "request": request,
-                    "user_id": USER_ID,
-                    "error": "Could not fetch or parse the URL. Try pasting the job description manually.",
-                },
-            )
-    elif mode == "file" and file and file.filename:
-        try:
-            content = await file.read()
-            extracted = extract_job_from_file(content, file.filename)
-        except Exception:
-            return templates.TemplateResponse(
-                "add_job.html",
-                {
-                    "request": request,
-                    "user_id": USER_ID,
-                    "error": "Could not read or parse the file. Try PDF, TXT, or Word (.docx).",
-                },
-            )
-    elif mode == "manual" and (job_text or "").strip():
-        try:
-            extracted = extract_job_from_text(
-                job_text.strip(),
-                location=location.strip() or None,
-                salary_min=salary_min_int,
-                salary_max=salary_max_int,
-                url=url_clean,
-            )
-        except Exception:
-            return templates.TemplateResponse(
-                "add_job.html",
-                {
-                    "request": request,
-                    "user_id": USER_ID,
-                    "error": "Could not extract job details. Check your text and try again.",
-                },
-            )
-    else:
+    if mode == "url" and not url_clean:
+        return templates.TemplateResponse(
+            "add_job.html",
+            {"request": request, "user_id": USER_ID, "error": "Please enter a job URL."},
+        )
+    if mode == "file" and (not file or not file.filename):
+        return templates.TemplateResponse(
+            "add_job.html",
+            {"request": request, "user_id": USER_ID, "error": "Please select a file to upload."},
+        )
+    if mode == "manual" and not (job_text or "").strip():
+        return templates.TemplateResponse(
+            "add_job.html",
+            {"request": request, "user_id": USER_ID, "error": "Please provide job description text, a file, or a URL."},
+        )
+
+    file_content: bytes | None = None
+    filename: str | None = None
+    if mode == "file" and file and file.filename:
+        file_content = await file.read()
+        filename = file.filename
+
+    try:
+        proposal = run_add_job_agent(
+            mode,
+            url=url_clean,
+            text=(job_text or "").strip() or None,
+            file_content=file_content,
+            filename=filename,
+            location=(location or "").strip() or None,
+            salary_min=salary_min_int,
+            salary_max=salary_max_int,
+        )
+    except Exception as e:
         return templates.TemplateResponse(
             "add_job.html",
             {
                 "request": request,
                 "user_id": USER_ID,
-                "error": "Please provide job description text, a file, or a URL.",
+                "error": f"Could not extract job details: {e!s}. Try pasting the description manually.",
             },
         )
 
-    raw_title = extracted.get("title") or "Untitled Job"
-    company = (html_to_plain_text(extracted.get("company")) or extracted.get("company") or "").strip()
-    location_out = (html_to_plain_text(extracted.get("location")) or extracted.get("location") or "").strip()
-    salary_min_out = extracted.get("salary_min")
-    salary_max_out = extracted.get("salary_max")
-    raw_description = extracted.get("description") or ""
-    description = html_to_plain_text(raw_description) if raw_description else ""
-    skills = extracted.get("skills") or []
-    url_out = extracted.get("url")
+    if not proposal or (not proposal.get("title") and not proposal.get("description")):
+        return templates.TemplateResponse(
+            "add_job.html",
+            {
+                "request": request,
+                "user_id": USER_ID,
+                "error": "We couldn't extract enough job details. Try pasting the job description manually or a different URL.",
+            },
+        )
 
-    title = (html_to_plain_text(raw_title) or raw_title or "").strip() or "Untitled Job"
-    generic_titles = ("Careers", "Jobs", "Apply", "Home", "Career", "Job", "Viewjob", "View job", "Job from Indeed", "Job from LinkedIn", "Job from BambooHR", "Job from link", "Job from listing")
-    if title in generic_titles and url_clean:
-        from_url = title_from_url_path(url_clean)
-        title = from_url if from_url else _generic_title_from_url(url_clean)
+    # Ensure URL is set when user submitted a URL
+    if mode == "url" and url_clean and not proposal.get("url"):
+        proposal = {**proposal, "url": url_clean}
+
+    return templates.TemplateResponse(
+        "confirm_job.html",
+        {"request": request, "user_id": USER_ID, "proposal": proposal},
+    )
+
+
+@router.post("/add-job/confirm", response_class=RedirectResponse)
+async def post_add_job_confirm(
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+    title: str = Form(""),
+    company: str = Form(""),
+    location: str = Form(""),
+    salary_min: str = Form(""),
+    salary_max: str = Form(""),
+    description: str = Form(""),
+    skills: str = Form(""),
+    url: str = Form(""),
+) -> RedirectResponse:
+    """Save the user-confirmed job and redirect to recommendations."""
+    title_clean = (title or "").strip() or "Untitled Job"
+    company_clean = (company or "").strip() or None
+    location_clean = (location or "").strip() or None
+    salary_min_int = int(salary_min) if (salary_min or "").strip().isdigit() else None
+    salary_max_int = int(salary_max) if (salary_max or "").strip().isdigit() else None
+    description_clean = (description or "").strip() or None
+    skills_list = [s.strip() for s in (skills or "").split(",") if s.strip()]
+    url_clean = (url or "").strip() or None
+
+    description_clean = html_to_plain_text(description_clean) if description_clean else None
 
     try:
         job_id = insert_user_job(
             conn,
             USER_ID,
-            title=title,
-            company=company,
-            location=location_out,
-            salary_min=salary_min_out,
-            salary_max=salary_max_out,
-            description=description or None,
-            skills=skills,
-            url=url_out,
-            raw=extracted,
+            title=title_clean,
+            company=company_clean,
+            location=location_clean,
+            salary_min=salary_min_int,
+            salary_max=salary_max_int,
+            description=description_clean,
+            skills=skills_list,
+            url=url_clean,
+            raw={"source": "confirm"},
         )
         conn.commit()
         conn.close()
     except Exception:
         conn.rollback()
         conn.close()
-        return templates.TemplateResponse(
-            "add_job.html",
-            {
-                "request": request,
-                "user_id": USER_ID,
-                "error": "Saved extracted details but failed to store the job. Please try again.",
-            },
-        )
+        return RedirectResponse(url="/add-job?error=save_failed", status_code=303)
 
-    return RedirectResponse(
-        url=f"/recommendations?added={job_id}",
-        status_code=303,
-    )
+    return RedirectResponse(url=f"/recommendations?added={job_id}", status_code=303)
