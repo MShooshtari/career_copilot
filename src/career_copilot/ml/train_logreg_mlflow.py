@@ -23,7 +23,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS, make_mock_ranking_dataset
+from career_copilot.ml.dataset_store import get_meta, get_path, load
+from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
 
 
 def _project_root() -> Path:
@@ -44,7 +45,7 @@ def _save_confusion_matrix(cm: np.ndarray, path: Path) -> None:
 
 def train_and_log(
     *,
-    n_rows: int,
+    dataset_version: str,
     seed: int,
     test_size: float,
     positive_threshold: float,
@@ -69,8 +70,10 @@ def train_and_log(
         client.create_experiment(name=experiment_name, artifact_location=artifacts_dir.as_uri())
     mlflow.set_experiment(experiment_name)
 
-    ds = make_mock_ranking_dataset(n_rows=n_rows, seed=seed)
-    df = ds.df
+    df, resolved_version = load(dataset_version)
+    dataset_path = get_path(dataset_version).resolve().as_posix()
+    meta = get_meta(dataset_version)
+    label_scheme = meta.get("label_scheme", "weak_supervision_v1")
 
     # Convert weak labels {0, 0.5, 1} to binary; keep original label as sample weight
     y_weak = df["label"].astype(float).to_numpy()
@@ -118,9 +121,10 @@ def train_and_log(
     with mlflow.start_run(run_name=run_name):
         mlflow.log_param("model_type", "logistic_regression")
         mlflow.log_param("features", json.dumps(FEATURE_COLUMNS))
-        mlflow.log_param("label_scheme", ds.label_scheme)
-        mlflow.log_param("dataset_version", ds.dataset_version)
-        mlflow.log_param("n_rows", n_rows)
+        mlflow.log_param("label_scheme", label_scheme)
+        mlflow.log_param("dataset_version", resolved_version)
+        mlflow.log_param("dataset_path", dataset_path)
+        mlflow.log_param("n_rows", len(df))
         mlflow.log_param("seed", seed)
         mlflow.log_param("test_size", test_size)
         mlflow.log_param("positive_threshold", positive_threshold)
@@ -152,16 +156,17 @@ def train_and_log(
         _save_confusion_matrix(cm, cm_path)
         mlflow.log_artifact(str(cm_path), artifact_path="eval")
 
-        data_path = artifacts_dir / "mock_ranking_dataset.csv"
-        df.to_csv(data_path, index=False)
-        mlflow.log_artifact(str(data_path), artifact_path="data")
-
         mlflow.sklearn.log_model(pipe, name="model")
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Train ranking baseline and log to MLflow (local).")
-    p.add_argument("--n-rows", type=int, default=2000)
+    p.add_argument(
+        "--dataset-version",
+        type=str,
+        default="latest",
+        help="Versioned dataset to load from data/datasets/ranking/ (e.g. v1, latest).",
+    )
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--test-size", type=float, default=0.2)
     p.add_argument(
@@ -177,7 +182,7 @@ def main() -> None:
     args = p.parse_args()
 
     train_and_log(
-        n_rows=args.n_rows,
+        dataset_version=args.dataset_version,
         seed=args.seed,
         test_size=args.test_size,
         positive_threshold=args.positive_threshold,

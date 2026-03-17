@@ -106,21 +106,27 @@ mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-ro
 
 Open the UI at `http://127.0.0.1:5000`.
 
-### Train baseline and log a run
+### Versioned dataset (single source of truth)
+
+Training uses a **versioned dataset** under `data/datasets/ranking/`. Create a new version (once or when you change data), then train pointing at that version.
+
+**Create a dataset version** (mock data with weak-supervision labels):
 
 ```bash
-# If you're running from repo root without installing the package:
-PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow
+PYTHONPATH=src python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
+# optional: --version v1 to name the version; otherwise v1, v2, ... auto-assigned
 ```
 
-On Windows PowerShell, the equivalent is:
+**Train using a dataset version** (logs only `dataset_version` and `dataset_path` in MLflow, not the full CSV):
 
-```powershell
-$env:PYTHONPATH="src"
-python -m career_copilot.ml.train_logreg_mlflow
+```bash
+PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+# or --dataset-version v1, v2, etc.
 ```
 
-Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts` (model, metrics, confusion matrix, and the mock dataset snapshot).
+On Windows PowerShell, set `$env:PYTHONPATH="src"` then run the same `python -m ...` commands.
+
+Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts` (model, confusion matrix). The dataset itself lives in `data/datasets/ranking/` (e.g. `v1.csv`, `v2.csv`, `manifest.json`).
 
 ## Job sources (ingestion)
 
