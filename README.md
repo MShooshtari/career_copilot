@@ -1,26 +1,29 @@
 # Career Copilot
 
-**AI Career Copilot** — A web app that helps users build a profile, get personalized job recommendations (RAG-backed), and improve their resume for specific roles.
+**AI Career Copilot** — A web app that helps users build a profile, get personalized job recommendations (RAG-backed), add or save jobs, improve their resume for specific roles, and prepare for interviews.
 
 ## Features
 
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
 - **Job recommendations** — Top jobs by vector similarity to your profile (resume + preferences) via Chroma + OpenAI embeddings
 - **Job detail** — View full job description, skills, and salary
+- **Add job agent** — Paste a job URL or raw text; the agent extracts title, company, location, salary, description, and skills. Optional web search (Tavily or SerpAPI) fills in missing fields. Save the result to **My jobs**.
+- **My jobs** — View, edit, and manage jobs you’ve added or saved from recommendations
 - **Resume improvement agent** — For a chosen job: RAG-backed chat (similar jobs + similar resumes) and one-click PDF export of the improved resume. The agent can call tools to pull extra similar jobs/resumes from the vector store when it decides more context is useful.
 - **Interview preparation agent** — Structured prep plan for a specific role and company. The agent can call a web-search tool (Glassdoor, Reddit, etc.) to fetch company-specific interview insights and weave them into the guidance.
 
 ## Tech stack
 
-- **Backend:** FastAPI, PostgreSQL (jobs + profiles), Chroma (vector store)
+- **Backend:** FastAPI, PostgreSQL (jobs, profiles, user_jobs), Chroma (vector store)
 - **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
-- **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement + interview prep)
+- **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement, interview prep, add job)
+- **Optional:** Tavily or SerpAPI for add-job agent web search
 
 ## Prerequisites
 
 - Python 3.11+
 - PostgreSQL
-- [OpenAI API key](https://platform.openai.com/api-keys) (for embeddings and resume improvement)
+- [OpenAI API key](https://platform.openai.com/api-keys) (for embeddings and all agents: resume improvement, interview prep, add job)
 
 ## Setup
 
@@ -32,7 +35,7 @@ pip install -r requirements.txt
 
 ### 2. Environment
 
-Create a `.env` file in the project root. Example:
+Create a `.env` file in the project root (see `configs/config.example.env` for a minimal example):
 
 ```bash
 # Database (required)
@@ -45,19 +48,26 @@ POSTGRES_PASSWORD=your_password
 # Or a single DSN:
 # POSTGRES_DSN=postgresql://user:password@localhost:5432/career_copilot
 
-# OpenAI (required for embeddings and resume improvement)
+# OpenAI (required for embeddings and all agents)
 OPENAI_API_KEY=sk-your-openai-key
 
 # Optional: more jobs from Adzuna (https://developer.adzuna.com/signup)
 # ADZUNA_APP_ID=your_app_id
 # ADZUNA_APP_KEY=your_app_key
+
+# Optional: add-job agent web search (fill missing fields from URL/text)
+# TAVILY_API_KEY=your_tavily_key
+# or SERPAPI_API_KEY=your_serpapi_key
 ```
 
 ### 3. Database and jobs
 
-The web app creates the **users**, **profiles**, and **user_skills** tables on startup. The **jobs** table must exist before indexing; create it from the SQL schema and run ingestion:
+The web app creates **users**, **profiles**, **user_skills**, and **user_jobs** on startup. The **jobs** table (ingested listings) must exist before indexing; create it and run ingestion:
 
 ```bash
+# Optional: run Postgres via Docker
+docker compose up -d
+
 # Create jobs table (if not already present)
 psql -d career_copilot -f sql/001_create_jobs.sql
 
@@ -74,7 +84,7 @@ python scripts/run_rag_index.py
 python scripts/run_web.py
 ```
 
-Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in your profile and upload a resume. After saving, go to **Recommendations** to see jobs ranked by similarity to your profile.
+Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in your profile and upload a resume. After saving, use **Recommendations** for jobs ranked by similarity, **Add job** to parse a URL or paste and save to **My jobs**, **Resume improvement** for a chosen role, and **Interview preparation** for a structured prep plan.
 
 ## Job sources (ingestion)
 
@@ -85,6 +95,8 @@ Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in 
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
+To refresh jobs on a schedule, run `python scripts/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/run_rag_index.py` after ingestion to update Chroma.
+
 ## Project structure
 
 ```
@@ -94,24 +106,29 @@ career_copilot/
 │   ├── app_config.py       # Paths, Jinja2 templates
 │   ├── schemas.py          # Pydantic request models
 │   ├── utils.py            # Shared helpers
-│   ├── routers/            # Route handlers (home, profile, jobs, recommendations, resume_improvement)
+│   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation
 │   ├── database/           # db, schema, profiles, jobs, deps
 │   ├── rag/                # Chroma store, embedding, user_embedding
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
-│   ├── agents/             # Resume improvement (context, chat, PDF text)
+│   ├── agents/             # resume_improvement, interview_preparation, add_job
 │   ├── resume_io.py        # Resume text extraction (PDF)
 │   └── resume_pdf.py       # PDF generation for improved resume
-├── templates/              # Jinja2 HTML (profile, recommendations, job_detail, improve_resume)
+├── templates/              # Jinja2 HTML (profile, recommendations, job_detail, improve_resume, add_job, my_jobs, interview_prep)
+├── configs/
+│   └── config.example.env  # Example .env (use project root .env)
 ├── tests/                  # Pytest unit tests
 ├── scripts/
 │   ├── run_web.py          # Start uvicorn
 │   ├── run_ingestion.py    # Fetch jobs → Postgres
 │   ├── run_rag_index.py    # Postgres jobs → Chroma
-│   └── ...
-├── sql/                    # DB schema (e.g. 001_create_jobs.sql)
+│   ├── scheduler.py        # Optional: run ingestion on a schedule (e.g. every 6 hours)
+│   ├── repair_descriptions.py
+│   └── explore_embeddings.py
+├── sql/                    # 001_create_jobs.sql, 002_create_user_jobs.sql (user_jobs also created by init_schema)
+├── docker-compose.yml      # Postgres 16 for local dev
 ├── pyproject.toml          # Ruff, pytest config
 ├── requirements.txt
-└── requirements-dev.txt   # Ruff, pip-audit
+└── requirements-dev.txt    # Ruff, pip-audit
 ```
 
 ## Development
