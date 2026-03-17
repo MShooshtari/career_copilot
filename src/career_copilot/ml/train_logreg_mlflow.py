@@ -156,7 +156,12 @@ def train_and_log(
         _save_confusion_matrix(cm, cm_path)
         mlflow.log_artifact(str(cm_path), artifact_path="eval")
 
-        mlflow.sklearn.log_model(pipe, name="model")
+        mlflow.sklearn.log_model(
+            pipe,
+            name="model",
+            serialization_format="skops",
+            pip_requirements=["scikit-learn>=1.5.0", "skops>=0.13.0"],
+        )
 
 
 def main() -> None:
