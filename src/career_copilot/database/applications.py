@@ -191,6 +191,13 @@ def application_row_to_dict(row: tuple) -> dict:
         created_at,
         updated_at,
     ) = row
+
+    def _dt_to_iso(v):
+        try:
+            return v.isoformat() if v is not None else None
+        except Exception:
+            return None
+
     return {
         "id": id_,
         "user_id": user_id,
@@ -201,8 +208,9 @@ def application_row_to_dict(row: tuple) -> dict:
         "history": history or [],
         "application_memory": application_memory or {},
         "last_resume_text": last_resume_text,
-        "created_at": created_at,
-        "updated_at": updated_at,
+        # JSONResponse can't serialize datetime objects; store as ISO strings.
+        "created_at": _dt_to_iso(created_at),
+        "updated_at": _dt_to_iso(updated_at),
     }
 
 

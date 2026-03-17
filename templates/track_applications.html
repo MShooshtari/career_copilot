@@ -110,6 +110,17 @@
             color: #e5e7eb; background: linear-gradient(135deg, #4f46e5, #8b5cf6);
         }
         .app-card a.card-btn.interview { background: linear-gradient(135deg, #0d9488, #10b981); color: #e5e7eb; }
+        .app-card button.delete-btn {
+            font-size: 13px;
+            font-weight: 500;
+            color: #f87171;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(248, 113, 113, 0.5);
+            background: rgba(248, 113, 113, 0.15);
+        }
+        .app-card button.delete-btn:hover { background: rgba(248, 113, 113, 0.25); }
         .empty-apps { color: var(--text-muted); padding: 24px; text-align: center; }
 
         .chat-card {
@@ -222,6 +233,7 @@
                     <a href="{{ app.action_url }}" class="card-btn {{ 'primary' if app.stage == 'resume_improvement' else 'interview' }}">
                         {{ 'Open resume' if app.stage == 'resume_improvement' else 'Open interview prep' }}
                     </a>
+                    <button type="button" class="delete-btn" data-delete-app-id="{{ app.id }}">Delete</button>
                 </div>
             </article>
             {% endfor %}
@@ -302,6 +314,7 @@
                     '</div></div>' +
                     '<div class="app-card-actions">' +
                     '<a href="' + escapeHtml(app.action_url) + '" class="card-btn ' + btnClass + '">' + btnLabel + '</a>' +
+                    '<button type="button" class="delete-btn" data-delete-app-id="' + app.id + '">Delete</button>' +
                     '</div></article>';
             }
 
@@ -344,6 +357,32 @@
                 if (!res.ok) throw new Error(data.reply || res.statusText);
                 return data;
             }
+
+            async function deleteApplication(appId) {
+                const res = await fetch('/applications/' + encodeURIComponent(appId) + '/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error((data && data.detail) || res.statusText);
+                return data;
+            }
+
+            appList.addEventListener('click', async function (e) {
+                const btn = e.target && e.target.closest ? e.target.closest('[data-delete-app-id]') : null;
+                if (!btn) return;
+                const appId = btn.getAttribute('data-delete-app-id');
+                if (!appId) return;
+                if (!confirm('Delete this tracked application?')) return;
+                try {
+                    const data = await deleteApplication(appId);
+                    if (data && data.applications && Array.isArray(data.applications)) {
+                        updateApplicationsList(data.applications);
+                    }
+                } catch (err) {
+                    alert('Could not delete: ' + (err && err.message ? err.message : String(err)));
+                }
+            });
 
             chatForm.addEventListener('submit', async function (e) {
                 e.preventDefault();

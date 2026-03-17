@@ -14,6 +14,7 @@ from career_copilot.database.applications import (
     enrich_applications_with_job_info,
     get_application_by_key,
     list_applications,
+    remove_application,
 )
 from career_copilot.database.deps import get_db
 from career_copilot.schemas import TrackApplicationsChatRequest
@@ -108,3 +109,18 @@ async def post_applications_chat(
             "applications": applications,
         },
     )
+
+
+@router.post("/{application_id:int}/delete")
+async def post_delete_application(
+    application_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+) -> JSONResponse:
+    """Delete a tracked application by id and return refreshed list."""
+    removed = remove_application(conn, USER_ID, application_id)
+    if removed:
+        conn.commit()
+    rows = list_applications(conn, USER_ID)
+    applications = enrich_applications_with_job_info(conn, rows)
+    conn.close()
+    return JSONResponse(content={"removed": bool(removed), "applications": applications})

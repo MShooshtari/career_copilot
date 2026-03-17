@@ -126,3 +126,24 @@ def test_resume_improvement_chat_truncates_stored_history_to_last_20(client: Tes
     finally:
         app.dependency_overrides.pop(db_deps.get_db, None)
 
+
+def test_delete_application_endpoint_removes_and_returns_updated_list(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with (
+            patch("career_copilot.routers.track_applications.remove_application", return_value=True),
+            patch("career_copilot.routers.track_applications.list_applications", return_value=[]),
+            patch(
+                "career_copilot.routers.track_applications.enrich_applications_with_job_info",
+                return_value=[],
+            ),
+        ):
+            r = client.post("/applications/123/delete")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["removed"] is True
+        assert data["applications"] == []
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+
