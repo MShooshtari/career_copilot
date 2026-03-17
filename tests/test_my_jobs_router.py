@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from career_copilot.database import deps as db_deps
 from career_copilot.web_app import app
 
 
@@ -28,22 +29,28 @@ def mock_db():
 def test_post_my_job_delete_redirects_to_recommendations(
     client: TestClient, mock_db: MagicMock
 ) -> None:
-    with patch("career_copilot.routers.my_jobs.get_db", return_value=mock_db):
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_db
+    try:
         with patch("career_copilot.routers.my_jobs.delete_user_job") as mock_delete:
             response = client.post("/my-jobs/123/delete", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers.get("location") == "/recommendations"
-    mock_delete.assert_called_once()
-    assert mock_delete.call_args[0][1] == 1
-    assert mock_delete.call_args[0][2] == 123
+        assert response.status_code == 303
+        assert response.headers.get("location") == "/recommendations"
+        mock_delete.assert_called_once()
+        assert mock_delete.call_args[0][1] == 1
+        assert mock_delete.call_args[0][2] == 123
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
 
 
 def test_get_my_job_detail_not_found_redirects(client: TestClient, mock_db: MagicMock) -> None:
     # mock_db fixture: cursor().fetchone() returns None, so job is not found
-    with patch("career_copilot.routers.my_jobs.get_db", return_value=mock_db):
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_db
+    try:
         response = client.get("/my-jobs/99999", follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers.get("location") == "/recommendations"
+        assert response.status_code == 303
+        assert response.headers.get("location") == "/recommendations"
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
 
 
 def test_get_my_job_detail_found_returns_html(client: TestClient) -> None:
@@ -66,8 +73,11 @@ def test_get_my_job_detail_found_returns_html(client: TestClient) -> None:
     )
     mock_cur.fetchone.return_value = row
 
-    with patch("career_copilot.routers.my_jobs.get_db", return_value=mock_conn):
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
         response = client.get("/my-jobs/1")
-    assert response.status_code == 200
-    assert "text/html" in response.headers.get("content-type", "")
-    assert b"Software Engineer" in response.content or b"Acme" in response.content
+        assert response.status_code == 200
+        assert "text/html" in response.headers.get("content-type", "")
+        assert b"Software Engineer" in response.content or b"Acme" in response.content
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
