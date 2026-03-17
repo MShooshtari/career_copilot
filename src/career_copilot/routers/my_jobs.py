@@ -211,7 +211,9 @@ async def post_my_job_improve_resume_chat(
                     ]
                 set_application_history(conn2, USER_ID, app_id2, history_now)
                 try:
-                    updated_resume = generate_full_resume(history_now, resume_text, job, similar_jobs, similar_resumes)
+                    updated_resume = generate_full_resume(
+                        history_now, resume_text, job, similar_jobs, similar_resumes
+                    )
                 except Exception:
                     updated_resume = None
                 set_application_last_resume_text(conn2, USER_ID, app_id2, updated_resume)

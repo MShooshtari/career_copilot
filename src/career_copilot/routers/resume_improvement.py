@@ -110,7 +110,9 @@ async def post_resume_improve_chat(
             row2 = get_application_by_key(conn2, USER_ID, job_id, "ingested", "resume_improvement")
             if row2:
                 app_id2 = int(row2[0])
-                history_now = (row2[6] or []) if is_initial and stored_history else (stored_history or [])
+                history_now = (
+                    (row2[6] or []) if is_initial and stored_history else (stored_history or [])
+                )
                 if is_initial and not stored_history:
                     history_now = [{"role": "assistant", "content": reply}]
                 elif not is_initial:
@@ -122,7 +124,9 @@ async def post_resume_improve_chat(
 
                 # Only update last_resume_text after non-initial turns (or if we just created history)
                 try:
-                    updated_resume = generate_full_resume(history_now, resume_text, job, similar_jobs, similar_resumes)
+                    updated_resume = generate_full_resume(
+                        history_now, resume_text, job, similar_jobs, similar_resumes
+                    )
                 except Exception:
                     updated_resume = None
                 set_application_last_resume_text(conn2, USER_ID, app_id2, updated_resume)

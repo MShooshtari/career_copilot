@@ -97,7 +97,9 @@ async def post_prepare_interview_chat(
     try:
         conn2 = get_db()
         try:
-            row2 = get_application_by_key(conn2, USER_ID, job_id, "ingested", "interview_preparation")
+            row2 = get_application_by_key(
+                conn2, USER_ID, job_id, "ingested", "interview_preparation"
+            )
             if row2:
                 app_id2 = int(row2[0])
                 if is_initial and not stored_history:

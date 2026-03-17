@@ -190,7 +190,10 @@ TRACK_APPLICATIONS_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "integer", "description": "The job id (from list_available_jobs)"},
+                    "job_id": {
+                        "type": "integer",
+                        "description": "The job id (from list_available_jobs)",
+                    },
                     "job_source": {
                         "type": "string",
                         "enum": ["user", "ingested"],
@@ -228,7 +231,10 @@ TRACK_APPLICATIONS_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "application_id": {"type": "integer", "description": "The application id to remove"},
+                    "application_id": {
+                        "type": "integer",
+                        "description": "The application id to remove",
+                    },
                 },
                 "required": ["application_id"],
             },

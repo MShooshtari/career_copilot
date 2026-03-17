@@ -98,4 +98,3 @@ def extract_interview_type_guess(text: str) -> str | None:
         if any(x in t for x in keys):
             return k
     return None
-

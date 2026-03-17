@@ -108,7 +108,9 @@ def test_resume_improvement_chat_truncates_stored_history_to_last_20(client: Tes
                 "career_copilot.routers.resume_improvement.generate_full_resume",
                 return_value="UPDATED RESUME",
             ),
-            patch("career_copilot.routers.resume_improvement.set_application_history") as mock_set_hist,
+            patch(
+                "career_copilot.routers.resume_improvement.set_application_history"
+            ) as mock_set_hist,
             patch("career_copilot.routers.resume_improvement.set_application_last_resume_text"),
             patch("career_copilot.routers.resume_improvement.set_application_memory"),
         ):
@@ -132,7 +134,9 @@ def test_delete_application_endpoint_removes_and_returns_updated_list(client: Te
     app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
     try:
         with (
-            patch("career_copilot.routers.track_applications.remove_application", return_value=True),
+            patch(
+                "career_copilot.routers.track_applications.remove_application", return_value=True
+            ),
             patch("career_copilot.routers.track_applications.list_applications", return_value=[]),
             patch(
                 "career_copilot.routers.track_applications.enrich_applications_with_job_info",
@@ -146,4 +150,3 @@ def test_delete_application_endpoint_removes_and_returns_updated_list(client: Te
         assert data["applications"] == []
     finally:
         app.dependency_overrides.pop(db_deps.get_db, None)
-
