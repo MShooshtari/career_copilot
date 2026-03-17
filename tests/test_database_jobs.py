@@ -8,7 +8,9 @@ from unittest.mock import MagicMock
 from career_copilot.database.jobs import (
     _chroma_id_to_source_source_id,
     _norm_sid,
+    delete_user_job,
     format_recommendation_jobs,
+    insert_user_job,
     resolve_job_ids,
     row_to_job_dict,
     row_to_job_dict_snippet,
@@ -202,3 +204,56 @@ def test_resolve_job_ids_mock_returns_ids() -> None:
     out = resolve_job_ids(conn, results)
     assert out.get(("remotive", "1")) == 10
     assert out.get(("remotive", "2")) == 20
+
+
+# --- insert_user_job (mocked connection) ---
+
+
+def test_insert_user_job_returns_id() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchone.return_value = (99,)
+
+    out = insert_user_job(
+        conn,
+        1,
+        title="Engineer",
+        company="Acme",
+        location="Remote",
+        description="Do stuff.",
+        skills=["Python"],
+        url="https://example.com/job",
+    )
+    assert out == 99
+    cur.execute.assert_called_once()
+    query = cur.execute.call_args[0][0]
+    assert "user_jobs" in (query if isinstance(query, str) else query.decode())
+
+
+# --- delete_user_job (mocked connection) ---
+
+
+def test_delete_user_job_returns_true_when_deleted() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.rowcount = 1
+
+    out = delete_user_job(conn, 1, 42)
+    assert out is True
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (42, 1)
+
+
+def test_delete_user_job_returns_false_when_none_deleted() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.rowcount = 0
+
+    out = delete_user_job(conn, 1, 999)
+    assert out is False

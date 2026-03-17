@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Career Copilot - Confirm Job</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+        .shell { max-width: 700px; margin: 0 auto; padding: 32px 16px 48px; }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 10px; }
+        .logo-pill {
+            width: 34px; height: 34px; border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .header-nav { display: flex; align-items: center; gap: 8px; }
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+
+        .page-intro {
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 50%), var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+        }
+        .page-intro h2 { margin: 0 0 6px; font-size: 18px; }
+        .page-intro p { margin: 0; font-size: 14px; color: var(--text-muted); }
+
+        .form-card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .form-card h3 { margin: 0 0 16px; font-size: 16px; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+        .form-group input[type="text"],
+        .form-group input[type="url"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--text-main);
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .form-group textarea { min-height: 120px; resize: vertical; }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        .form-row .form-group { flex: 1; min-width: 140px; }
+        .btn-primary {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: none;
+            font-size: 15px;
+            font-weight: 600;
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            cursor: pointer;
+            margin-right: 10px;
+            margin-top: 8px;
+        }
+        .btn-primary:hover { filter: brightness(1.08); }
+        .btn-secondary {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            font-size: 15px;
+            color: var(--text-muted);
+            background: rgba(15, 23, 42, 0.8);
+            cursor: pointer;
+            text-decoration: none;
+            margin-top: 8px;
+        }
+        .btn-secondary:hover { color: var(--text-main); border-color: var(--accent); }
+        .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Confirm job details</h1>
+                        <p>Review and edit the extracted fields before adding.</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                    <a href="/add-job" class="active">Add Job</a>
+                </nav>
+            </header>
+        </div>
+
+        <section class="page-intro">
+            <h2>Check the details below</h2>
+            <p>We extracted these fields from your input. Edit any field if needed, then click &quot;Confirm and add job&quot; to save.</p>
+        </section>
+
+        <form action="/add-job/confirm" method="post" class="form-card">
+            <h3>Job details</h3>
+            <div class="form-group">
+                <label for="title">Job title</label>
+                <input type="text" name="title" id="title" value="{{ proposal.title or '' }}" placeholder="e.g. Software Engineer" required />
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="company">Company</label>
+                    <input type="text" name="company" id="company" value="{{ proposal.company or '' }}" placeholder="e.g. Acme Inc" />
+                </div>
+                <div class="form-group">
+                    <label for="location">Location</label>
+                    <input type="text" name="location" id="location" value="{{ proposal.location or '' }}" placeholder="e.g. Remote, New York, NY" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="salary_min">Salary min (annual)</label>
+                    <input type="number" name="salary_min" id="salary_min" value="{{ proposal.salary_min or '' }}" placeholder="e.g. 80000" min="0" step="1000" />
+                </div>
+                <div class="form-group">
+                    <label for="salary_max">Salary max (annual)</label>
+                    <input type="number" name="salary_max" id="salary_max" value="{{ proposal.salary_max or '' }}" placeholder="e.g. 120000" min="0" step="1000" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea name="description" id="description" placeholder="Full job description...">{{ proposal.description or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="skills">Skills (comma-separated)</label>
+                <input type="text" name="skills" id="skills" value="{{ (proposal.skills or []) | join(', ') }}" placeholder="e.g. Python, AWS, 5+ years" />
+            </div>
+            <div class="form-group">
+                <label for="url">Source URL</label>
+                <input type="url" name="url" id="url" value="{{ proposal.url or '' }}" placeholder="https://..." />
+            </div>
+            <button type="submit" class="btn-primary">Confirm and add job</button>
+            <a href="/add-job" class="btn-secondary">Cancel</a>
+        </form>
+    </div>
+</body>
+</html>

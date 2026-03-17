@@ -111,6 +111,153 @@ def row_to_job_dict_snippet(row: tuple, description_max_chars: int = 500) -> dic
     return d
 
 
+def get_user_job_by_id(conn: psycopg.Connection, user_id: int, job_id: int) -> tuple | None:
+    """Fetch a user-added job by id and user_id. Returns DB row or None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, user_id, title, company, location,
+                   salary_min, salary_max, description, skills, url
+            FROM user_jobs
+            WHERE id = %s AND user_id = %s
+            """,
+            (job_id, user_id),
+        )
+        return cur.fetchone()
+
+
+def list_user_jobs(conn: psycopg.Connection, user_id: int) -> list[tuple]:
+    """List all user-added jobs for a user, newest first. Returns list of rows."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, user_id, title, company, location,
+                   salary_min, salary_max, description, skills, url
+            FROM user_jobs
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        )
+        return list(cur.fetchall())
+
+
+def insert_user_job(
+    conn: psycopg.Connection,
+    user_id: int,
+    *,
+    title: str | None = None,
+    company: str | None = None,
+    location: str | None = None,
+    salary_min: int | None = None,
+    salary_max: int | None = None,
+    description: str | None = None,
+    skills: list[str] | None = None,
+    url: str | None = None,
+    raw: dict | None = None,
+) -> int:
+    """Insert a user job and return its id."""
+    from psycopg.types.json import Json
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO user_jobs (
+                user_id, title, company, location,
+                salary_min, salary_max, description, skills, url, raw
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                user_id,
+                title or None,
+                company or None,
+                location or None,
+                salary_min,
+                salary_max,
+                description or None,
+                skills if skills else None,
+                url or None,
+                Json(raw or {}),
+            ),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        return int(row[0])
+
+
+def delete_user_job(conn: psycopg.Connection, user_id: int, job_id: int) -> bool:
+    """Delete a user-added job. Returns True if a row was deleted."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM user_jobs WHERE id = %s AND user_id = %s",
+            (job_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def user_job_row_to_dict(row: tuple) -> dict:
+    """Convert a user_jobs row to the same dict shape as row_to_job_dict (for templates/agents)."""
+    (
+        id_,
+        user_id,
+        title,
+        company,
+        location,
+        salary_min,
+        salary_max,
+        description,
+        skills,
+        url,
+    ) = row
+    return {
+        "id": id_,
+        "source": "user",
+        "source_id": str(id_),
+        "title": title or "Job",
+        "company": company or "",
+        "location": location or "",
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "description": description or "",
+        "skills": list(skills) if skills else [],
+        "posted_at": None,
+        "url": url or "",
+    }
+
+
+def format_user_jobs_for_recommendations(
+    rows: list[tuple], snippet_max_chars: int = 400
+) -> list[dict]:
+    """Build list of job dicts for recommendations template from user_jobs rows."""
+    from career_copilot.ingestion.common import html_to_plain_text
+
+    out: list[dict] = []
+    for row in rows:
+        d = user_job_row_to_dict(row)
+        raw_desc = d.get("description") or ""
+        plain = html_to_plain_text(raw_desc) if raw_desc else ""
+        desc = (plain or "")[:snippet_max_chars]
+        if len(plain or "") > snippet_max_chars:
+            desc = desc.rstrip() + "…"
+        out.append(
+            {
+                "job_id": d["id"],
+                "is_user_job": True,
+                "title": d["title"],
+                "company": d["company"],
+                "location": d["location"],
+                "url": d["url"],
+                "snippet": desc,
+                "salary_min": d["salary_min"],
+                "salary_max": d["salary_max"],
+                "skills": d["skills"],
+            }
+        )
+    return out
+
+
 def format_recommendation_jobs(
     raw: list[dict],
     id_map: dict[tuple[str | None, str | None], int],
@@ -129,6 +276,7 @@ def format_recommendation_jobs(
         jobs_for_template.append(
             {
                 "job_id": postgres_id,
+                "is_user_job": False,
                 "title": meta.get("title") or "Job",
                 "company": meta.get("company") or "",
                 "location": meta.get("location") or "",

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Career Copilot - Add Job</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card-bg: #121826;
+            --accent: #4f46e5;
+            --accent-soft: rgba(79, 70, 229, 0.2);
+            --border-subtle: #1f2937;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #111827 0, #020617 55%, #020617 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+        .shell { max-width: 700px; margin: 0 auto; padding: 32px 16px 48px; }
+        .header-wrap {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: radial-gradient(circle at top, #111827 0, #0b1020 70%, #020617 100%);
+            padding-bottom: 20px;
+            margin-bottom: 4px;
+        }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 10px; }
+        .logo-pill {
+            width: 34px; height: 34px; border-radius: 999px;
+            background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #22c55e 100%);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+        }
+        .logo-pill span { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+        .brand-text h1 { font-size: 20px; margin: 0; font-weight: 600; }
+        .brand-text p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .header-nav { display: flex; align-items: center; gap: 8px; }
+        .header-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+
+        .page-intro {
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 50%), var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+        }
+        .page-intro h2 { margin: 0 0 6px; font-size: 18px; }
+        .page-intro p { margin: 0; font-size: 14px; color: var(--text-muted); }
+
+        .form-card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid rgba(55, 65, 81, 0.8);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .form-card h3 { margin: 0 0 16px; font-size: 16px; }
+        .mode-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .mode-tabs label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .mode-tabs label:hover { color: var(--text-main); border-color: var(--accent); }
+        .mode-tabs input { display: none; }
+        .mode-tabs input:checked + label,
+        .mode-tabs label:has(+ input:checked) { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .mode-tabs input:checked + label { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .mode-panel { display: none; margin-top: 16px; }
+        .mode-panel.active { display: block; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+        .form-group input[type="text"],
+        .form-group input[type="url"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--text-main);
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .form-group textarea { min-height: 160px; resize: vertical; }
+        .form-group input::placeholder,
+        .form-group textarea::placeholder { color: #6b7280; }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        .form-row .form-group { flex: 1; min-width: 140px; }
+        .btn-primary {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: none;
+            font-size: 15px;
+            font-weight: 600;
+            color: #e5e7eb;
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .btn-primary:hover { filter: brightness(1.08); }
+        .error-msg {
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: rgba(220, 38, 38, 0.15);
+            border: 1px solid rgba(220, 38, 38, 0.4);
+            color: #fca5a5;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header-wrap">
+            <header>
+                <div class="brand">
+                    <div class="logo-pill"><span>CC</span></div>
+                    <div class="brand-text">
+                        <h1>Add Job</h1>
+                        <p>Compare your resume with a job not in the list.</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/profile">Profile</a>
+                    <a href="/recommendations">Recommendations</a>
+                    <a href="/add-job" class="active">Add Job</a>
+                </nav>
+            </header>
+        </div>
+
+        <section class="page-intro">
+            <h2>Add a job to compare with your resume</h2>
+            <p>Paste a job description, upload a file (PDF, Word, or text), or paste a link to a job posting. We'll extract the details and add it to your recommended jobs.</p>
+        </section>
+
+        {% if error %}
+        <div class="error-msg">{{ error }}</div>
+        {% endif %}
+
+        <form action="/add-job" method="post" enctype="multipart/form-data" class="form-card">
+            <h3>How do you want to add the job?</h3>
+            <div class="mode-tabs">
+                <input type="radio" name="mode" value="manual" id="mode-manual" checked />
+                <label for="mode-manual">Paste description</label>
+                <input type="radio" name="mode" value="file" id="mode-file" />
+                <label for="mode-file">Upload file</label>
+                <input type="radio" name="mode" value="url" id="mode-url" />
+                <label for="mode-url">Paste URL</label>
+            </div>
+
+            <div id="panel-manual" class="mode-panel active">
+                <div class="form-group">
+                    <label for="job_text">Job description (paste full text)</label>
+                    <textarea name="job_text" id="job_text" placeholder="Paste the full job description here..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="location">Location (optional)</label>
+                        <input type="text" name="location" id="location" placeholder="e.g. Remote, New York, NY" />
+                    </div>
+                    <div class="form-group">
+                        <label for="salary_min">Salary min (optional)</label>
+                        <input type="number" name="salary_min" id="salary_min" placeholder="e.g. 80000" min="0" step="1000" />
+                    </div>
+                    <div class="form-group">
+                        <label for="salary_max">Salary max (optional)</label>
+                        <input type="number" name="salary_max" id="salary_max" placeholder="e.g. 120000" min="0" step="1000" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="job_url_manual">Source URL (optional)</label>
+                    <input type="url" name="manual_url" id="job_url_manual" placeholder="https://..." />
+                </div>
+            </div>
+
+            <div id="panel-file" class="mode-panel">
+                <div class="form-group">
+                    <label for="file">Upload job description file</label>
+                    <input type="file" name="file" id="file" accept=".pdf,.txt,.doc,.docx" />
+                    <p class="hint">Supported: PDF, TXT, or Word (.doc, .docx). We'll extract text and parse job details.</p>
+                </div>
+            </div>
+
+            <div id="panel-url" class="mode-panel">
+                <div class="form-group">
+                    <label for="job_url">Job posting URL</label>
+                    <input type="url" name="job_url" id="job_url" placeholder="https://www.indeed.com/... or https://www.linkedin.com/... or company career page" />
+                    <p class="hint">We'll fetch the page and extract job title, company, location, description, and skills. Works best with public job pages.</p>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary">Add job</button>
+        </form>
+    </div>
+    <script>
+        document.querySelectorAll('input[name="mode"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('.mode-panel').forEach(function(p) { p.classList.remove('active'); });
+                var id = 'panel-' + this.value;
+                var panel = document.getElementById(id);
+                if (panel) panel.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

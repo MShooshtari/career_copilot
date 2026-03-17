@@ -136,6 +136,18 @@
             box-shadow: 0 10px 25px rgba(13, 148, 136, 0.35);
         }
         .actions a.action-prepare:hover { filter: brightness(1.08); }
+        .actions form { display: inline; }
+        .actions .action-delete {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #f87171;
+            background: rgba(248, 113, 113, 0.15);
+            border: 1px solid rgba(248, 113, 113, 0.5);
+            border-radius: 999px;
+            cursor: pointer;
+        }
+        .actions .action-delete:hover { background: rgba(248, 113, 113, 0.25); }
         .back-link {
             display: inline-block;
             margin-bottom: 16px;
@@ -160,6 +172,7 @@
                 <nav class="header-nav">
                     <a href="/profile">Profile</a>
                     <a href="/recommendations">Recommendations</a>
+                    <a href="/add-job">Add Job</a>
                 </nav>
             </header>
         </div>
@@ -191,10 +204,20 @@
             {% endif %}
 
             <div class="actions">
+                {% if is_user_job %}
+                <a href="/my-jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
+                <a href="/my-jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
+                {% else %}
                 <a href="/jobs/{{ job.id }}/improve-resume">Improve my resume for this role</a>
                 <a href="/jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
+                {% endif %}
                 {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
+                {% endif %}
+                {% if is_user_job %}
+                <form action="/my-jobs/{{ job.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Remove this job from your list?');">
+                    <button type="submit" class="action-delete">Delete job</button>
+                </form>
                 {% endif %}
             </div>
 
