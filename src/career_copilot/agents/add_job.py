@@ -1084,7 +1084,6 @@ def run_add_job_agent(
             hints.append(f"Location: {location}")
         if salary_min is not None or salary_max is not None:
             hints.append(f"Salary: {salary_min or '?'} - {salary_max or '?'}")
-        hint_str = "\n".join(hints) if hints else ""
         user_parts.append(f"The user pasted a job description:\n{(text or '')[:8000]}")
         user_parts.append("Run extract_from_text with the text and optional hints, then call finalize_proposal. If fields are missing, you can try web_search.")
     else:

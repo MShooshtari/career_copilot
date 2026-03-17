@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from career_copilot.agents.add_job import (
     _build_indeed_embedded_url,
@@ -18,7 +16,6 @@ from career_copilot.agents.add_job import (
     extract_job_from_url,
     title_from_url_path,
 )
-
 
 # --- title_from_url_path / _title_from_url_path ---
 
