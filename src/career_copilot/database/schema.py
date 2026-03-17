@@ -83,9 +83,7 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS user_jobs_user_id_idx ON user_jobs (user_id)"
-        )
+        cur.execute("CREATE INDEX IF NOT EXISTS user_jobs_user_id_idx ON user_jobs (user_id)")
         cur.execute(
             "CREATE INDEX IF NOT EXISTS user_jobs_created_at_idx ON user_jobs (created_at DESC)"
         )

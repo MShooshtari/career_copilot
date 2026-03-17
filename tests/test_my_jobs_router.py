@@ -25,7 +25,9 @@ def mock_db():
     return conn
 
 
-def test_post_my_job_delete_redirects_to_recommendations(client: TestClient, mock_db: MagicMock) -> None:
+def test_post_my_job_delete_redirects_to_recommendations(
+    client: TestClient, mock_db: MagicMock
+) -> None:
     with patch("career_copilot.routers.my_jobs.get_db", return_value=mock_db):
         with patch("career_copilot.routers.my_jobs.delete_user_job") as mock_delete:
             response = client.post("/my-jobs/123/delete", follow_redirects=False)

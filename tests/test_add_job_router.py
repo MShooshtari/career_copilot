@@ -117,7 +117,9 @@ def test_post_add_job_agent_returns_empty_shows_error(client: TestClient) -> Non
 
 def test_post_add_job_confirm_saves_and_redirects(client: TestClient, mock_db: MagicMock) -> None:
     with patch("career_copilot.routers.add_job.get_db", return_value=mock_db):
-        with patch("career_copilot.routers.add_job.insert_user_job", return_value=42) as mock_insert:
+        with patch(
+            "career_copilot.routers.add_job.insert_user_job", return_value=42
+        ) as mock_insert:
             response = client.post(
                 "/add-job/confirm",
                 data={

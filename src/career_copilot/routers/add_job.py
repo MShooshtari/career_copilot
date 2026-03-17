@@ -63,7 +63,11 @@ async def post_add_job(
     if mode == "manual" and not (job_text or "").strip():
         return templates.TemplateResponse(
             "add_job.html",
-            {"request": request, "user_id": USER_ID, "error": "Please provide job description text, a file, or a URL."},
+            {
+                "request": request,
+                "user_id": USER_ID,
+                "error": "Please provide job description text, a file, or a URL.",
+            },
         )
 
     file_content: bytes | None = None

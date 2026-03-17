@@ -162,8 +162,16 @@ def extract_job_from_file(content: bytes, filename: str) -> dict[str, Any]:
     """
     text = _extract_text_from_file(content, filename)
     if not text.strip():
-        return {"title": None, "company": None, "location": None, "salary_min": None,
-                "salary_max": None, "description": None, "skills": [], "url": None}
+        return {
+            "title": None,
+            "company": None,
+            "location": None,
+            "salary_min": None,
+            "salary_max": None,
+            "description": None,
+            "skills": [],
+            "url": None,
+        }
     return _extract_with_llm(text)
 
 
@@ -326,7 +334,9 @@ def _extract_indeed_job(html: str) -> dict[str, Any] | None:
                             pass
                         val = re.sub(r"<[^>]+>", " ", val).strip()
                         if out_key == "description" and len(val) > 50:
-                            if not found.get("description") or len(val) > len(found.get("description") or ""):
+                            if not found.get("description") or len(val) > len(
+                                found.get("description") or ""
+                            ):
                                 found["description"] = val[:12000]
                         elif out_key != "description" and val:
                             found.setdefault(out_key, val)
@@ -346,17 +356,35 @@ def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
         if isinstance(d, dict):
             for k, v in d.items():
                 klo = k.lower()
-                if klo in ("title", "jobtitle", "headline", "positiontitle") and isinstance(v, str) and 2 < len(v) < 300:
+                if (
+                    klo in ("title", "jobtitle", "headline", "positiontitle")
+                    and isinstance(v, str)
+                    and 2 < len(v) < 300
+                ):
                     found.setdefault("title", v)
-                if klo in ("description", "snippet", "jobdescription") and isinstance(v, str) and len(v) > 50:
+                if (
+                    klo in ("description", "snippet", "jobdescription")
+                    and isinstance(v, str)
+                    and len(v) > 50
+                ):
                     found.setdefault("description", v[:12000])
-                if klo in ("company", "companyname", "organization", "employer") and isinstance(v, str):
+                if klo in ("company", "companyname", "organization", "employer") and isinstance(
+                    v, str
+                ):
                     found.setdefault("company", v)
-                if klo in ("location", "joblocation", "city", "place") and isinstance(v, str) and len(v) < 200:
+                if (
+                    klo in ("location", "joblocation", "city", "place")
+                    and isinstance(v, str)
+                    and len(v) < 200
+                ):
                     found.setdefault("location", v)
-                if klo in ("salarymin", "salary_min", "minpay", "minimum") and isinstance(v, (int, float)):
+                if klo in ("salarymin", "salary_min", "minpay", "minimum") and isinstance(
+                    v, (int, float)
+                ):
                     found.setdefault("salary_min", int(v))
-                if klo in ("salarymax", "salary_max", "maxpay", "maximum") and isinstance(v, (int, float)):
+                if klo in ("salarymax", "salary_max", "maxpay", "maximum") and isinstance(
+                    v, (int, float)
+                ):
                     found.setdefault("salary_max", int(v))
                 dig(v, depth + 1)
         elif isinstance(d, list):
@@ -364,10 +392,19 @@ def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
                 dig(x, depth + 1)
 
     # Prefer __NEXT_DATA__ (Next.js / Rippling-style) and similar known payloads
-    for script_id in ("__NEXT_DATA__", "__NUXT_DATA__", "window.__INITIAL_STATE__", "window.__data"):
-        m = re.search(rf'<script[^>]*id=["\']?{re.escape(script_id)}["\']?[^>]*>([\s\S]*?)</script>', html, re.IGNORECASE)
+    for script_id in (
+        "__NEXT_DATA__",
+        "__NUXT_DATA__",
+        "window.__INITIAL_STATE__",
+        "window.__data",
+    ):
+        m = re.search(
+            rf'<script[^>]*id=["\']?{re.escape(script_id)}["\']?[^>]*>([\s\S]*?)</script>',
+            html,
+            re.IGNORECASE,
+        )
         if not m:
-            m = re.search(rf'{re.escape(script_id)}\s*=\s*(\{{[\s\S]*?\}});', html)
+            m = re.search(rf"{re.escape(script_id)}\s*=\s*(\{{[\s\S]*?\}});", html)
         if m:
             blob = m.group(1).strip()
             if blob.startswith("{"):
@@ -390,7 +427,9 @@ def _extract_workday_like_json(html: str) -> dict[str, Any] | None:
             data = json.loads(blob)
         except json.JSONDecodeError:
             for name in ("title", "jobTitle", "headline", "positionTitle"):
-                m = re.search(rf'["\']?{name}["\']?\s*:\s*["\']([^"\']{{3,200}})["\']', blob, re.IGNORECASE)
+                m = re.search(
+                    rf'["\']?{name}["\']?\s*:\s*["\']([^"\']{{3,200}})["\']', blob, re.IGNORECASE
+                )
                 if m:
                     found["title"] = m.group(1).strip()
                     break
@@ -427,10 +466,23 @@ def _title_from_url_path(url: str) -> str:
         return ""
     slug = segments[-1]
     # Skip generic path segments that are not job titles (Indeed, LinkedIn, etc.)
-    if slug.lower() in ("viewjob", "jobs", "job", "careers", "career", "apply", "home", "view", "listing", "search"):
+    if slug.lower() in (
+        "viewjob",
+        "jobs",
+        "job",
+        "careers",
+        "career",
+        "apply",
+        "home",
+        "view",
+        "listing",
+        "search",
+    ):
         return ""
     # Skip UUID-like segments (Rippling, Greenhouse, etc.)
-    if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", slug, re.IGNORECASE):
+    if re.match(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", slug, re.IGNORECASE
+    ):
         return ""
     # Remove common suffixes like _REQ-6008-1 or -REQ-6008
     slug = re.sub(r"_?REQ[-_]?\d+[-_]?\d*$", "", slug, flags=re.IGNORECASE)
@@ -568,7 +620,12 @@ def _try_bamboohr_job_api(url: str) -> dict[str, Any] | None:
                 if isinstance(data, list):
                     jobs = data
                 elif isinstance(data, dict):
-                    jobs = data.get("jobs") or data.get("jobOpenings") or data.get("positions") or data.get("results")
+                    jobs = (
+                        data.get("jobs")
+                        or data.get("jobOpenings")
+                        or data.get("positions")
+                        or data.get("results")
+                    )
                 if not jobs or not isinstance(jobs, list):
                     continue
                 for job in jobs:
@@ -579,12 +636,30 @@ def _try_bamboohr_job_api(url: str) -> dict[str, Any] | None:
                         continue
                     if str(jid).strip() == str(job_id).strip():
                         out: dict[str, Any] = {"url": url}
-                        out["title"] = (job.get("title") or job.get("jobTitle") or job.get("name") or "").strip() or None
-                        out["company"] = (job.get("company") or job.get("companyName") or job.get("organization") or "").strip() or None
-                        out["location"] = (job.get("location") or job.get("jobLocation") or job.get("city") or "").strip() or None
-                        out["description"] = (job.get("description") or job.get("jobDescription") or job.get("content") or "").strip() or None
-                        out["salary_min"] = _coerce_int(job.get("salaryMin") or job.get("salary_min") or job.get("minSalary"))
-                        out["salary_max"] = _coerce_int(job.get("salaryMax") or job.get("salary_max") or job.get("maxSalary"))
+                        out["title"] = (
+                            job.get("title") or job.get("jobTitle") or job.get("name") or ""
+                        ).strip() or None
+                        out["company"] = (
+                            job.get("company")
+                            or job.get("companyName")
+                            or job.get("organization")
+                            or ""
+                        ).strip() or None
+                        out["location"] = (
+                            job.get("location") or job.get("jobLocation") or job.get("city") or ""
+                        ).strip() or None
+                        out["description"] = (
+                            job.get("description")
+                            or job.get("jobDescription")
+                            or job.get("content")
+                            or ""
+                        ).strip() or None
+                        out["salary_min"] = _coerce_int(
+                            job.get("salaryMin") or job.get("salary_min") or job.get("minSalary")
+                        )
+                        out["salary_max"] = _coerce_int(
+                            job.get("salaryMax") or job.get("salary_max") or job.get("maxSalary")
+                        )
                         if out.get("title") or out.get("description"):
                             if not out.get("company"):
                                 out["company"] = _company_from_bamboohr_subdomain(url) or None
@@ -709,7 +784,11 @@ def _fetch_page_html(url: str) -> str:
                 resp.raise_for_status()
                 html = resp.text
                 # Indeed viewjob: main page is often JS-rendered; embedded view can have HTML with job body
-                if "indeed.com" in url and "viewjob" in fetch_url.lower() and "viewtype=embedded" not in fetch_url:
+                if (
+                    "indeed.com" in url
+                    and "viewjob" in fetch_url.lower()
+                    and "viewtype=embedded" not in fetch_url
+                ):
                     text_from_main = _html_to_text(html)
                     if not text_from_main or len(text_from_main.strip()) < 400:
                         embedded_url = _build_indeed_embedded_url(url)
@@ -883,7 +962,11 @@ def _tool_fetch_page_content(url: str) -> dict[str, Any]:
         url = "https://" + url
     html = _fetch_page_html(url)
     text = _html_to_text(html)
-    return {"url": url, "text": (text or "")[:12000], "success": bool(text and len(text.strip()) > 100)}
+    return {
+        "url": url,
+        "text": (text or "")[:12000],
+        "success": bool(text and len(text.strip()) > 100),
+    }
 
 
 def _tool_extract_from_text(text: str, hints: str = "") -> dict[str, Any]:
@@ -891,7 +974,11 @@ def _tool_extract_from_text(text: str, hints: str = "") -> dict[str, Any]:
     if not (text or text.strip()):
         return {"error": "Text is required", "extracted": {}}
     extracted = _extract_with_llm(text.strip()[:30000], hints)
-    return {"extracted": extracted, "has_title": bool(extracted.get("title")), "has_description": bool(extracted.get("description"))}
+    return {
+        "extracted": extracted,
+        "has_title": bool(extracted.get("title")),
+        "has_description": bool(extracted.get("description")),
+    }
 
 
 def _tool_try_indeed_embedded(url: str) -> dict[str, Any]:
@@ -901,7 +988,11 @@ def _tool_try_indeed_embedded(url: str) -> dict[str, Any]:
         return {"error": "Not an Indeed URL with job id (jk=)", "text": ""}
     html = _fetch_page_html(embedded_url)
     text = _html_to_text(html)
-    return {"url": embedded_url, "text": (text or "")[:12000], "success": bool(text and len(text.strip()) > 100)}
+    return {
+        "url": embedded_url,
+        "text": (text or "")[:12000],
+        "success": bool(text and len(text.strip()) > 100),
+    }
 
 
 def _tool_try_bamboohr_api(url: str) -> dict[str, Any]:
@@ -921,20 +1012,37 @@ def _tool_web_search(query: str) -> dict[str, Any]:
     if api_key and os.environ.get("TAVILY_API_KEY"):
         try:
             import httpx
+
             r = httpx.post(
                 "https://api.tavily.com/search",
-                json={"api_key": api_key, "query": query, "search_depth": "basic", "max_results": 5},
+                json={
+                    "api_key": api_key,
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": 5,
+                },
                 timeout=10.0,
             )
             if r.status_code == 200:
                 data = r.json()
                 results = data.get("results") or []
-                snippets = [{"title": x.get("title"), "url": x.get("url"), "content": (x.get("content") or "")[:500]} for x in results[:5]]
+                snippets = [
+                    {
+                        "title": x.get("title"),
+                        "url": x.get("url"),
+                        "content": (x.get("content") or "")[:500],
+                    }
+                    for x in results[:5]
+                ]
                 return {"success": True, "results": snippets}
         except Exception as e:
             return {"success": False, "error": str(e), "results": []}
     # Placeholder when no search API: return empty so agent can still finalize
-    return {"success": False, "results": [], "hint": "Set TAVILY_API_KEY in .env for web search. You can still finalize with the data you have."}
+    return {
+        "success": False,
+        "results": [],
+        "hint": "Set TAVILY_API_KEY in .env for web search. You can still finalize with the data you have.",
+    }
 
 
 def _tool_finalize_proposal(
@@ -972,7 +1080,12 @@ ADD_JOB_TOOLS = [
             "description": "Fetch a URL and return the main text content of the page. Use when you need to load or retry loading a job page.",
             "parameters": {
                 "type": "object",
-                "properties": {"url": {"type": "string", "description": "Full URL to fetch (e.g. https://ca.indeed.com/viewjob?jk=...)"}},
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Full URL to fetch (e.g. https://ca.indeed.com/viewjob?jk=...)",
+                    }
+                },
                 "required": ["url"],
             },
         },
@@ -985,8 +1098,14 @@ ADD_JOB_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string", "description": "The job description or page text to extract from"},
-                    "hints": {"type": "string", "description": "Optional hints, e.g. 'Source URL: ...', 'Indeed search query: ...'"},
+                    "text": {
+                        "type": "string",
+                        "description": "The job description or page text to extract from",
+                    },
+                    "hints": {
+                        "type": "string",
+                        "description": "Optional hints, e.g. 'Source URL: ...', 'Indeed search query: ...'",
+                    },
                 },
                 "required": ["text"],
             },
@@ -999,7 +1118,12 @@ ADD_JOB_TOOLS = [
             "description": "For Indeed job URLs that contain jk= (job id), fetch the embedded job view which often has better content when the main page is JavaScript-heavy. Call this when the URL is Indeed and fetch_page_content returned little or no text.",
             "parameters": {
                 "type": "object",
-                "properties": {"url": {"type": "string", "description": "The Indeed URL (e.g. viewjob or /cmp/.../jobs?jk=...)"}},
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The Indeed URL (e.g. viewjob or /cmp/.../jobs?jk=...)",
+                    }
+                },
                 "required": ["url"],
             },
         },
@@ -1011,7 +1135,9 @@ ADD_JOB_TOOLS = [
             "description": "For BambooHR career URLs (*.bamboohr.com/careers/123), try to get job data from the public list API. Use when the URL looks like a BambooHR careers page.",
             "parameters": {
                 "type": "object",
-                "properties": {"url": {"type": "string", "description": "The BambooHR careers URL"}},
+                "properties": {
+                    "url": {"type": "string", "description": "The BambooHR careers URL"}
+                },
                 "required": ["url"],
             },
         },
@@ -1023,7 +1149,12 @@ ADD_JOB_TOOLS = [
             "description": "Search the web for job title, company name, or role information. Use when you need to fill in missing fields (e.g. company name from a vague page) or disambiguate. Requires TAVILY_API_KEY in .env to work.",
             "parameters": {
                 "type": "object",
-                "properties": {"query": {"type": "string", "description": "Search query (e.g. 'Acme Corp Software Engineer job')"}},
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (e.g. 'Acme Corp Software Engineer job')",
+                    }
+                },
                 "required": ["query"],
             },
         },
@@ -1073,11 +1204,17 @@ def run_add_job_agent(
         if not url_clean.startswith("http"):
             url_clean = "https://" + url_clean
         user_parts.append(f"The user wants to add a job from this URL: {url_clean}")
-        user_parts.append("Fetch the page, extract job details, and use try_indeed_embedded or try_bamboohr_api if the first fetch returns empty or poor content. Then call finalize_proposal with the best job record you can produce.")
+        user_parts.append(
+            "Fetch the page, extract job details, and use try_indeed_embedded or try_bamboohr_api if the first fetch returns empty or poor content. Then call finalize_proposal with the best job record you can produce."
+        )
     elif mode == "file" and file_content and filename:
         raw_text = _extract_text_from_file(file_content, filename or "")
-        user_parts.append(f"The user uploaded a file: {filename}. Extracted text (first 8000 chars):\n{(raw_text or '')[:8000]}")
-        user_parts.append("Run extract_from_text on this text, then call finalize_proposal with the result. If extraction is weak, you can try web_search to fill gaps.")
+        user_parts.append(
+            f"The user uploaded a file: {filename}. Extracted text (first 8000 chars):\n{(raw_text or '')[:8000]}"
+        )
+        user_parts.append(
+            "Run extract_from_text on this text, then call finalize_proposal with the result. If extraction is weak, you can try web_search to fill gaps."
+        )
     elif mode == "manual" and text:
         hints = []
         if location:
@@ -1085,7 +1222,9 @@ def run_add_job_agent(
         if salary_min is not None or salary_max is not None:
             hints.append(f"Salary: {salary_min or '?'} - {salary_max or '?'}")
         user_parts.append(f"The user pasted a job description:\n{(text or '')[:8000]}")
-        user_parts.append("Run extract_from_text with the text and optional hints, then call finalize_proposal. If fields are missing, you can try web_search.")
+        user_parts.append(
+            "Run extract_from_text with the text and optional hints, then call finalize_proposal. If fields are missing, you can try web_search."
+        )
     else:
         return None
 

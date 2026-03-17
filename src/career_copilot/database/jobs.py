@@ -111,9 +111,7 @@ def row_to_job_dict_snippet(row: tuple, description_max_chars: int = 500) -> dic
     return d
 
 
-def get_user_job_by_id(
-    conn: psycopg.Connection, user_id: int, job_id: int
-) -> tuple | None:
+def get_user_job_by_id(conn: psycopg.Connection, user_id: int, job_id: int) -> tuple | None:
     """Fetch a user-added job by id and user_id. Returns DB row or None."""
     with conn.cursor() as cur:
         cur.execute(
@@ -128,9 +126,7 @@ def get_user_job_by_id(
         return cur.fetchone()
 
 
-def list_user_jobs(
-    conn: psycopg.Connection, user_id: int
-) -> list[tuple]:
+def list_user_jobs(conn: psycopg.Connection, user_id: int) -> list[tuple]:
     """List all user-added jobs for a user, newest first. Returns list of rows."""
     with conn.cursor() as cur:
         cur.execute(

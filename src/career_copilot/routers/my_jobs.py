@@ -144,9 +144,7 @@ async def post_my_job_improve_resume_chat(
     )
     if is_initial:
         try:
-            reply = get_initial_resume_analysis(
-                resume_text, job, similar_jobs, similar_resumes
-            )
+            reply = get_initial_resume_analysis(resume_text, job, similar_jobs, similar_resumes)
         except Exception as e:
             return JSONResponse(
                 status_code=500,
