@@ -160,7 +160,7 @@ def search_web_for_company(
         source_list.append((label, link))
 
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
         with DDGS() as ddgs:
             # Dedicated Glassdoor search
@@ -211,7 +211,7 @@ def search_web_for_company(
     except ImportError:
         return {
             "context": (
-                "Web search is not available (install duckduckgo-search: pip install duckduckgo-search). "
+                "Web search is not available (install ddgs: pip install ddgs). "
                 "Preparation will be based on the job description and your resume only."
             ),
             "found_glassdoor": False,

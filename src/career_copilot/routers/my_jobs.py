@@ -21,6 +21,13 @@ from career_copilot.agents.resume_improvement import (
     get_initial_resume_analysis,
 )
 from career_copilot.app_config import templates
+from career_copilot.database.applications import add_application as add_tracked_application
+from career_copilot.database.applications import (
+    get_application_by_key,
+    set_application_history,
+    set_application_last_resume_text,
+    set_application_memory,
+)
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import delete_user_job, get_user_job_by_id, user_job_row_to_dict
 from career_copilot.ingestion.common import html_to_plain_text
@@ -30,6 +37,7 @@ from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, Resu
 router = APIRouter(prefix="/my-jobs", tags=["my_jobs"])
 
 USER_ID = 1
+MAX_STORED_MESSAGES = 20
 
 
 def _get_user_job_dict(conn: psycopg.Connection, job_id: int) -> dict | None:
@@ -133,9 +141,25 @@ async def post_my_job_improve_resume_chat(
             status_code=404,
             content={"reply": "Job not found. Please go back to recommendations."},
         )
+
+    # Ensure this stage shows up in Track applications
+    add_tracked_application(
+        conn,
+        USER_ID,
+        job_id,
+        "user",
+        "resume_improvement",
+        status="active",
+    )
+    conn.commit()
+
+    app_row = get_application_by_key(conn, USER_ID, job_id, "user", "resume_improvement")
+    stored_history = (app_row[6] if app_row else None) or []
+    last_resume_text = app_row[8] if app_row else None
+
     ctx = build_resume_improvement_context_from_job_dict(job, USER_ID, conn)
     conn.close()
-    resume_text = ctx["resume_text"]
+    resume_text = (last_resume_text or "") or ctx["resume_text"]
     similar_jobs = ctx["similar_jobs"]
     similar_resumes = ctx["similar_resumes"]
 
@@ -143,18 +167,21 @@ async def post_my_job_improve_resume_chat(
         not (body.message or "").strip() or (body.message or "").strip().lower() == "initial"
     )
     if is_initial:
-        try:
-            reply = get_initial_resume_analysis(resume_text, job, similar_jobs, similar_resumes)
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={"reply": f"Sorry, I couldn't run the analysis. ({e!s})"},
-            )
+        if stored_history:
+            reply = "Loaded your previous resume-improvement session for this job."
+        else:
+            try:
+                reply = get_initial_resume_analysis(resume_text, job, similar_jobs, similar_resumes)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=500,
+                    content={"reply": f"Sorry, I couldn't run the analysis. ({e!s})"},
+                )
     else:
         try:
             reply = chat_resume_improvement(
                 body.message or "",
-                body.history or [],
+                stored_history,
                 resume_text,
                 job,
                 similar_jobs,
@@ -165,6 +192,59 @@ async def post_my_job_improve_resume_chat(
                 status_code=500,
                 content={"reply": f"Sorry, something went wrong. ({e!s})"},
             )
+
+    # Persist history + last resume text per application
+    try:
+        conn2 = get_db()
+        try:
+            row2 = get_application_by_key(conn2, USER_ID, job_id, "user", "resume_improvement")
+            if row2:
+                app_id2 = int(row2[0])
+                if is_initial and not stored_history:
+                    history_now = [{"role": "assistant", "content": reply}]
+                elif is_initial and stored_history:
+                    history_now = list(stored_history or [])
+                else:
+                    history_now = list(stored_history or []) + [
+                        {"role": "user", "content": (body.message or "").strip()},
+                        {"role": "assistant", "content": reply},
+                    ]
+                set_application_history(conn2, USER_ID, app_id2, history_now)
+                try:
+                    updated_resume = generate_full_resume(
+                        history_now, resume_text, job, similar_jobs, similar_resumes
+                    )
+                except Exception:
+                    updated_resume = None
+                set_application_last_resume_text(conn2, USER_ID, app_id2, updated_resume)
+
+                if len(history_now) > MAX_STORED_MESSAGES:
+                    history_now = history_now[-MAX_STORED_MESSAGES:]
+                    set_application_history(conn2, USER_ID, app_id2, history_now)
+
+                mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
+                mem = {**mem}
+                if updated_resume:
+                    mem["current_resume_text"] = updated_resume
+                if (mem.get("summary") in (None, "")) or (
+                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                ):
+                    try:
+                        from career_copilot.agents.application_memory import update_memory_summary
+
+                        mem["summary"] = update_memory_summary(
+                            prev_summary=str(mem.get("summary") or ""),
+                            stage="resume_improvement",
+                            recent_history=history_now,
+                        )
+                    except Exception:
+                        pass
+                set_application_memory(conn2, USER_ID, app_id2, mem)
+                conn2.commit()
+        finally:
+            conn2.close()
+    except Exception:
+        pass
     return JSONResponse(content={"reply": reply})
 
 
@@ -194,6 +274,17 @@ async def post_my_job_improve_resume_download(
         text = generate_full_resume(history, resume_text, job, similar_jobs, similar_resumes)
     except Exception:
         text = resume_text or ""
+    # Prefer stored last resume for this application if present
+    try:
+        conn2 = get_db()
+        try:
+            row = get_application_by_key(conn2, USER_ID, job_id, "user", "resume_improvement")
+            if row and row[8]:
+                text = row[8]
+        finally:
+            conn2.close()
+    except Exception:
+        pass
     pdf_bytes = build_resume_pdf(text or "")
     filename = f"improved_resume_my_job_{job_id}.pdf"
     return StreamingResponse(
@@ -216,6 +307,21 @@ async def post_my_job_prepare_interview_chat(
             status_code=404,
             content={"reply": "Job not found. Please go back to recommendations."},
         )
+
+    # Ensure this stage shows up in Track applications
+    add_tracked_application(
+        conn,
+        USER_ID,
+        job_id,
+        "user",
+        "interview_preparation",
+        status="active",
+    )
+    conn.commit()
+
+    app_row = get_application_by_key(conn, USER_ID, job_id, "user", "interview_preparation")
+    stored_history = (app_row[6] if app_row else None) or []
+
     ctx = build_interview_prep_context_from_job_dict(job, USER_ID, conn)
     conn.close()
     resume_text = ctx["resume_text"]
@@ -224,18 +330,21 @@ async def post_my_job_prepare_interview_chat(
         not (body.message or "").strip() or (body.message or "").strip().lower() == "initial"
     )
     if is_initial:
-        try:
-            reply = get_initial_interview_message()
-        except Exception as e:
-            return JSONResponse(
-                status_code=500,
-                content={"reply": f"Sorry, I couldn't run the preparation. ({e!s})"},
-            )
+        if stored_history:
+            reply = "Loaded your previous interview-prep session for this job."
+        else:
+            try:
+                reply = get_initial_interview_message()
+            except Exception as e:
+                return JSONResponse(
+                    status_code=500,
+                    content={"reply": f"Sorry, I couldn't run the preparation. ({e!s})"},
+                )
     else:
         try:
             reply = chat_interview_preparation(
                 body.message or "",
-                body.history or [],
+                stored_history,
                 resume_text,
                 job,
             )
@@ -244,4 +353,59 @@ async def post_my_job_prepare_interview_chat(
                 status_code=500,
                 content={"reply": f"Sorry, something went wrong. ({e!s})"},
             )
+
+    # Persist history per application
+    try:
+        conn2 = get_db()
+        try:
+            row2 = get_application_by_key(conn2, USER_ID, job_id, "user", "interview_preparation")
+            if row2:
+                app_id2 = int(row2[0])
+                if is_initial and not stored_history:
+                    history_now = [{"role": "assistant", "content": reply}]
+                elif is_initial and stored_history:
+                    history_now = list(stored_history or [])
+                else:
+                    history_now = list(stored_history or []) + [
+                        {"role": "user", "content": (body.message or "").strip()},
+                        {"role": "assistant", "content": reply},
+                    ]
+                set_application_history(conn2, USER_ID, app_id2, history_now)
+
+                if len(history_now) > MAX_STORED_MESSAGES:
+                    history_now = history_now[-MAX_STORED_MESSAGES:]
+                    set_application_history(conn2, USER_ID, app_id2, history_now)
+
+                mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
+                mem = {**mem}
+                if not mem.get("interview_type") and not is_initial:
+                    try:
+                        from career_copilot.agents.application_memory import (
+                            extract_interview_type_guess,
+                        )
+
+                        guess = extract_interview_type_guess(body.message or "")
+                        if guess:
+                            mem["interview_type"] = guess
+                    except Exception:
+                        pass
+                if (mem.get("summary") in (None, "")) or (
+                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                ):
+                    try:
+                        from career_copilot.agents.application_memory import update_memory_summary
+
+                        mem["summary"] = update_memory_summary(
+                            prev_summary=str(mem.get("summary") or ""),
+                            stage="interview_preparation",
+                            recent_history=history_now,
+                        )
+                    except Exception:
+                        pass
+                set_application_memory(conn2, USER_ID, app_id2, mem)
+                conn2.commit()
+        finally:
+            conn2.close()
+    except Exception:
+        pass
     return JSONResponse(content={"reply": reply})

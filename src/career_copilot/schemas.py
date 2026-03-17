@@ -23,3 +23,10 @@ class InterviewChatRequest(BaseModel):
 
     message: str = ""
     history: list[dict[str, str]] = []
+
+
+class TrackApplicationsChatRequest(BaseModel):
+    """Request body for track applications agent chat."""
+
+    message: str = ""
+    history: list[dict[str, str]] = []
