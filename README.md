@@ -92,29 +92,39 @@ You can also use **Track applications** (`/applications`) to see (and jump back 
 
 ## ML experiments (local MLflow)
 
-This repo includes a small, **bootstrapped ranking baseline** that demonstrates:
+This repo includes a **ranking baseline** with:
 
-- weak supervision labels from embedding similarity \(\{0, 0.5, 1\}\)
-- feature-based Logistic Regression
-- experiment tracking with **local MLflow**
+- **Label**: weak supervision from cosine similarity between *job-summary* and *resume-summary* embeddings (binned to 0, 0.5, 1). The label is not derived from any single feature, so tree/linear models do not see the raw embedding.
+- **Two dataset formats** per version (so you can use the right one per model):
+  - **Similarity dataset** (`mock_similarity_vN.csv`): scalar features only — for **Logistic Regression, XGBoost**, etc.
+  - **Embeddings dataset** (`mock_embeddings_vN.csv`): raw job and resume embedding dimensions + label — for **neural networks**.
+- **Naming**: files are prefixed with `mock_` so that later you can add real user data under different names (e.g. `real_similarity_v1.csv`) and choose by name.
+
+### Features (similarity dataset)
+
+- `title_similarity`, `skill_overlap_count`, `location_match` (0/1), `experience_gap` (years)
+- `salary_match`, `location_km` (distance in km)
+- `skill_similarity`, `role_similarity`, `work_mode_similarity`, `employment_type_similarity`, `preferred_locations_similarity` (intended to be computed from LLM-extracted tags in production; mock data simulates these)
 
 ### Versioned dataset (single source of truth)
 
-Training uses a **versioned dataset** under `data/datasets/ranking/`. Create a new version (once or when you change data), then train pointing at that version.
+Data lives under `data/datasets/ranking/`. Each version writes two files: `mock_similarity_vN.csv` and `mock_embeddings_vN.csv`.
 
-**Create a dataset version** (mock data with weak-supervision labels):
+**Create a mock dataset version** (generates both similarity and embeddings CSVs):
 
 ```bash
 PYTHONPATH=src python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
 # optional: --version v1 to name the version; otherwise v1, v2, ... auto-assigned
 ```
 
-**Train using a dataset version** (logs only `dataset_version` and `dataset_path` in MLflow, not the full CSV):
+**Train (tree/linear)** using the **similarity** dataset:
 
 ```bash
 PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
 # or --dataset-version v1, v2, etc.
 ```
+
+For **neural networks**, load the **embeddings** dataset (e.g. `mock_embeddings_v1.csv`) in your training script; the current CLI trains only on the similarity dataset.
 
 On Windows PowerShell:
 
@@ -124,7 +134,7 @@ python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
 python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
 ```
 
-Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts` (model, confusion matrix). The dataset itself lives in `data/datasets/ranking/` (e.g. `v1.csv`, `v2.csv`, `manifest.json`).
+Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts`. Datasets live in `data/datasets/ranking/` (`mock_similarity_vN.csv`, `mock_embeddings_vN.csv`, `manifest.json`).
 
 ### Run MLflow UI (view experiments)
 
@@ -165,6 +175,7 @@ career_copilot/
 │   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation, track_applications
 │   ├── database/           # db, schema, profiles, jobs, applications, deps
 │   ├── rag/                # Chroma store, embedding, user_embedding
+│   ├── ml/                 # Ranking datasets (ranking_dataset, dataset_store), create_ranking_dataset, train_logreg_mlflow
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
 │   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
 │   ├── resume_io.py        # Resume text extraction (PDF)

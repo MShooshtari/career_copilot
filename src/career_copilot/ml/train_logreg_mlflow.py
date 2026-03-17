@@ -70,12 +70,12 @@ def train_and_log(
         client.create_experiment(name=experiment_name, artifact_location=artifacts_dir.as_uri())
     mlflow.set_experiment(experiment_name)
 
-    df, resolved_version = load(dataset_version)
-    dataset_path = get_path(dataset_version).resolve().as_posix()
+    df, resolved_version = load(dataset_version, kind="similarity")
+    dataset_path = get_path(dataset_version, kind="similarity").resolve().as_posix()
     meta = get_meta(dataset_version)
     label_scheme = meta.get("label_scheme", "weak_supervision_v1")
 
-    # Convert weak labels {0, 0.5, 1} to binary; keep original label as sample weight
+    # Binary target: treat 0.5 and 1.0 as positive (1), 0 as negative (0). Default threshold 0.5.
     y_weak = df["label"].astype(float).to_numpy()
     y = (y_weak >= positive_threshold).astype(int)
     sample_weight = np.clip(y_weak, 0.0, 1.0)
@@ -86,18 +86,31 @@ def train_and_log(
             "Increase --n-rows or adjust --positive-threshold."
         )
 
-    X = df[FEATURE_COLUMNS]
+    # Use only columns present in the dataset (older versions may lack embedding_similarity).
+    feature_cols = [c for c in FEATURE_COLUMNS if c in df.columns]
+    if not feature_cols:
+        raise RuntimeError(f"Dataset has none of the expected features: {FEATURE_COLUMNS}")
+    X = df[feature_cols]
     X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X, y, sample_weight, test_size=test_size, random_state=seed, stratify=y
     )
 
-    numeric_features = [
+    numeric_candidates = [
         "embedding_similarity",
         "title_similarity",
         "skill_overlap_count",
         "experience_gap",
+        "salary_match",
+        "location_km",
+        "skill_similarity",
+        "role_similarity",
+        "work_mode_similarity",
+        "employment_type_similarity",
+        "preferred_locations_similarity",
     ]
-    passthrough_features = ["location_match"]
+    passthrough_candidates = ["location_match"]
+    numeric_features = [f for f in numeric_candidates if f in feature_cols]
+    passthrough_features = [f for f in passthrough_candidates if f in feature_cols]
 
     pre = ColumnTransformer(
         transformers=[
@@ -120,7 +133,7 @@ def train_and_log(
 
     with mlflow.start_run(run_name=run_name):
         mlflow.log_param("model_type", "logistic_regression")
-        mlflow.log_param("features", json.dumps(FEATURE_COLUMNS))
+        mlflow.log_param("features", json.dumps(feature_cols))
         mlflow.log_param("label_scheme", label_scheme)
         mlflow.log_param("dataset_version", resolved_version)
         mlflow.log_param("dataset_path", dataset_path)
@@ -178,7 +191,7 @@ def main() -> None:
         "--positive-threshold",
         type=float,
         default=0.5,
-        help="Binary target is weak_label >= threshold. Use 0.5 to treat weak+strong as positive.",
+        help="Binary target: weak_label >= threshold is class 1. Default 0.5 treats both 0.5 and 1.0 as positive.",
     )
     p.add_argument("--experiment", type=str, default="career-copilot-ranking")
     p.add_argument("--run-name", type=str, default=None)

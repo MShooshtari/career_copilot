@@ -1,3 +1,16 @@
+"""
+Mock ranking dataset for job–resume fit.
+
+Label = weak supervision from cosine similarity between job-summary embedding and
+resume-summary embedding (binned to 0, 0.5, 1). Features are similarity scores and
+other signals—no raw embedding used as feature, so the label is not a direct copy
+of a feature.
+
+Two outputs per run:
+- Similarity dataset: for tree-based / linear models (title_similarity, skill_*, etc.).
+- Embeddings dataset: same rows, raw embedding dimensions + label for neural networks.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,29 +23,23 @@ import pandas as pd
 
 LabelScheme = Literal["weak_supervision_v1"]
 
+# Embedding dimension for mock (job summary + resume summary each d-dimensional).
+MOCK_EMBEDDING_DIM = 16
 
-@dataclass(frozen=True)
-class RankingDataset:
-    """
-    Small, bootstrapped ranking dataset.
-
-    Labels are weak supervision derived from embedding similarity:
-    - similarity > 0.8  -> 1.0 (strong positive)
-    - 0.6..0.8 inclusive -> 0.5 (weak positive)
-    - < 0.6            -> 0.0
-    """
-
-    df: pd.DataFrame
-    label_scheme: LabelScheme
-    dataset_version: str
-
-
+# For tree-based / linear models: embedding similarity + other similarity/scalar features.
 FEATURE_COLUMNS = [
     "embedding_similarity",
     "title_similarity",
     "skill_overlap_count",
     "location_match",
     "experience_gap",
+    "salary_match",
+    "location_km",
+    "skill_similarity",
+    "role_similarity",
+    "work_mode_similarity",
+    "employment_type_similarity",
+    "preferred_locations_similarity",
 ]
 
 
@@ -44,67 +51,110 @@ def _weak_label(similarity: float) -> float:
     return 0.0
 
 
+def _random_unit_vector(rng: np.random.Generator, d: int, size: int) -> np.ndarray:
+    x = rng.standard_normal((size, d))
+    return x / np.linalg.norm(x, axis=1, keepdims=True)
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    return (a * b).sum(axis=1)
+
+
+@dataclass(frozen=True)
+class MockRankingDatasets:
+    """
+    Two datasets from the same mock generation:
+    - similarity_df: similarity-based features + label (for LogReg / tree models).
+    - embeddings_df: job and resume embedding dimensions + label (for NN).
+    """
+
+    similarity_df: pd.DataFrame
+    embeddings_df: pd.DataFrame
+    label_scheme: LabelScheme
+    dataset_version: str
+
+
 def make_mock_ranking_dataset(
     *,
     n_rows: int = 2000,
     seed: int = 7,
     label_scheme: LabelScheme = "weak_supervision_v1",
-) -> RankingDataset:
+    embedding_dim: int = MOCK_EMBEDDING_DIM,
+) -> MockRankingDatasets:
     """
-    Generate a mock dataset with realistic-ish feature correlations.
+    Generate mock data with label = binned cosine similarity between job-summary
+    and resume-summary embeddings. Features are correlated with that signal but
+    do not include that embedding similarity (avoids leakage).
 
-    This is intentionally fake data: it exists to bootstrap a first ranking model
-    and demonstrate experiment tracking and feature engineering.
+    Returns similarity DataFrame and embeddings DataFrame.
     """
     rng = np.random.default_rng(seed)
+    d = embedding_dim
 
-    # Mixture distribution so we *always* have some <0.6 negatives and some strong positives.
-    n_low = max(1, int(0.22 * n_rows))
-    n_mid = max(1, int(0.56 * n_rows))
-    n_high = max(1, n_rows - n_low - n_mid)
-    embedding_similarity = np.concatenate(
-        [
-            rng.beta(2.0, 6.0, size=n_low),   # low-sim tail
-            rng.beta(2.4, 2.4, size=n_mid),   # broad middle
-            rng.beta(6.0, 2.0, size=n_high),  # high-sim tail
-        ]
-    )
-    rng.shuffle(embedding_similarity)
-    title_similarity = np.clip(
-        0.55 * embedding_similarity + rng.normal(0.0, 0.18, size=n_rows), 0.0, 1.0
-    )
+    # Label: similarity between job-summary and resume-summary embeddings (mock).
+    job_emb = _random_unit_vector(rng, d, n_rows)
+    resume_emb = _random_unit_vector(rng, d, n_rows)
+    # Slightly correlate resume with job so we get a spread of similarities.
+    mix = rng.uniform(0.3, 0.95, (n_rows, 1))
+    resume_emb = (resume_emb * (1 - mix) + job_emb * mix)
+    resume_emb = resume_emb / np.linalg.norm(resume_emb, axis=1, keepdims=True)
+    label_sim = np.clip(_cosine_similarity(job_emb, resume_emb), 0.0, 1.0)
+    labels = np.array([_weak_label(float(s)) for s in label_sim], dtype=float)
 
-    # Skill overlap: roughly increases with similarity but with big variance
-    base_skill = (embedding_similarity * 10).astype(int)
-    skill_overlap_count = np.clip(base_skill + rng.integers(-2, 3, size=n_rows), 0, 20)
+    # Features: embedding_similarity (job–resume summary cosine sim) + others correlated with it.
+    t = label_sim
+    title_similarity = np.clip(0.4 * t + 0.3 + rng.normal(0, 0.2, n_rows), 0.0, 1.0)
+    skill_overlap_count = np.clip((t * 12).astype(int) + rng.integers(-2, 3, n_rows), 0, 20)
+    location_match_prob = np.clip(0.2 + 0.6 * t, 0.05, 0.95)
+    location_match = rng.binomial(1, location_match_prob, n_rows).astype(int)
+    experience_gap = np.clip(rng.normal(2.5 - 2.5 * t, 1.2, n_rows), 0, 10)
+    salary_match = np.clip(0.3 + 0.6 * t + rng.normal(0, 0.15, n_rows), 0.0, 1.0)
+    location_km = np.clip(rng.exponential(50 - 35 * t, n_rows), 0, 500)
+    skill_similarity = np.clip(0.35 + 0.5 * t + rng.normal(0, 0.15, n_rows), 0.0, 1.0)
+    role_similarity = np.clip(0.4 + 0.5 * t + rng.normal(0, 0.12, n_rows), 0.0, 1.0)
+    work_mode_similarity = np.clip(0.5 + 0.4 * t + rng.normal(0, 0.1, n_rows), 0.0, 1.0)
+    employment_type_similarity = np.clip(0.45 + 0.45 * t + rng.normal(0, 0.1, n_rows), 0.0, 1.0)
+    preferred_locations_similarity = np.clip(0.3 + 0.55 * t + rng.normal(0, 0.15, n_rows), 0.0, 1.0)
 
-    # Location match: more likely when similarity is higher (proxy for role fit)
-    location_match_prob = np.clip(0.15 + 0.7 * embedding_similarity, 0.05, 0.95)
-    location_match = rng.binomial(1, location_match_prob, size=n_rows).astype(int)
-
-    # Experience gap: smaller gap for better matches, but noisy (years)
-    experience_gap = np.clip(rng.normal(2.2 - 3.0 * embedding_similarity, 1.5, size=n_rows), 0, 12)
-
-    labels = np.array([_weak_label(float(s)) for s in embedding_similarity], dtype=float)
-
-    df = pd.DataFrame(
+    similarity_df = pd.DataFrame(
         {
-            "embedding_similarity": embedding_similarity.astype(float),
+            "embedding_similarity": label_sim.astype(float),
             "title_similarity": title_similarity.astype(float),
             "skill_overlap_count": skill_overlap_count.astype(int),
             "location_match": location_match.astype(int),
             "experience_gap": experience_gap.astype(float),
+            "salary_match": salary_match.astype(float),
+            "location_km": location_km.astype(float),
+            "skill_similarity": skill_similarity.astype(float),
+            "role_similarity": role_similarity.astype(float),
+            "work_mode_similarity": work_mode_similarity.astype(float),
+            "employment_type_similarity": employment_type_similarity.astype(float),
+            "preferred_locations_similarity": preferred_locations_similarity.astype(float),
             "label": labels.astype(float),
         }
     )
 
-    # Stable dataset version hash (content + scheme + seed + n_rows)
+    # Embeddings dataset: flatten job_emb and resume_emb as columns + label.
+    emb_cols = (
+        [f"job_emb_{i}" for i in range(d)]
+        + [f"resume_emb_{i}" for i in range(d)]
+    )
+    emb_data = np.hstack([job_emb, resume_emb])
+    embeddings_df = pd.DataFrame(
+        {c: emb_data[:, i].astype(float) for i, c in enumerate(emb_cols)}
+    )
+    embeddings_df["label"] = labels.astype(float)
+
     hasher = hashlib.sha256()
     hasher.update(label_scheme.encode("utf-8"))
     hasher.update(str(seed).encode("utf-8"))
     hasher.update(str(n_rows).encode("utf-8"))
-    hasher.update(pd.util.hash_pandas_object(df, index=True).values.tobytes())
+    hasher.update(pd.util.hash_pandas_object(similarity_df, index=True).values.tobytes())
     version = hasher.hexdigest()[:16]
 
-    return RankingDataset(df=df, label_scheme=label_scheme, dataset_version=version)
-
+    return MockRankingDatasets(
+        similarity_df=similarity_df,
+        embeddings_df=embeddings_df,
+        label_scheme=label_scheme,
+        dataset_version=version,
+    )
