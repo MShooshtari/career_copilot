@@ -98,14 +98,6 @@ This repo includes a small, **bootstrapped ranking baseline** that demonstrates:
 - feature-based Logistic Regression
 - experiment tracking with **local MLflow**
 
-### Run MLflow UI
-
-```bash
-mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts"
-```
-
-Open the UI at `http://127.0.0.1:5000`.
-
 ### Versioned dataset (single source of truth)
 
 Training uses a **versioned dataset** under `data/datasets/ranking/`. Create a new version (once or when you change data), then train pointing at that version.
@@ -124,9 +116,31 @@ PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version
 # or --dataset-version v1, v2, etc.
 ```
 
-On Windows PowerShell, set `$env:PYTHONPATH="src"` then run the same `python -m ...` commands.
+On Windows PowerShell:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
+python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+```
 
 Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts` (model, confusion matrix). The dataset itself lives in `data/datasets/ranking/` (e.g. `v1.csv`, `v2.csv`, `manifest.json`).
+
+### Run MLflow UI (view experiments)
+
+Start the UI:
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts"
+```
+
+Then open `http://127.0.0.1:5000` and look for:
+
+- **Experiments**: `career-copilot-ranking` (default name)
+- **Runs**: each training run logs params + metrics
+- **Artifacts**:
+  - `model/` (the trained Logistic Regression pipeline)
+  - `eval/confusion_matrix.csv`
 
 ## Job sources (ingestion)
 
