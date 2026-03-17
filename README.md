@@ -11,6 +11,7 @@
 - **My jobs** — View, edit, and manage jobs you’ve added or saved from recommendations
 - **Resume improvement agent** — For a chosen job: RAG-backed chat (similar jobs + similar resumes) and one-click PDF export of the improved resume. The agent can call tools to pull extra similar jobs/resumes from the vector store when it decides more context is useful.
 - **Interview preparation agent** — Structured prep plan for a specific role and company. The agent can call a web-search tool (Glassdoor, Reddit, etc.) to fetch company-specific interview insights and weave them into the guidance.
+- **Track applications** — A simple tracker where each “application” is either **resume improvement** or **interview preparation** for a specific job. Each application keeps **lightweight per-job memory** (last edited resume + compact summary) and only the **last N chat turns** for continuity.
 
 ## Tech stack
 
@@ -18,6 +19,7 @@
 - **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
 - **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement, interview prep, add job)
 - **Optional:** Tavily or SerpAPI for add-job agent web search
+- **Web search (interview prep):** `ddgs` (DuckDuckGo search client)
 
 ## Prerequisites
 
@@ -86,6 +88,8 @@ python scripts/run_web.py
 
 Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in your profile and upload a resume. After saving, use **Recommendations** for jobs ranked by similarity, **Add job** to parse a URL or paste and save to **My jobs**, **Resume improvement** for a chosen role, and **Interview preparation** for a structured prep plan.
 
+You can also use **Track applications** (`/applications`) to see (and jump back into) your resume-improvement and interview-prep sessions. Sessions are stored per job/stage with a compact memory object and only the last N chat turns.
+
 ## Job sources (ingestion)
 
 | Source      | API key | Notes                    |
@@ -106,11 +110,11 @@ career_copilot/
 │   ├── app_config.py       # Paths, Jinja2 templates
 │   ├── schemas.py          # Pydantic request models
 │   ├── utils.py            # Shared helpers
-│   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation
-│   ├── database/           # db, schema, profiles, jobs, deps
+│   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation, track_applications
+│   ├── database/           # db, schema, profiles, jobs, applications, deps
 │   ├── rag/                # Chroma store, embedding, user_embedding
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
-│   ├── agents/             # resume_improvement, interview_preparation, add_job
+│   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
 │   ├── resume_io.py        # Resume text extraction (PDF)
 │   └── resume_pdf.py       # PDF generation for improved resume
 ├── templates/              # Jinja2 HTML (profile, recommendations, job_detail, improve_resume, add_job, my_jobs, interview_prep)
