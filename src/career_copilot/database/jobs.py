@@ -111,6 +111,24 @@ def row_to_job_dict_snippet(row: tuple, description_max_chars: int = 500) -> dic
     return d
 
 
+def list_ingested_jobs_snippet(
+    conn: psycopg.Connection,
+    limit: int = 50,
+) -> list[tuple[int, str, str]]:
+    """List ingested jobs (id, title, company) for agent dropdown, newest first. Returns list of (id, title, company)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, COALESCE(title, 'Job'), COALESCE(company, '')
+            FROM jobs
+            ORDER BY posted_at DESC NULLS LAST, id DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return [(int(r[0]), r[1] or "Job", r[2] or "") for r in cur.fetchall()]
+
+
 def get_user_job_by_id(conn: psycopg.Connection, user_id: int, job_id: int) -> tuple | None:
     """Fetch a user-added job by id and user_id. Returns DB row or None."""
     with conn.cursor() as cur:

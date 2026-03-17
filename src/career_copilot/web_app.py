@@ -17,6 +17,7 @@ from career_copilot.routers import (
     profile,
     recommendations,
     resume_improvement,
+    track_applications,
 )
 
 app = FastAPI(title="Career Copilot - User Profile")
@@ -29,6 +30,7 @@ app.include_router(jobs.router)
 app.include_router(profile.router)
 app.include_router(resume_improvement.router)
 app.include_router(interview_preparation.router)
+app.include_router(track_applications.router)
 
 
 def get_db():
