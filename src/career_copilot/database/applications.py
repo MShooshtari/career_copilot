@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+
 import psycopg
 
 
@@ -222,7 +223,12 @@ def enrich_applications_with_job_info(
     Take list of application rows and return list of dicts with application fields
     plus job title, company, and action_url (link to improve-resume or prepare-interview).
     """
-    from career_copilot.database.jobs import get_job_by_id, get_user_job_by_id, row_to_job_dict, user_job_row_to_dict
+    from career_copilot.database.jobs import (
+        get_job_by_id,
+        get_user_job_by_id,
+        row_to_job_dict,
+        user_job_row_to_dict,
+    )
 
     result: list[dict] = []
     for row in rows:

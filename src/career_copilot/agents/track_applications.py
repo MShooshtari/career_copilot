@@ -10,12 +10,20 @@ from typing import Any
 
 from career_copilot.database.applications import (
     add_application as db_add_application,
+)
+from career_copilot.database.applications import (
+    application_row_to_dict,
     enrich_applications_with_job_info,
+)
+from career_copilot.database.applications import (
     get_application as db_get_application,
+)
+from career_copilot.database.applications import (
     list_applications as db_list_applications,
+)
+from career_copilot.database.applications import (
     remove_application as db_remove_application,
 )
-from career_copilot.database.applications import application_row_to_dict
 from career_copilot.database.jobs import (
     list_ingested_jobs_snippet,
     list_user_jobs,

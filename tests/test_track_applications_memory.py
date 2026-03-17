@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +16,7 @@ def client() -> TestClient:
 
 
 def test_applications_context_endpoint_returns_memory_and_history(client: TestClient) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Row shape:
     # (id, user_id, job_id, job_source, stage, status, history, application_memory, last_resume_text, created_at, updated_at)
     row = (
@@ -60,7 +60,7 @@ def test_resume_improvement_chat_truncates_stored_history_to_last_20(client: Tes
         stored_history.append({"role": "user", "content": f"u{i}"})
         stored_history.append({"role": "assistant", "content": f"a{i}"})
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     app_row = (
         1,
         1,

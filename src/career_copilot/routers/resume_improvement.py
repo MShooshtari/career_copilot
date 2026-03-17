@@ -54,9 +54,7 @@ async def post_resume_improve_chat(
     conn.commit()
 
     app_row = get_application_by_key(conn, USER_ID, job_id, "ingested", "resume_improvement")
-    app_id = int(app_row[0]) if app_row else None
     stored_history = (app_row[6] if app_row else None) or []
-    app_memory = (app_row[7] if app_row else None) or {}
     last_resume_text = app_row[8] if app_row else None
 
     ctx = build_resume_improvement_context(job_id, USER_ID, conn)
