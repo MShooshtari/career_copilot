@@ -9,3 +9,6 @@ __pycache__/
 
 data/
 *.db
+
+# Local ML training scratch artifacts
+artifacts_tmp/

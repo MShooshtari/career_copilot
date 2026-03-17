@@ -90,6 +90,38 @@ Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in 
 
 You can also use **Track applications** (`/applications`) to see (and jump back into) your resume-improvement and interview-prep sessions. Sessions are stored per job/stage with a compact memory object and only the last N chat turns.
 
+## ML experiments (local MLflow)
+
+This repo includes a small, **bootstrapped ranking baseline** that demonstrates:
+
+- weak supervision labels from embedding similarity \(\{0, 0.5, 1\}\)
+- feature-based Logistic Regression
+- experiment tracking with **local MLflow**
+
+### Run MLflow UI
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts"
+```
+
+Open the UI at `http://127.0.0.1:5000`.
+
+### Train baseline and log a run
+
+```bash
+# If you're running from repo root without installing the package:
+PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow
+```
+
+On Windows PowerShell, the equivalent is:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m career_copilot.ml.train_logreg_mlflow
+```
+
+Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts` (model, metrics, confusion matrix, and the mock dataset snapshot).
+
 ## Job sources (ingestion)
 
 | Source      | API key | Notes                    |
