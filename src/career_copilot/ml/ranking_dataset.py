@@ -9,6 +9,8 @@ of a feature.
 Two outputs per run:
 - Similarity dataset: for tree-based / linear models (title_similarity, skill_*, etc.).
 - Embeddings dataset: same rows, raw embedding dimensions + label for neural networks.
+  Embedding groups: job/resume summary, user/company location, preferred locations,
+  titles, LLM-extracted skills, work mode, employment type, preferred roles.
 """
 
 from __future__ import annotations
@@ -23,8 +25,21 @@ import pandas as pd
 
 LabelScheme = Literal["weak_supervision_v1"]
 
-# Embedding dimension for mock (job summary + resume summary each d-dimensional).
+# Embedding dimension for mock (each embedding group is d-dimensional).
 MOCK_EMBEDDING_DIM = 16
+
+# Embedding groups in the embeddings dataset (prefix for columns: {prefix}_0, ..., {prefix}_{d-1}).
+# Pairs are (resume/user side, job/company side) for matching.
+EMBEDDING_GROUPS = [
+    ("job_emb", "resume_emb"),           # job summary, resume summary
+    ("company_location_emb", "user_location_emb"),  # current location
+    ("job_preferred_locations_emb", "user_preferred_locations_emb"),
+    ("job_title_emb", "resume_title_emb"),
+    ("job_preferred_roles_emb", "user_preferred_roles_emb"),
+    ("job_skills_emb", "resume_skills_emb"),         # LLM-extracted skills
+    ("job_work_mode_emb", "resume_work_mode_emb"),
+    ("job_employment_type_emb", "resume_employment_type_emb"),
+]
 
 # For tree-based / linear models: embedding similarity + other similarity/scalar features.
 FEATURE_COLUMNS = [
@@ -64,12 +79,27 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return (a * b).sum(axis=1)
 
 
+def _correlated_pair(
+    rng: np.random.Generator,
+    d: int,
+    n_rows: int,
+    mix: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (a, b) as unit vectors with b = mix*a + (1-mix)*noise so cosine_sim(a,b) ~ mix."""
+    a = _random_unit_vector(rng, d, n_rows)
+    noise = _random_unit_vector(rng, d, n_rows)
+    b = a * mix + noise * (1 - mix)
+    b = b / np.linalg.norm(b, axis=1, keepdims=True)
+    return a, b
+
+
 @dataclass(frozen=True)
 class MockRankingDatasets:
     """
     Two datasets from the same mock generation:
     - similarity_df: similarity-based features + label (for LogReg / tree models).
-    - embeddings_df: job and resume embedding dimensions + label (for NN).
+    - embeddings_df: raw embedding columns for all groups (summary, location, titles,
+      skills, work mode, employment type, preferred roles/locations) + label (for NN).
     """
 
     similarity_df: pd.DataFrame
@@ -98,12 +128,17 @@ def make_mock_ranking_dataset(
     # Label: similarity between job-summary and resume-summary embeddings (mock).
     job_emb = _random_unit_vector(rng, d, n_rows)
     resume_emb = _random_unit_vector(rng, d, n_rows)
-    # Slightly correlate resume with job so we get a spread of similarities.
     mix = rng.uniform(0.3, 0.95, (n_rows, 1))
-    resume_emb = (resume_emb * (1 - mix) + job_emb * mix)
+    resume_emb = resume_emb * (1 - mix) + job_emb * mix
     resume_emb = resume_emb / np.linalg.norm(resume_emb, axis=1, keepdims=True)
     label_sim = np.clip(_cosine_similarity(job_emb, resume_emb), 0.0, 1.0)
     labels = np.array([_weak_label(float(s)) for s in label_sim], dtype=float)
+
+    # All embedding pairs (job/resume or company/user side). First pair = summary; rest correlated with mix.
+    pair_arrays: list[tuple[np.ndarray, np.ndarray]] = [(job_emb, resume_emb)]
+    for _ in range(len(EMBEDDING_GROUPS) - 1):
+        job_side, resume_side = _correlated_pair(rng, d, n_rows, mix)
+        pair_arrays.append((job_side, resume_side))
 
     # Features: embedding_similarity (job–resume summary cosine sim) + others correlated with it.
     t = label_sim
@@ -138,12 +173,15 @@ def make_mock_ranking_dataset(
         }
     )
 
-    # Embeddings dataset: flatten job_emb and resume_emb as columns + label.
-    emb_cols = (
-        [f"job_emb_{i}" for i in range(d)]
-        + [f"resume_emb_{i}" for i in range(d)]
-    )
-    emb_data = np.hstack([job_emb, resume_emb])
+    # Embeddings dataset: all groups flattened as columns (job_*_i, resume_*_i per group) + label.
+    emb_cols: list[str] = []
+    emb_blocks: list[np.ndarray] = []
+    for (job_prefix, resume_prefix), (job_arr, resume_arr) in zip(EMBEDDING_GROUPS, pair_arrays):
+        emb_cols.extend([f"{job_prefix}_{i}" for i in range(d)])
+        emb_cols.extend([f"{resume_prefix}_{i}" for i in range(d)])
+        emb_blocks.append(job_arr)
+        emb_blocks.append(resume_arr)
+    emb_data = np.hstack(emb_blocks)
     embeddings_df = pd.DataFrame(
         {c: emb_data[:, i].astype(float) for i, c in enumerate(emb_cols)}
     )
@@ -153,7 +191,9 @@ def make_mock_ranking_dataset(
     hasher.update(label_scheme.encode("utf-8"))
     hasher.update(str(seed).encode("utf-8"))
     hasher.update(str(n_rows).encode("utf-8"))
+    hasher.update(",".join(EMBEDDING_GROUPS[i][j] for i in range(len(EMBEDDING_GROUPS)) for j in range(2)).encode("utf-8"))
     hasher.update(pd.util.hash_pandas_object(similarity_df, index=True).values.tobytes())
+    hasher.update(pd.util.hash_pandas_object(embeddings_df, index=True).values.tobytes())
     version = hasher.hexdigest()[:16]
 
     return MockRankingDatasets(
