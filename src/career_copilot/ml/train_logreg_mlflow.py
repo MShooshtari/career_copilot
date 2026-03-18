@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 
 import mlflow
@@ -23,19 +24,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from career_copilot.ml.dataset_store import get_meta, get_path, load
-from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
-
-
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _ensure_mlflow_local_store() -> Path:
-    root = _project_root()
-    data_dir = root / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
+from career_copilot.ml.dataset_store import get_data_dir, get_meta, get_path, load
+from career_copilot.ml.ranking_dataset import (
+    FEATURE_COLUMNS,
+    NUMERIC_FEATURE_NAMES,
+    PASSTHROUGH_FEATURE_NAMES,
+)
 
 
 def _save_confusion_matrix(cm: np.ndarray, path: Path) -> None:
@@ -54,7 +48,7 @@ def train_and_log(
     max_iter: int,
     c: float,
 ) -> None:
-    data_dir = _ensure_mlflow_local_store()
+    data_dir = get_data_dir()
 
     # Use a local SQLite backend store (more future-proof than the deprecated filesystem store).
     db_path = (data_dir / "mlflow.db").resolve()
@@ -95,22 +89,8 @@ def train_and_log(
         X, y, sample_weight, test_size=test_size, random_state=seed, stratify=y
     )
 
-    numeric_candidates = [
-        "embedding_similarity",
-        "title_similarity",
-        "skill_overlap_count",
-        "experience_gap",
-        "salary_match",
-        "location_km",
-        "skill_similarity",
-        "role_similarity",
-        "work_mode_similarity",
-        "employment_type_similarity",
-        "preferred_locations_similarity",
-    ]
-    passthrough_candidates = ["location_match"]
-    numeric_features = [f for f in numeric_candidates if f in feature_cols]
-    passthrough_features = [f for f in passthrough_candidates if f in feature_cols]
+    numeric_features = [f for f in NUMERIC_FEATURE_NAMES if f in feature_cols]
+    passthrough_features = [f for f in PASSTHROUGH_FEATURE_NAMES if f in feature_cols]
 
     pre = ColumnTransformer(
         transformers=[
@@ -131,18 +111,23 @@ def train_and_log(
 
     pipe = Pipeline([("pre", pre), ("clf", clf)])
 
+    params = {
+        "model_type": "logistic_regression",
+        "features": json.dumps(feature_cols),
+        "label_scheme": label_scheme,
+        "dataset_version": resolved_version,
+        "dataset_path": dataset_path,
+        "n_rows": len(df),
+        "seed": seed,
+        "test_size": test_size,
+        "positive_threshold": positive_threshold,
+        "max_iter": max_iter,
+        "C": c,
+    }
+
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_param("model_type", "logistic_regression")
-        mlflow.log_param("features", json.dumps(feature_cols))
-        mlflow.log_param("label_scheme", label_scheme)
-        mlflow.log_param("dataset_version", resolved_version)
-        mlflow.log_param("dataset_path", dataset_path)
-        mlflow.log_param("n_rows", len(df))
-        mlflow.log_param("seed", seed)
-        mlflow.log_param("test_size", test_size)
-        mlflow.log_param("positive_threshold", positive_threshold)
-        mlflow.log_param("max_iter", max_iter)
-        mlflow.log_param("C", c)
+        for key, value in params.items():
+            mlflow.log_param(key, value)
 
         pipe.fit(X_train, y_train, clf__sample_weight=w_train)
 
@@ -162,12 +147,10 @@ def train_and_log(
         mlflow.log_metric("recall", float(rec))
         mlflow.log_metric("f1", float(f1))
 
-        # Artifacts
-        artifacts_dir = Path("artifacts_tmp")
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        cm_path = artifacts_dir / "confusion_matrix.csv"
-        _save_confusion_matrix(cm, cm_path)
-        mlflow.log_artifact(str(cm_path), artifact_path="eval")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cm_path = Path(tmpdir) / "confusion_matrix.csv"
+            _save_confusion_matrix(cm, cm_path)
+            mlflow.log_artifact(str(cm_path), artifact_path="eval")
 
         mlflow.sklearn.log_model(
             pipe,

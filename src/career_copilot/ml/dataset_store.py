@@ -38,6 +38,14 @@ def _project_root() -> Path:
     return cwd
 
 
+def get_data_dir() -> Path:
+    """Project data directory (e.g. for MLflow). Creates dir if needed."""
+    root = _project_root()
+    data_dir = root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+
 def _ranking_store_dir() -> Path:
     root = _project_root()
     store = root / "data" / "datasets" / RANKING_STORE_DIR_NAME
@@ -67,6 +75,17 @@ def _write_manifest(manifest: dict) -> None:
         json.dump(manifest, f, indent=2)
 
 
+def _resolve_version(version: str, manifest: dict) -> str:
+    """Resolve 'latest' to concrete version and validate. Raises if not found."""
+    versions = manifest.get("versions", [])
+    if not versions:
+        raise FileNotFoundError("No dataset versions in store. Create one with create_ranking_dataset.")
+    resolved = manifest.get("latest") if version == "latest" else version
+    if resolved not in versions:
+        raise FileNotFoundError(f"Dataset version '{version}' not found. Available: {versions}")
+    return resolved
+
+
 def list_versions() -> list[str]:
     """Return ordered list of dataset versions (oldest first)."""
     manifest = _read_manifest()
@@ -79,12 +98,7 @@ def get_path(version: str, kind: DatasetKind = "similarity") -> Path:
     kind: 'similarity' → mock_similarity_vN.csv, 'embeddings' → mock_embeddings_vN.csv.
     """
     manifest = _read_manifest()
-    versions = manifest.get("versions", [])
-    if not versions:
-        raise FileNotFoundError("No dataset versions in store. Create one with create_ranking_dataset.")
-    resolved = manifest.get("latest") if version == "latest" else version
-    if resolved not in versions:
-        raise FileNotFoundError(f"Dataset version '{version}' not found. Available: {versions}")
+    resolved = _resolve_version(version, manifest)
     prefix = MOCK_SIMILARITY_PREFIX if kind == "similarity" else MOCK_EMBEDDINGS_PREFIX
     return _ranking_store_dir() / f"{prefix}_{resolved}.csv"
 
@@ -103,11 +117,9 @@ def load(version: str = "latest", kind: DatasetKind = "similarity") -> tuple[pd.
 def get_meta(version: str) -> dict:
     """Return metadata for a version (n_rows, label_scheme, created_at). Resolves 'latest'."""
     manifest = _read_manifest()
-    versions = manifest.get("versions", [])
-    if not versions:
-        return {}
-    resolved = manifest.get("latest") if version == "latest" else version
-    if resolved not in versions:
+    try:
+        resolved = _resolve_version(version, manifest)
+    except FileNotFoundError:
         return {}
     return manifest.get("meta", {}).get(resolved, {})
 
@@ -137,7 +149,6 @@ def save_version(
         raise ValueError(f"Version '{version}' already exists. Use a new version or overwrite explicitly.")
 
     n = int(n_rows) if n_rows is not None else len(similarity_df)
-    (store / f"{MOCK_SIMILARITY_PREFIX}_{version}.csv").parent.mkdir(parents=True, exist_ok=True)
     similarity_df.to_csv(store / f"{MOCK_SIMILARITY_PREFIX}_{version}.csv", index=False)
     embeddings_df.to_csv(store / f"{MOCK_EMBEDDINGS_PREFIX}_{version}.csv", index=False)
 

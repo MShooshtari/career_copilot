@@ -42,6 +42,10 @@ FEATURE_COLUMNS = [
     "preferred_locations_similarity",
 ]
 
+# For preprocessing: numeric features get StandardScaler, passthrough stay as-is.
+NUMERIC_FEATURE_NAMES = [c for c in FEATURE_COLUMNS if c != "location_match"]
+PASSTHROUGH_FEATURE_NAMES = ["location_match"] if "location_match" in FEATURE_COLUMNS else []
+
 
 def _weak_label(similarity: float) -> float:
     if similarity > 0.8:
