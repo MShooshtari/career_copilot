@@ -99,4 +99,3 @@ def score_candidates_by_distance(raw_results: list[dict]) -> list[dict]:
 
     scored.sort(key=lambda r: r.get("model_score", 0.0), reverse=True)
     return scored
-
