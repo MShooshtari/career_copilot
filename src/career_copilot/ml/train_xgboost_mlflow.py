@@ -9,9 +9,10 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
-from mlflow.tracking import MlflowClient
 import numpy as np
 import pandas as pd
+import xgboost as xgb
+from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import (
     accuracy_score,
@@ -24,7 +25,6 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-import xgboost as xgb
 
 from career_copilot.ml.dataset_store import get_data_dir, get_meta, get_path, load
 from career_copilot.ml.ranking_dataset import (

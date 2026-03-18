@@ -7,9 +7,9 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
-from mlflow.tracking import MlflowClient
 import numpy as np
 import pandas as pd
+from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (

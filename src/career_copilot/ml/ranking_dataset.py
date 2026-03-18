@@ -22,7 +22,6 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-
 LabelScheme = Literal["weak_supervision_v1"]
 
 # Embedding dimension for mock (each embedding group is d-dimensional).
@@ -176,7 +175,11 @@ def make_mock_ranking_dataset(
     # Embeddings dataset: all groups flattened as columns (job_*_i, resume_*_i per group) + label.
     emb_cols: list[str] = []
     emb_blocks: list[np.ndarray] = []
-    for (job_prefix, resume_prefix), (job_arr, resume_arr) in zip(EMBEDDING_GROUPS, pair_arrays):
+    for (job_prefix, resume_prefix), (job_arr, resume_arr) in zip(
+        EMBEDDING_GROUPS,
+        pair_arrays,
+        strict=False,
+    ):
         emb_cols.extend([f"{job_prefix}_{i}" for i in range(d)])
         emb_cols.extend([f"{resume_prefix}_{i}" for i in range(d)])
         emb_blocks.append(job_arr)

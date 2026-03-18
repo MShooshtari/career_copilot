@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -156,7 +156,7 @@ def save_version(
     meta[version] = {
         "n_rows": n,
         "label_scheme": label_scheme,
-        "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        "created_at": datetime.now(tz=UTC).isoformat(),
     }
     versions = versions + [version]
     manifest["versions"] = versions
