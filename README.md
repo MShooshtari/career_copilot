@@ -90,6 +90,77 @@ Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in 
 
 You can also use **Track applications** (`/applications`) to see (and jump back into) your resume-improvement and interview-prep sessions. Sessions are stored per job/stage with a compact memory object and only the last N chat turns.
 
+## ML experiments (local MLflow)
+
+This repo includes a **ranking baseline** with:
+
+- **Label**: weak supervision from cosine similarity between *job-summary* and *resume-summary* embeddings (binned to 0, 0.5, 1). The label is not derived from any single feature, so tree/linear models do not see the raw embedding.
+- **Two dataset formats** per version (so you can use the right one per model):
+  - **Similarity dataset** (`mock_similarity_vN.csv`): scalar features only — for **Logistic Regression, XGBoost**, etc.
+  - **Embeddings dataset** (`mock_embeddings_vN.csv`): raw job and resume embedding dimensions + label — for **neural networks**.
+- **Naming**: files are prefixed with `mock_` so that later you can add real user data under different names (e.g. `real_similarity_v1.csv`) and choose by name.
+
+### Features (similarity dataset)
+
+- `title_similarity`, `skill_overlap_count`, `location_match` (0/1), `experience_gap` (years)
+- `salary_match`, `location_km` (distance in km)
+- `skill_similarity`, `role_similarity`, `work_mode_similarity`, `employment_type_similarity`, `preferred_locations_similarity` (intended to be computed from LLM-extracted tags in production; mock data simulates these)
+
+### Versioned dataset (single source of truth)
+
+Data lives under `data/datasets/ranking/`. Each version writes two files: `mock_similarity_vN.csv` and `mock_embeddings_vN.csv`.
+
+**Create a mock dataset version** (generates both similarity and embeddings CSVs):
+
+```bash
+PYTHONPATH=src python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
+# optional: --version v1 to name the version; otherwise v1, v2, ... auto-assigned
+```
+
+**Train (tree/linear)** using the **similarity** dataset:
+
+```bash
+PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+# or --dataset-version v1, v2, etc.
+```
+
+For **neural networks**, load the **embeddings** dataset (e.g. `mock_embeddings_v1.csv`) in your training script; the current CLI trains only on the similarity dataset.
+
+On Windows PowerShell (set `PYTHONPATH` once per terminal session, then run any of the commands below):
+
+```powershell
+$env:PYTHONPATH="src"
+python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
+python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+python -m career_copilot.ml.train_xgboost_mlflow --dataset-version latest --run-name xgboost-baseline
+```
+
+If you see `ModuleNotFoundError: No module named 'career_copilot'`, run `$env:PYTHONPATH="src"` in the same terminal first, or install the package in editable mode from the repo root: `pip install -e .`
+
+Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts`. Datasets live in `data/datasets/ranking/` (`mock_similarity_vN.csv`, `mock_embeddings_vN.csv`, `manifest.json`).
+
+### Run MLflow UI (view experiments)
+
+Start the UI:
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts"
+```
+
+On **Windows**, use a single worker to avoid `OSError: [WinError 10022]` (uvicorn multiprocess socket issue):
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts" --workers 1
+```
+
+Then open `http://127.0.0.1:5000` and look for:
+
+- **Experiments**: `career-copilot-ranking` (default name)
+- **Runs**: each training run logs params + metrics
+- **Artifacts**:
+  - `model/` (the trained Logistic Regression pipeline)
+  - `eval/confusion_matrix.csv`
+
 ## Job sources (ingestion)
 
 | Source      | API key | Notes                    |
@@ -113,6 +184,7 @@ career_copilot/
 │   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation, track_applications
 │   ├── database/           # db, schema, profiles, jobs, applications, deps
 │   ├── rag/                # Chroma store, embedding, user_embedding
+│   ├── ml/                 # Ranking datasets (ranking_dataset, dataset_store), create_ranking_dataset, train_logreg_mlflow
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
 │   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
 │   ├── resume_io.py        # Resume text extraction (PDF)
