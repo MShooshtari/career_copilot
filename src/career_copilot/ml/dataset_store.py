@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -20,7 +21,21 @@ MOCK_EMBEDDINGS_PREFIX = "mock_embeddings"
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    """Project root (career_copilot repo). Env CAREER_COPILOT_PROJECT_ROOT overrides."""
+    env_root = os.environ.get("CAREER_COPILOT_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    cwd = Path.cwd().resolve()
+    if (cwd / "pyproject.toml").exists():
+        return cwd
+    p = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (p / "pyproject.toml").exists():
+            return p
+        if p.parent == p:
+            break
+        p = p.parent
+    return cwd
 
 
 def _ranking_store_dir() -> Path:
@@ -28,6 +43,11 @@ def _ranking_store_dir() -> Path:
     store = root / "data" / "datasets" / RANKING_STORE_DIR_NAME
     store.mkdir(parents=True, exist_ok=True)
     return store
+
+
+def get_store_dir() -> Path:
+    """Return the ranking dataset store directory (for CLI / debugging)."""
+    return _ranking_store_dir()
 
 
 def _manifest_path() -> Path:

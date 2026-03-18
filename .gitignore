@@ -12,3 +12,4 @@ data/
 
 # Local ML training scratch artifacts
 artifacts_tmp/
+.last_ranking_dataset.txt
