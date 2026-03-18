@@ -37,9 +37,20 @@ async def get_recommendations(
     raw = get_recommended_job_results(user_id=USER_ID, n_results=100)
     raw = score_candidates_by_distance(raw)
     id_map = resolve_job_ids(conn, raw)
+    # Only keep the top window after ranking (pagination is within this window).
+    raw = raw[:15]
     jobs_online = format_recommendation_jobs(raw, id_map)
     conn.close()
     total_online = len(jobs_online)
+
+    # Clamp page to the available window.
+    if total_online <= 0:
+        page = 1
+    else:
+        total_pages = (total_online // page_size) + (1 if total_online % page_size else 0)
+        if page > total_pages:
+            page = total_pages
+
     start = (page - 1) * page_size
     end = start + page_size
     jobs_online_page = jobs_online[start:end]
