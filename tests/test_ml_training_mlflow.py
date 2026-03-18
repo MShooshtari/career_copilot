@@ -269,4 +269,3 @@ def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypat
     msg = str(excinfo.value)
     assert "single class after thresholding" in msg
     assert "positive-threshold" in msg
-

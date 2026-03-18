@@ -30,12 +30,12 @@ MOCK_EMBEDDING_DIM = 16
 # Embedding groups in the embeddings dataset (prefix for columns: {prefix}_0, ..., {prefix}_{d-1}).
 # Pairs are (resume/user side, job/company side) for matching.
 EMBEDDING_GROUPS = [
-    ("job_emb", "resume_emb"),           # job summary, resume summary
+    ("job_emb", "resume_emb"),  # job summary, resume summary
     ("company_location_emb", "user_location_emb"),  # current location
     ("job_preferred_locations_emb", "user_preferred_locations_emb"),
     ("job_title_emb", "resume_title_emb"),
     ("job_preferred_roles_emb", "user_preferred_roles_emb"),
-    ("job_skills_emb", "resume_skills_emb"),         # LLM-extracted skills
+    ("job_skills_emb", "resume_skills_emb"),  # LLM-extracted skills
     ("job_work_mode_emb", "resume_work_mode_emb"),
     ("job_employment_type_emb", "resume_employment_type_emb"),
 ]
@@ -185,16 +185,18 @@ def make_mock_ranking_dataset(
         emb_blocks.append(job_arr)
         emb_blocks.append(resume_arr)
     emb_data = np.hstack(emb_blocks)
-    embeddings_df = pd.DataFrame(
-        {c: emb_data[:, i].astype(float) for i, c in enumerate(emb_cols)}
-    )
+    embeddings_df = pd.DataFrame({c: emb_data[:, i].astype(float) for i, c in enumerate(emb_cols)})
     embeddings_df["label"] = labels.astype(float)
 
     hasher = hashlib.sha256()
     hasher.update(label_scheme.encode("utf-8"))
     hasher.update(str(seed).encode("utf-8"))
     hasher.update(str(n_rows).encode("utf-8"))
-    hasher.update(",".join(EMBEDDING_GROUPS[i][j] for i in range(len(EMBEDDING_GROUPS)) for j in range(2)).encode("utf-8"))
+    hasher.update(
+        ",".join(
+            EMBEDDING_GROUPS[i][j] for i in range(len(EMBEDDING_GROUPS)) for j in range(2)
+        ).encode("utf-8")
+    )
     hasher.update(pd.util.hash_pandas_object(similarity_df, index=True).values.tobytes())
     hasher.update(pd.util.hash_pandas_object(embeddings_df, index=True).values.tobytes())
     version = hasher.hexdigest()[:16]

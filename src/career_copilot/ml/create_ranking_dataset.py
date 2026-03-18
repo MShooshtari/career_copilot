@@ -20,7 +20,9 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Create a versioned mock ranking dataset (similarity + embeddings) in data/datasets/ranking/."
     )
-    p.add_argument("--version", type=str, default=None, help="Version label (e.g. v1, v2). Auto if not set.")
+    p.add_argument(
+        "--version", type=str, default=None, help="Version label (e.g. v1, v2). Auto if not set."
+    )
     p.add_argument("--n-rows", type=int, default=2000)
     p.add_argument("--seed", type=int, default=7)
     p.add_argument(
@@ -33,6 +35,7 @@ def main() -> None:
 
     if args.output_dir:
         import os
+
         os.environ["CAREER_COPILOT_PROJECT_ROOT"] = args.output_dir
 
     store_dir = get_store_dir().resolve()
@@ -60,7 +63,10 @@ def main() -> None:
     # Write paths to a file in cwd so you can see where files went
     try:
         marker = Path.cwd().resolve() / ".last_ranking_dataset.txt"
-        marker.write_text(f"version={version}\nstore={store_dir}\nsimilarity={sim_path}\nembeddings={emb_path}\n", encoding="utf-8")
+        marker.write_text(
+            f"version={version}\nstore={store_dir}\nsimilarity={sim_path}\nembeddings={emb_path}\n",
+            encoding="utf-8",
+        )
         _log(f"Paths written to: {marker}")
     except Exception:
         pass

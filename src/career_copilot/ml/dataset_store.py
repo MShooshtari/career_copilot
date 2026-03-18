@@ -79,7 +79,9 @@ def _resolve_version(version: str, manifest: dict) -> str:
     """Resolve 'latest' to concrete version and validate. Raises if not found."""
     versions = manifest.get("versions", [])
     if not versions:
-        raise FileNotFoundError("No dataset versions in store. Create one with create_ranking_dataset.")
+        raise FileNotFoundError(
+            "No dataset versions in store. Create one with create_ranking_dataset."
+        )
     resolved = manifest.get("latest") if version == "latest" else version
     if resolved not in versions:
         raise FileNotFoundError(f"Dataset version '{version}' not found. Available: {versions}")
@@ -109,7 +111,9 @@ def load(version: str = "latest", kind: DatasetKind = "similarity") -> tuple[pd.
     kind: 'similarity' for tree/linear models, 'embeddings' for neural networks.
     """
     path = get_path(version, kind=kind)
-    resolved = path.stem.replace(f"{MOCK_SIMILARITY_PREFIX}_", "").replace(f"{MOCK_EMBEDDINGS_PREFIX}_", "")
+    resolved = path.stem.replace(f"{MOCK_SIMILARITY_PREFIX}_", "").replace(
+        f"{MOCK_EMBEDDINGS_PREFIX}_", ""
+    )
     df = pd.read_csv(path)
     return df, resolved
 
@@ -146,7 +150,9 @@ def save_version(
         version = f"v{n}"
 
     if version in versions:
-        raise ValueError(f"Version '{version}' already exists. Use a new version or overwrite explicitly.")
+        raise ValueError(
+            f"Version '{version}' already exists. Use a new version or overwrite explicitly."
+        )
 
     n = int(n_rows) if n_rows is not None else len(similarity_df)
     similarity_df.to_csv(store / f"{MOCK_SIMILARITY_PREFIX}_{version}.csv", index=False)
