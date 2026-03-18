@@ -302,6 +302,16 @@
         {% if jobs_online %}
         <section class="job-section">
             <h2 class="section-title">Recommended from the web</h2>
+            <form method="get" action="/recommendations" style="margin-bottom: 12px; display:flex; align-items:center; gap:8px; font-size:13px; color: var(--text-muted);">
+                <span>Show</span>
+                <select name="page_size" onchange="this.form.submit()" style="background: var(--card-bg); color: var(--text-main); border-radius: 8px; border: 1px solid var(--border-subtle); padding: 4px 8px; font-size: 13px;">
+                    <option value="5" {% if page_size == 5 %}selected{% endif %}>Top 5</option>
+                    <option value="10" {% if page_size == 10 %}selected{% endif %}>Top 10</option>
+                    <option value="15" {% if page_size == 15 %}selected{% endif %}>Top 15</option>
+                </select>
+                <span>matches (page {{ page }} of {{ (total_online // page_size) + (1 if total_online % page_size else 0) }}).</span>
+                <input type="hidden" name="page" value="{{ page }}" />
+            </form>
             <div class="job-list">
                 {% for job in jobs_online %}
                 <article class="job-card">
@@ -345,6 +355,15 @@
                     </div>
                 </article>
                 {% endfor %}
+            </div>
+            <div style="margin-top: 12px; display:flex; justify-content: flex-end; gap:8px; font-size:13px;">
+                {% set total_pages = (total_online // page_size) + (1 if total_online % page_size else 0) %}
+                {% if page > 1 %}
+                <a href="/recommendations?page={{ page - 1 }}&page_size={{ page_size }}" style="color: var(--accent); text-decoration:none; padding:4px 10px; border-radius:8px; border:1px solid var(--border-subtle); background: rgba(15,23,42,0.8);">Previous</a>
+                {% endif %}
+                {% if page < total_pages %}
+                <a href="/recommendations?page={{ page + 1 }}&page_size={{ page_size }}" style="color: var(--accent); text-decoration:none; padding:4px 10px; border-radius:8px; border:1px solid var(--border-subtle); background: rgba(15,23,42,0.8);">Next</a>
+                {% endif %}
             </div>
         </section>
         {% endif %}
