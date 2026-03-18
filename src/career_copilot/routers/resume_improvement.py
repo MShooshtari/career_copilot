@@ -15,6 +15,11 @@ from career_copilot.agents.resume_improvement import (
     generate_full_resume,
     get_initial_resume_analysis,
 )
+from career_copilot.constants import (
+    APPLICATION_CHAT_MAX_STORED_MESSAGES,
+    APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
+    DEFAULT_USER_ID,
+)
 from career_copilot.database.applications import add_application as add_tracked_application
 from career_copilot.database.applications import (
     get_application_by_key,
@@ -28,8 +33,8 @@ from career_copilot.schemas import ResumeChatRequest, ResumePdfRequest
 
 router = APIRouter(tags=["resume_improvement"])
 
-USER_ID = 1
-MAX_STORED_MESSAGES = 20
+USER_ID = DEFAULT_USER_ID
+MAX_STORED_MESSAGES = APPLICATION_CHAT_MAX_STORED_MESSAGES
 
 
 @router.post("/jobs/{job_id:int}/improve-resume/chat")
@@ -143,7 +148,8 @@ async def post_resume_improve_chat(
                     mem["current_resume_text"] = updated_resume
                 # Refresh summary periodically (cheap, compact memory)
                 if (mem.get("summary") in (None, "")) or (
-                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                    len(history_now) >= APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES
+                    and len(history_now) % APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES == 0
                 ):
                     try:
                         from career_copilot.agents.application_memory import update_memory_summary

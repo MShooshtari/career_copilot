@@ -21,6 +21,12 @@ from career_copilot.agents.resume_improvement import (
     get_initial_resume_analysis,
 )
 from career_copilot.app_config import templates
+from career_copilot.constants import (
+    APPLICATION_CHAT_MAX_STORED_MESSAGES,
+    APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
+    DEFAULT_USER_ID,
+    JOB_DESCRIPTION_SNIPPET_MAX_CHARS,
+)
 from career_copilot.database.applications import add_application as add_tracked_application
 from career_copilot.database.applications import (
     get_application_by_key,
@@ -36,8 +42,8 @@ from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, Resu
 
 router = APIRouter(prefix="/my-jobs", tags=["my_jobs"])
 
-USER_ID = 1
-MAX_STORED_MESSAGES = 20
+USER_ID = DEFAULT_USER_ID
+MAX_STORED_MESSAGES = APPLICATION_CHAT_MAX_STORED_MESSAGES
 
 
 def _get_user_job_dict(conn: psycopg.Connection, job_id: int) -> dict | None:
@@ -88,8 +94,8 @@ async def get_my_job_improve_resume(
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
-    desc = (job.get("description") or "")[:500]
-    if len(job.get("description") or "") > 500:
+    desc = (job.get("description") or "")[:JOB_DESCRIPTION_SNIPPET_MAX_CHARS]
+    if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}
     return templates.TemplateResponse(
         "improve_resume.html",
@@ -113,8 +119,8 @@ async def get_my_job_prepare_interview(
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
-    desc = (job.get("description") or "")[:500]
-    if len(job.get("description") or "") > 500:
+    desc = (job.get("description") or "")[:JOB_DESCRIPTION_SNIPPET_MAX_CHARS]
+    if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}
     return templates.TemplateResponse(
         "prepare_interview.html",
@@ -227,7 +233,8 @@ async def post_my_job_improve_resume_chat(
                 if updated_resume:
                     mem["current_resume_text"] = updated_resume
                 if (mem.get("summary") in (None, "")) or (
-                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                    len(history_now) >= APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES
+                    and len(history_now) % APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES == 0
                 ):
                     try:
                         from career_copilot.agents.application_memory import update_memory_summary
@@ -390,7 +397,8 @@ async def post_my_job_prepare_interview_chat(
                     except Exception:
                         pass
                 if (mem.get("summary") in (None, "")) or (
-                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                    len(history_now) >= APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES
+                    and len(history_now) % APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES == 0
                 ):
                     try:
                         from career_copilot.agents.application_memory import update_memory_summary
