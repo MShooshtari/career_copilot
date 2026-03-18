@@ -5,7 +5,10 @@
 ## Features
 
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
-- **Job recommendations** — Top jobs by vector similarity to your profile (resume + preferences) via Chroma + OpenAI embeddings
+- **Job recommendations (two-stage)** — Candidate retrieval + ranking:
+  - **Candidate retrieval**: fetch a larger candidate pool from Chroma (e.g. top 100 by vector similarity to your profile).
+  - **Ranking**: re-rank those candidates (optionally via an MLflow-configured model) and **only show the top X** results (default **15**, paginated within that window).
+  - **Tuning**: adjust recommendation knobs (candidate pool size, top-X window, default page sizes) in `src/career_copilot/constants.py`.
 - **Job detail** — View full job description, skills, and salary
 - **Add job agent** — Paste a job URL or raw text; the agent extracts title, company, location, salary, description, and skills. Optional web search (Tavily or SerpAPI) fills in missing fields. Save the result to **My jobs**.
 - **My jobs** — View, edit, and manage jobs you’ve added or saved from recommendations
@@ -86,7 +89,7 @@ python scripts/run_rag_index.py
 python scripts/run_web.py
 ```
 
-Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in your profile and upload a resume. After saving, use **Recommendations** for jobs ranked by similarity, **Add job** to parse a URL or paste and save to **My jobs**, **Resume improvement** for a chosen role, and **Interview preparation** for a structured prep plan.
+Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in your profile and upload a resume. After saving, use **Recommendations** to (1) retrieve a candidate pool from the vector store and (2) rank it, showing only the **top X** results, **Add job** to parse a URL or paste and save to **My jobs**, **Resume improvement** for a chosen role, and **Interview preparation** for a structured prep plan.
 
 You can also use **Track applications** (`/applications`) to see (and jump back into) your resume-improvement and interview-prep sessions. Sessions are stored per job/stage with a compact memory object and only the last N chat turns.
 
