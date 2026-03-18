@@ -10,13 +10,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from career_copilot.agents.add_job import run_add_job_agent
 from career_copilot.app_config import templates
+from career_copilot.constants import DEFAULT_USER_ID
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import insert_user_job
 from career_copilot.ingestion.common import html_to_plain_text
 
 router = APIRouter(tags=["add_job"])
 
-USER_ID = 1
+USER_ID = DEFAULT_USER_ID
 
 
 @router.get("/add-job", response_class=HTMLResponse)

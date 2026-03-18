@@ -21,11 +21,16 @@ from career_copilot.database.applications import (
 )
 from career_copilot.database.deps import get_db
 from career_copilot.schemas import InterviewChatRequest
+from career_copilot.constants import (
+    DEFAULT_USER_ID,
+    INTERVIEW_PREP_MAX_STORED_MESSAGES,
+    INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES,
+)
 
 router = APIRouter(tags=["interview_preparation"])
 
-USER_ID = 1
-MAX_STORED_MESSAGES = 20
+USER_ID = DEFAULT_USER_ID
+MAX_STORED_MESSAGES = INTERVIEW_PREP_MAX_STORED_MESSAGES
 
 
 @router.post("/jobs/{job_id:int}/prepare-interview/chat")
@@ -133,7 +138,8 @@ async def post_prepare_interview_chat(
                     except Exception:
                         pass
                 if (mem.get("summary") in (None, "")) or (
-                    len(history_now) >= 8 and len(history_now) % 8 == 0
+                    len(history_now) >= INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES
+                    and len(history_now) % INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES == 0
                 ):
                     try:
                         from career_copilot.agents.application_memory import update_memory_summary

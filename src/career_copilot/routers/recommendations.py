@@ -9,6 +9,15 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from career_copilot.app_config import templates
+from career_copilot.constants import (
+    DEFAULT_USER_ID,
+    RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
+    RECOMMENDATIONS_CANDIDATE_POOL_SIZE,
+    RECOMMENDATIONS_DEFAULT_PAGE_SIZE,
+    RECOMMENDATIONS_MAX_PAGE_SIZE,
+    RECOMMENDATIONS_PAGE_SIZE_OPTIONS,
+    RECOMMENDATIONS_RERANK_WINDOW_SIZE,
+)
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import (
     format_recommendation_jobs,
@@ -21,7 +30,7 @@ from career_copilot.rag.chroma_store import get_recommended_job_results
 
 router = APIRouter(tags=["recommendations"])
 
-USER_ID = 1
+USER_ID = DEFAULT_USER_ID
 
 
 @router.get("/recommendations", response_class=HTMLResponse)
@@ -29,16 +38,21 @@ async def get_recommendations(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(5, ge=1, le=50),
+    page_size: int = Query(
+        RECOMMENDATIONS_DEFAULT_PAGE_SIZE, ge=1, le=RECOMMENDATIONS_MAX_PAGE_SIZE
+    ),
 ) -> HTMLResponse:
     """Candidate retrieval: user-added jobs plus top 100 jobs by similarity to profile."""
     user_rows = list_user_jobs(conn, USER_ID)
     jobs_added = format_user_jobs_for_recommendations(user_rows)
-    raw = get_recommended_job_results(user_id=USER_ID, n_results=100)
+    raw = get_recommended_job_results(
+        user_id=USER_ID,
+        n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
+    )
     raw = score_candidates_by_distance(raw)
     id_map = resolve_job_ids(conn, raw)
     # Only keep the top window after ranking (pagination is within this window).
-    raw = raw[:15]
+    raw = raw[:RECOMMENDATIONS_RERANK_WINDOW_SIZE]
     jobs_online = format_recommendation_jobs(raw, id_map)
     conn.close()
     total_online = len(jobs_online)
@@ -64,6 +78,7 @@ async def get_recommendations(
             "total_online": total_online,
             "page": page,
             "page_size": page_size,
+            "page_size_options": RECOMMENDATIONS_PAGE_SIZE_OPTIONS,
             "user_id": USER_ID,
         },
     )

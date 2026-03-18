@@ -5,13 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from career_copilot.constants import (
+    DEFAULT_USER_ID,
+    RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
+    RAG_JOB_DOC_MAX_CHARS,
+    RAG_JOB_UPSERT_BATCH_SIZE,
+    RAG_SIMILAR_JOBS_N_RESULTS,
+    RAG_SIMILAR_RESUMES_N_RESULTS,
+)
 from career_copilot.ingestion.common import NormalizedJob
 from career_copilot.rag.embedding import get_embedding_function
 
 # OpenAI allows max 300k tokens per request; batch to stay under that
 # ~4 chars/token → cap doc length and batch size
-JOB_DOC_MAX_CHARS = 6_000
-JOB_UPSERT_BATCH_SIZE = 50
+JOB_DOC_MAX_CHARS = RAG_JOB_DOC_MAX_CHARS
+JOB_UPSERT_BATCH_SIZE = RAG_JOB_UPSERT_BATCH_SIZE
 
 
 def _job_to_document(job: NormalizedJob, max_chars: int = JOB_DOC_MAX_CHARS) -> str:
@@ -141,8 +149,8 @@ def index_jobs_into_chroma(
 
 def get_recommended_job_results(
     *,
-    user_id: int = 1,
-    n_results: int = 100,
+    user_id: int = DEFAULT_USER_ID,
+    n_results: int = RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     persist_path: str | Path | None = None,
     jobs_collection_name: str = "jobs",
     user_profiles_collection_name: str = "user_profiles",
@@ -248,7 +256,7 @@ def get_recommended_job_results(
 def get_similar_jobs_for_resume_improvement(
     job_document: str,
     *,
-    n_results: int = 5,
+    n_results: int = RAG_SIMILAR_JOBS_N_RESULTS,
     persist_path: str | Path | None = None,
     jobs_collection_name: str = "jobs",
 ) -> list[dict[str, Any]]:
@@ -315,7 +323,7 @@ def get_similar_resumes_for_resume_improvement(
     job_document: str,
     *,
     exclude_user_id: int | None = None,
-    n_results: int = 5,
+    n_results: int = RAG_SIMILAR_RESUMES_N_RESULTS,
     persist_path: str | Path | None = None,
     user_profiles_collection_name: str = "user_profiles",
 ) -> list[dict[str, Any]]:

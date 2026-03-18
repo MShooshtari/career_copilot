@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from career_copilot.agents.track_applications import chat_track_applications
 from career_copilot.app_config import templates
+from career_copilot.constants import DEFAULT_USER_ID
 from career_copilot.database.applications import (
     enrich_applications_with_job_info,
     get_application_by_key,
@@ -21,7 +22,7 @@ from career_copilot.schemas import TrackApplicationsChatRequest
 
 router = APIRouter(prefix="/applications", tags=["track_applications"])
 
-USER_ID = 1
+USER_ID = DEFAULT_USER_ID
 
 
 @router.get("", response_class=HTMLResponse)

@@ -305,9 +305,9 @@
             <form method="get" action="/recommendations" style="margin-bottom: 12px; display:flex; align-items:center; gap:8px; font-size:13px; color: var(--text-muted);">
                 <span>Show</span>
                 <select name="page_size" onchange="this.form.submit()" style="background: var(--card-bg); color: var(--text-main); border-radius: 8px; border: 1px solid var(--border-subtle); padding: 4px 8px; font-size: 13px;">
-                    <option value="5" {% if page_size == 5 %}selected{% endif %}>Top 5</option>
-                    <option value="10" {% if page_size == 10 %}selected{% endif %}>Top 10</option>
-                    <option value="15" {% if page_size == 15 %}selected{% endif %}>Top 15</option>
+                    {% for opt in page_size_options %}
+                    <option value="{{ opt }}" {% if page_size == opt %}selected{% endif %}>Top {{ opt }}</option>
+                    {% endfor %}
                 </select>
                 <span>matches (page {{ page }} of {{ (total_online // page_size) + (1 if total_online % page_size else 0) }}).</span>
                 <input type="hidden" name="page" value="{{ page }}" />
