@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from functools import lru_cache
-from typing import Any, Iterable
-
 import os
+from collections.abc import Iterable
+from functools import lru_cache
+from typing import Any
 
 import mlflow
 import mlflow.sklearn
@@ -57,7 +57,7 @@ def _build_feature_frame_from_distances(
             # Convert distance (lower is better) to a bounded similarity signal.
             embedding_similarity = float(1.0 / (1.0 + max(dist, 0.0)))
 
-        row = {name: 0.0 for name in FEATURE_COLUMNS}
+        row = dict.fromkeys(FEATURE_COLUMNS, 0.0)
         if "embedding_similarity" in row:
             row["embedding_similarity"] = embedding_similarity
         rows.append(row)

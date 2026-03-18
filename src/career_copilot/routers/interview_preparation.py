@@ -13,6 +13,11 @@ from career_copilot.agents.interview_preparation import (
     chat_interview_preparation,
     get_initial_interview_message,
 )
+from career_copilot.constants import (
+    DEFAULT_USER_ID,
+    INTERVIEW_PREP_MAX_STORED_MESSAGES,
+    INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES,
+)
 from career_copilot.database.applications import add_application as add_tracked_application
 from career_copilot.database.applications import (
     get_application_by_key,
@@ -21,11 +26,6 @@ from career_copilot.database.applications import (
 )
 from career_copilot.database.deps import get_db
 from career_copilot.schemas import InterviewChatRequest
-from career_copilot.constants import (
-    DEFAULT_USER_ID,
-    INTERVIEW_PREP_MAX_STORED_MESSAGES,
-    INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES,
-)
 
 router = APIRouter(tags=["interview_preparation"])
 

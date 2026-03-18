@@ -21,6 +21,12 @@ from career_copilot.agents.resume_improvement import (
     get_initial_resume_analysis,
 )
 from career_copilot.app_config import templates
+from career_copilot.constants import (
+    APPLICATION_CHAT_MAX_STORED_MESSAGES,
+    APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
+    DEFAULT_USER_ID,
+    JOB_DESCRIPTION_SNIPPET_MAX_CHARS,
+)
 from career_copilot.database.applications import add_application as add_tracked_application
 from career_copilot.database.applications import (
     get_application_by_key,
@@ -31,12 +37,6 @@ from career_copilot.database.applications import (
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import delete_user_job, get_user_job_by_id, user_job_row_to_dict
 from career_copilot.ingestion.common import html_to_plain_text
-from career_copilot.constants import (
-    APPLICATION_CHAT_MAX_STORED_MESSAGES,
-    APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
-    DEFAULT_USER_ID,
-    JOB_DESCRIPTION_SNIPPET_MAX_CHARS,
-)
 from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, ResumePdfRequest
 
