@@ -126,13 +126,16 @@ PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version
 
 For **neural networks**, load the **embeddings** dataset (e.g. `mock_embeddings_v1.csv`) in your training script; the current CLI trains only on the similarity dataset.
 
-On Windows PowerShell:
+On Windows PowerShell (set `PYTHONPATH` once per terminal session, then run any of the commands below):
 
 ```powershell
 $env:PYTHONPATH="src"
 python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
 python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+python -m career_copilot.ml.train_xgboost_mlflow --dataset-version latest --run-name xgboost-baseline
 ```
+
+If you see `ModuleNotFoundError: No module named 'career_copilot'`, run `$env:PYTHONPATH="src"` in the same terminal first, or install the package in editable mode from the repo root: `pip install -e .`
 
 Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts`. Datasets live in `data/datasets/ranking/` (`mock_similarity_vN.csv`, `mock_embeddings_vN.csv`, `manifest.json`).
 
@@ -142,6 +145,12 @@ Start the UI:
 
 ```bash
 mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts"
+```
+
+On **Windows**, use a single worker to avoid `OSError: [WinError 10022]` (uvicorn multiprocess socket issue):
+
+```bash
+mlflow ui --backend-store-uri "sqlite:///./data/mlflow.db" --default-artifact-root "file:./data/mlflow_artifacts" --workers 1
 ```
 
 Then open `http://127.0.0.1:5000` and look for:
