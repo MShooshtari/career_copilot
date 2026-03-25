@@ -115,7 +115,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.units import pt
+
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
     buffer = BytesIO()
@@ -168,6 +168,15 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         textColor=HexColor(profile.header_color),
         borderWidth=0,
     )
+    tagline_style = ParagraphStyle(
+        "ResumeTagline",
+        fontName=header_font,
+        fontSize=profile.header_font_size,
+        leading=profile.header_font_size * 1.4,
+        alignment=name_align,
+        textColor=HexColor(profile.header_color),
+        spaceAfter=2,
+    )
     body_style = ParagraphStyle(
         "ResumeBody",
         fontName=body_font,
@@ -198,6 +207,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
             story.append(Paragraph(_safe(el.text), name_style))
         elif el.kind == "contact":
             story.append(Paragraph(_markup(el.text, body_font_bold), contact_style))
+        elif el.kind == "tagline":
+            story.append(Paragraph(_safe(el.text), tagline_style))
         elif el.kind == "section_header":
             story.append(Paragraph(_safe(el.text), header_style))
         elif el.kind == "bullet":

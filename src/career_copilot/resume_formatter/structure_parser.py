@@ -328,9 +328,9 @@ def parse_resume_text(text: str, profile: StyleProfile) -> list[ResumeElement]:
             if _is_contact_info_line(stripped):
                 elements.append(ResumeElement("contact", stripped))
             elif len(stripped) <= 80:
-                # Short non-contact lines in header zone → title/tagline → header styling
+                # Short non-contact lines in header zone → title/tagline
                 plain = re.sub(r"\*\*", "", stripped)
-                elements.append(ResumeElement("section_header", plain))
+                elements.append(ResumeElement("tagline", plain))
             else:
                 # Long lines signal end of header zone → body
                 in_contact_block = False

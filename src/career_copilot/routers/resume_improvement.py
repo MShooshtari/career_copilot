@@ -224,11 +224,12 @@ async def post_resume_improve_download(
 ) -> StreamingResponse:
     """Generate a formatted PDF of the improved resume, cloning the original's style."""
     text = _get_improved_text(job_id, body.history)
+    profile = _get_style_profile()
+    text = apply_original_bold(text, profile.bold_phrases)
     try:
-        profile = _get_style_profile()
-        text = apply_original_bold(text, profile.bold_phrases)
         pdf_bytes = generate_formatted_pdf(text, profile)
-    except Exception:
+    except Exception as _pdf_err:
+        print(f"[PDF] generate_formatted_pdf failed: {_pdf_err!r}")
         pdf_bytes = build_resume_pdf(text)
 
     filename = f"improved_resume_job_{job_id}.pdf"

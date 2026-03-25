@@ -104,6 +104,12 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
             p.paragraph_format.space_after = Pt(1)
             add_runs(p, el.text, profile.contact_font_size, body_color_rgb)
 
+        elif el.kind == "tagline":
+            p = doc.add_paragraph()
+            p.alignment = name_alignment
+            p.paragraph_format.space_after = Pt(2)
+            add_runs(p, el.text, profile.header_font_size, header_color_rgb, base_bold=profile.header_bold)
+
         elif el.kind == "section_header":
             doc.add_paragraph(el.text, style="Heading 1")
 
