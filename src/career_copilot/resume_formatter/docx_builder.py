@@ -79,6 +79,21 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
         except Exception:
             pass
 
+    def add_bottom_border(para) -> None:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        sz = max(1, round(profile.section_rule_thickness * 8))
+        raw_color = profile.section_rule_color.lstrip("#") if profile.section_rule_color not in ("#000000", "") else "auto"
+        pPr = para._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), profile.section_rule_style or "single")
+        bottom.set(qn("w:sz"), str(sz))
+        bottom.set(qn("w:space"), "1")
+        bottom.set(qn("w:color"), raw_color)
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
     def add_runs(p, text: str, font_size: float, color_rgb, base_bold: bool = False) -> None:
         """Add one or more runs to *p*, honouring **inline bold** markers."""
         for segment, is_bold in split_inline_bold(text):
@@ -96,7 +111,9 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
             p.paragraph_format.space_after = Pt(2)
 
         elif el.kind == "name":
-            doc.add_paragraph(el.text, style="Title")
+            p = doc.add_paragraph(el.text, style="Title")
+            if profile.has_section_rule:
+                add_bottom_border(p)
 
         elif el.kind == "contact":
             p = doc.add_paragraph()

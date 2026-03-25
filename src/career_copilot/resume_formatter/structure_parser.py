@@ -112,6 +112,12 @@ class StyleProfile:
     raw_font_name: str = ""
     # Bold phrases at body size (e.g. company names, job titles) for post-processing
     bold_phrases: list = field(default_factory=list)
+    # Whether the original resume has horizontal rules under section headers
+    has_section_rule: bool = False
+    # Separator line properties (color hex, thickness in pts, Word border val)
+    section_rule_color: str = "#000000"
+    section_rule_thickness: float = 0.5
+    section_rule_style: str = "single"
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -557,6 +563,28 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     header_color = _dominant_color(header_spans)
     body_color = _dominant_color(body_spans)
 
+    # Detect horizontal separator lines (drawn paths spanning >40% of page width)
+    pdf_has_section_rule = False
+    pdf_rule_color = header_color
+    pdf_rule_thickness = 0.5
+    try:
+        for drawing in page.get_drawings():
+            for item in drawing.get("items", []):
+                if item[0] == "l":
+                    x0, y0, x1, y1 = item[1].x, item[1].y, item[2].x, item[2].y
+                    if abs(y1 - y0) < 2 and abs(x1 - x0) > page_width * 0.4:
+                        pdf_has_section_rule = True
+                        pdf_rule_thickness = float(drawing.get("width") or 0.5)
+                        stroke = drawing.get("color")
+                        if stroke and len(stroke) >= 3:
+                            r, g, b = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
+                            pdf_rule_color = f"#{r:02x}{g:02x}{b:02x}"
+                        break
+            if pdf_has_section_rule:
+                break
+    except Exception:
+        pass
+
     return StyleProfile(
         name_font_size=round(name_size, 1),
         name_bold=name_bold,
@@ -578,6 +606,10 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
         body_color=body_color,
         raw_font_name=raw_font,
         bold_phrases=_extract_bold_phrases_per_line(pdf_lines_data, body_size),
+        has_section_rule=pdf_has_section_rule,
+        section_rule_color=pdf_rule_color,
+        section_rule_thickness=pdf_rule_thickness,
+        section_rule_style="single",
     )
 
 
@@ -664,6 +696,27 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     runs_data: list[dict] = []
     para_meta: list[dict] = []  # one entry per paragraph for alignment lookup
 
+    def _bottom_border_props(para) -> dict | None:
+        """Return {"color": "#rrggbb", "thickness": pt} if para has a bottom border, else None."""
+        try:
+            from docx.oxml.ns import qn as _qn2
+            pPr = para._p.find(_qn2("w:pPr"))
+            if pPr is not None:
+                pBdr = pPr.find(_qn2("w:pBdr"))
+                if pBdr is not None:
+                    bottom = pBdr.find(_qn2("w:bottom"))
+                    if bottom is not None and bottom.get(_qn2("w:val"), "none") not in ("none", ""):
+                        # w:sz is in eighths of a point
+                        sz = int(bottom.get(_qn2("w:sz"), "4"))
+                        thickness = sz / 8.0
+                        raw_color = bottom.get(_qn2("w:color"), "auto")
+                        color = f"#{raw_color.lower()}" if raw_color not in ("auto", "") and len(raw_color) == 6 else None
+                        style = bottom.get(_qn2("w:val"), "single")
+                        return {"color": color, "thickness": thickness, "style": style}
+        except Exception:
+            pass
+        return None
+
     for para in all_paras:
         para_runs = []
         for run in para.runs:
@@ -679,7 +732,7 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
             runs_data.append(entry)
             para_runs.append(entry)
         if para_runs:
-            para_meta.append({"runs": para_runs, "align": para.alignment})
+            para_meta.append({"runs": para_runs, "align": para.alignment, "border": _bottom_border_props(para)})
 
     if not runs_data:
         return StyleProfile.default()
@@ -697,6 +750,24 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
 
     name_runs = [r for r in runs_data if abs(r["size"] - name_size) < 0.5]
     header_runs = [r for r in runs_data if abs(r["size"] - header_size) < 0.5]
+
+    section_rule_thickness = 0.5
+    section_rule_color_raw = None
+    # Detect border style from any paragraph in the document (name paragraph typically
+    # carries the resume's decorative border which we apply under section headers too)
+    has_section_rule = False
+    section_rule_thickness = 0.5
+    section_rule_color_raw = None
+    section_rule_style_val = "single"
+    from docx.oxml.ns import qn as _qn3
+    for para in all_paras:
+        props = _bottom_border_props(para)
+        if props:
+            has_section_rule = True
+            section_rule_thickness = props["thickness"]
+            section_rule_color_raw = props["color"]
+            section_rule_style_val = props.get("style", "single")
+            break
     body_runs = [r for r in runs_data if abs(r["size"] - body_size) < 1.0]
 
     name_bold = any(r["bold"] for r in name_runs) if name_runs else True
@@ -725,6 +796,9 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
             return "#000000"
         counts = Counter(r["color"] for r in run_list)
         return counts.most_common(1)[0][0]
+
+    section_rule_color = section_rule_color_raw or dominant_color(header_runs)
+    section_rule_style = section_rule_style_val
 
     # --- Sections ---
 
@@ -785,4 +859,8 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         body_color=dominant_color(body_runs),
         raw_font_name=raw_font,
         bold_phrases=bold_phrases_list,
+        has_section_rule=has_section_rule,
+        section_rule_color=section_rule_color,
+        section_rule_thickness=section_rule_thickness,
+        section_rule_style=section_rule_style,
     )

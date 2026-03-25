@@ -116,7 +116,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
 
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
     buffer = BytesIO()
     margin = max(float(profile.margin_left), 36.0)  # min 0.5"
@@ -205,6 +205,16 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
             story.append(Spacer(1, 4))
         elif el.kind == "name":
             story.append(Paragraph(_safe(el.text), name_style))
+            if profile.has_section_rule:
+                rule_color = HexColor(profile.section_rule_color)
+                thick = profile.section_rule_thickness
+                if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
+                                                   "thickThinMediumGap", "thinThickMediumGap",
+                                                   "thickThinLargeGap", "thinThickLargeGap"):
+                    story.append(HRFlowable(width="100%", thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=1))
+                    story.append(HRFlowable(width="100%", thickness=thick * 0.25, color=rule_color, spaceAfter=2, spaceBefore=1))
+                else:
+                    story.append(HRFlowable(width="100%", thickness=thick, color=rule_color, spaceAfter=2, spaceBefore=1))
         elif el.kind == "contact":
             story.append(Paragraph(_markup(el.text, body_font_bold), contact_style))
         elif el.kind == "tagline":
