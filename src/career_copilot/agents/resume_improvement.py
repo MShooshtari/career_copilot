@@ -110,10 +110,16 @@ def build_resume_improvement_context(
         }
 
     job_document = _job_dict_to_document(job)
-    similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
-    similar_resumes = get_similar_resumes_for_resume_improvement(
-        job_document, exclude_user_id=user_id, n_results=5
-    )
+    try:
+        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+    except Exception:
+        similar_jobs = []
+    try:
+        similar_resumes = get_similar_resumes_for_resume_improvement(
+            job_document, exclude_user_id=user_id, n_results=5
+        )
+    except Exception:
+        similar_resumes = []
 
     return {
         "resume_text": resume_text,
@@ -146,10 +152,16 @@ def build_resume_improvement_context_from_job_dict(
             resume_text = extract_resume_text(row[0], row[1]) or ""
 
     job_document = _job_dict_to_document(job)
-    similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
-    similar_resumes = get_similar_resumes_for_resume_improvement(
-        job_document, exclude_user_id=user_id, n_results=5
-    )
+    try:
+        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+    except Exception:
+        similar_jobs = []
+    try:
+        similar_resumes = get_similar_resumes_for_resume_improvement(
+            job_document, exclude_user_id=user_id, n_results=5
+        )
+    except Exception:
+        similar_resumes = []
     return {
         "resume_text": resume_text,
         "job": job,
@@ -462,15 +474,25 @@ def generate_full_resume(
         {
             "role": "user",
             "content": (
-                "Using the conversation above, output the complete updated resume as plain text.\n\n"
+                "Using the conversation above, output the complete updated resume as formatted plain text.\n\n"
                 'Critical: Where you already gave specific text in your replies (e.g. under "After:", '
                 "rewritten bullets, or suggested wording), use that exact wording in the resume so "
                 "the document matches what the user saw in the chat. Do not invent new wording for "
                 "those sections.\n\n"
-                "Requirements:\n"
-                "- Include only resume sections (contact, summary, experience, projects, education, skills, etc.).\n"
-                "- No commentary, analysis, ATS scores, or instructions.\n"
-                "- No Markdown (no **bold**, no ```, no # headings). Plain text only."
+                "Formatting rules — follow exactly:\n"
+                "1. Copy the name and contact block (name, location, phone, email, website) EXACTLY as they appear "
+                "in the original resume — same line breaks, same separators (tabs, pipes, spaces), same order. "
+                "Do not reformat, reorder, or combine these lines.\n"
+                "2. Section headers (EXPERIENCE, EDUCATION, SKILLS, etc.) on their own line, no ** around them.\n"
+                "3. Project sub-headers within a job (e.g. 'Blend Optimization and Inventory Management - Site, Location') "
+                "must be preserved on their own line between the job title line and its bullets. Do not omit them.\n"
+                "4. Bullet points start with - (dash space).\n"
+                "5. Do NOT use ** anywhere in your output. Do not bold any text. Plain text only — "
+                "bold formatting is applied separately and must not be added here.\n"
+                "6. No # headings, no ``` code blocks, no other markdown.\n"
+                "7. No commentary, analysis, ATS scores, or instructions — resume content only.\n"
+                "8. Include ALL jobs, projects, education entries, and bullets from the original resume unless the user "
+                "explicitly asked to remove something. Do not silently drop any section or sub-section."
             ),
         }
     )

@@ -64,6 +64,7 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
         # User-added jobs (separate from ingested jobs table)
+        print("create user jobs")
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS user_jobs (
@@ -87,7 +88,8 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS user_jobs_created_at_idx ON user_jobs (created_at DESC)"
         )
-
+        # Commit so CREATE TABLE is persisted; then run migrations in separate transactions
+        conn.commit()
         # Applications: resume improvement or interview preparation for a job (ingested or user-added)
         cur.execute(
             """
@@ -111,6 +113,9 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS applications_created_at_idx ON applications (created_at DESC)"
         )
+
+        # Commit so CREATE TABLE is persisted; then run migrations in separate transactions
+        conn.commit()
         # Migrations for applications (safe if columns already exist)
         for sql in (
             "ALTER TABLE applications ADD COLUMN history JSONB NOT NULL DEFAULT '[]'::jsonb",
