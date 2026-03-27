@@ -64,7 +64,6 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
         # User-added jobs (separate from ingested jobs table)
-        print("create user jobs")
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS user_jobs (
