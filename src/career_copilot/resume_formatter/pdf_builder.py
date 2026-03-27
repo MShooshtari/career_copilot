@@ -147,7 +147,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.name_font_size * 1.3,
         alignment=name_align,
         textColor=HexColor(profile.name_color),
-        spaceAfter=3,
+        spaceAfter=profile.name_space_after,
     )
     contact_style = ParagraphStyle(
         "ResumeContact",
@@ -156,15 +156,15 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.contact_font_size * 1.4,
         alignment=name_align,
         textColor=HexColor(profile.body_color),
-        spaceAfter=2,
+        spaceAfter=profile.contact_space_after,
     )
     header_style = ParagraphStyle(
         "ResumeSectionHeader",
         fontName=header_font,
         fontSize=profile.header_font_size,
         leading=profile.header_font_size * 1.4,
-        spaceBefore=10,
-        spaceAfter=4,
+        spaceBefore=profile.header_space_before,
+        spaceAfter=profile.header_space_after,
         textColor=HexColor(profile.header_color),
         borderWidth=0,
     )
@@ -175,7 +175,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.header_font_size * 1.4,
         alignment=name_align,
         textColor=HexColor(profile.header_color),
-        spaceAfter=2,
+        spaceAfter=profile.tagline_space_after,
     )
     body_style = ParagraphStyle(
         "ResumeBody",
@@ -183,7 +183,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         fontSize=profile.body_font_size,
         leading=profile.body_font_size * profile.line_spacing,
         textColor=HexColor(profile.body_color),
-        spaceAfter=2,
+        spaceAfter=profile.body_space_after,
     )
     bullet_style = ParagraphStyle(
         "ResumeBullet",
@@ -193,7 +193,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         textColor=HexColor(profile.body_color),
         leftIndent=14,
         firstLineIndent=0,
-        spaceAfter=2,
+        spaceAfter=profile.bullet_space_after,
     )
 
     # --- Build story ---

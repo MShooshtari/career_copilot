@@ -64,8 +64,8 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
     # Configure Word styles so bold/color/size are set at the style level,
     # which Word renders reliably regardless of run-level inheritance quirks.
     for style_name, font_size, bold, color_rgb, alignment, sp_before, sp_after in [
-        ("Title", profile.name_font_size, profile.name_bold, name_color_rgb, name_alignment, 0, 2),
-        ("Heading 1", profile.header_font_size, profile.header_bold, header_color_rgb, left, 8, 4),
+        ("Title", profile.name_font_size, profile.name_bold, name_color_rgb, name_alignment, 0, profile.name_space_after),
+        ("Heading 1", profile.header_font_size, profile.header_bold, header_color_rgb, left, profile.header_space_before, profile.header_space_after),
     ]:
         try:
             s = doc.styles[style_name]
@@ -118,13 +118,13 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
         elif el.kind == "contact":
             p = doc.add_paragraph()
             p.alignment = name_alignment
-            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.space_after = Pt(profile.contact_space_after)
             add_runs(p, el.text, profile.contact_font_size, body_color_rgb)
 
         elif el.kind == "tagline":
             p = doc.add_paragraph()
             p.alignment = name_alignment
-            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_after = Pt(profile.tagline_space_after)
             add_runs(p, el.text, profile.header_font_size, header_color_rgb, base_bold=profile.header_bold)
 
         elif el.kind == "section_header":
@@ -133,7 +133,7 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
         elif el.kind == "bullet":
             p = doc.add_paragraph()
             p.paragraph_format.left_indent = Pt(14)
-            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.space_after = Pt(profile.bullet_space_after)
             # Bullet character as its own non-bold run, then the content
             run = p.add_run(f"{profile.bullet_char} ")
             run.font.name = font_name
@@ -143,7 +143,7 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
 
         else:  # body
             p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_after = Pt(profile.body_space_after)
             add_runs(p, el.text, profile.body_font_size, body_color_rgb)
 
     buffer = BytesIO()

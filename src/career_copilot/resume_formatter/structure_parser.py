@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -118,6 +118,14 @@ class StyleProfile:
     section_rule_color: str = "#000000"
     section_rule_thickness: float = 0.5
     section_rule_style: str = "single"
+    # Paragraph spacing in points (extracted from original; used by both builders)
+    name_space_after: float = 3.0
+    contact_space_after: float = 2.0
+    header_space_before: float = 10.0
+    header_space_after: float = 4.0
+    body_space_after: float = 2.0
+    bullet_space_after: float = 2.0
+    tagline_space_after: float = 2.0
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -125,7 +133,8 @@ class StyleProfile:
     @classmethod
     def from_json(cls, s: str) -> "StyleProfile":
         data = json.loads(s)
-        return cls(**data)
+        valid = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in valid})
 
     @classmethod
     def default(cls) -> "StyleProfile":
@@ -439,6 +448,51 @@ def _extract_sections(
     return sections
 
 
+def _extract_pdf_spacing(
+    spans: list[dict], name_size: float, header_size: float, body_size: float
+) -> dict[str, float]:
+    """Analyse y-coordinate gaps between span rows to estimate paragraph spacing."""
+    if not spans:
+        return {}
+
+    # Group spans into visual rows by y-proximity (within 2pt = same line)
+    rows: list[dict] = []
+    for span in spans:
+        bbox = span["bbox"]
+        y_top, y_bot, sz = float(bbox[1]), float(bbox[3]), float(span["size"])
+        if rows and abs(y_top - rows[-1]["y_top"]) < 2.0:
+            rows[-1]["y_bot"] = max(rows[-1]["y_bot"], y_bot)
+            rows[-1]["size"] = max(rows[-1]["size"], sz)
+        else:
+            rows.append({"y_top": y_top, "y_bot": y_bot, "size": sz})
+
+    if len(rows) < 2:
+        return {}
+
+    def _role(size: float) -> str:
+        if abs(size - name_size) < 1.0:
+            return "name"
+        if abs(size - header_size) < 1.0:
+            return "header"
+        if size < body_size - 0.5:
+            return "contact"
+        return "body"
+
+    gaps_after: dict[str, list[float]] = {"name": [], "contact": [], "header": [], "body": []}
+    for i in range(len(rows) - 1):
+        gap = max(0.0, rows[i + 1]["y_top"] - rows[i]["y_bot"])
+        role = _role(rows[i]["size"])
+        gaps_after[role].append(gap)
+
+    result = {}
+    for role, gaps in gaps_after.items():
+        if gaps:
+            s = sorted(gaps)
+            median = s[len(s) // 2]
+            result[f"{role}_gap"] = round(median, 1)
+    return result
+
+
 def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     """
     Analyse a resume PDF and return a StyleProfile capturing its visual style.
@@ -563,6 +617,18 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     header_color = _dominant_color(header_spans)
     body_color = _dominant_color(body_spans)
 
+    # Paragraph spacing from y-coordinate gap analysis
+    _pdf_gaps = _extract_pdf_spacing(spans, name_size, header_size, body_size)
+    def _clamped(key: str, default: float) -> float:
+        v = _pdf_gaps.get(key)
+        return round(v, 1) if v is not None and 0 <= v <= 30 else default
+    pdf_name_space_after    = _clamped("name_gap",    3.0)
+    pdf_contact_space_after = _clamped("contact_gap", 2.0)
+    pdf_header_space_after  = _clamped("header_gap",  4.0)
+    pdf_body_space_after    = _clamped("body_gap",    2.0)
+    pdf_bullet_space_after  = pdf_body_space_after
+    pdf_tagline_space_after = _clamped("name_gap",    2.0)
+
     # Detect horizontal separator lines (drawn paths spanning >40% of page width)
     pdf_has_section_rule = False
     pdf_rule_color = header_color
@@ -610,7 +676,31 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
         section_rule_color=pdf_rule_color,
         section_rule_thickness=pdf_rule_thickness,
         section_rule_style="single",
+        name_space_after=pdf_name_space_after,
+        contact_space_after=pdf_contact_space_after,
+        header_space_before=10.0,  # can't reliably isolate from PDF gaps
+        header_space_after=pdf_header_space_after,
+        body_space_after=pdf_body_space_after,
+        bullet_space_after=pdf_bullet_space_after,
+        tagline_space_after=pdf_tagline_space_after,
     )
+
+
+def _eff_space(para, attr: str) -> float | None:
+    """Return space_before or space_after in pt for a paragraph, following the style chain."""
+    try:
+        val = getattr(para.paragraph_format, attr, None)
+        if val is not None:
+            return val.pt
+        style = para.style
+        while style:
+            val = getattr(style.paragraph_format, attr, None)
+            if val is not None:
+                return val.pt
+            style = style.base_style
+    except Exception:
+        pass
+    return None
 
 
 def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
@@ -751,6 +841,36 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     name_runs = [r for r in runs_data if abs(r["size"] - name_size) < 0.5]
     header_runs = [r for r in runs_data if abs(r["size"] - header_size) < 0.5]
 
+    # --- Paragraph spacing extraction ---
+    _para_size_pairs: list[tuple] = []
+    for para in all_paras:
+        for run in para.runs:
+            if run.text.strip():
+                _para_size_pairs.append((para, float(_eff_size(run, para))))
+                break
+
+    def _sample_space(role_size: float, bold_only: bool = False) -> tuple:
+        for para, sz in _para_size_pairs:
+            if abs(sz - role_size) <= 0.5:
+                if bold_only and not any(_eff_bold(r, para) for r in para.runs if r.text.strip()):
+                    continue
+                return _eff_space(para, "space_before"), _eff_space(para, "space_after")
+        return None, None
+
+    _name_sb, _name_sa = _sample_space(name_size)
+    # When header_size == body_size, target bold paragraphs specifically
+    _hdr_bold_only = abs(header_size - body_size) < 0.5
+    _hdr_sb, _hdr_sa = _sample_space(header_size, bold_only=_hdr_bold_only)
+    _body_sb, _body_sa = _sample_space(body_size)
+
+    docx_name_space_after    = _name_sa if _name_sa is not None else 3.0
+    docx_header_space_before = _hdr_sb  if _hdr_sb  is not None else 10.0
+    docx_header_space_after  = _hdr_sa  if _hdr_sa  is not None else 4.0
+    docx_body_space_after    = _body_sa if _body_sa is not None else 2.0
+    docx_contact_space_after = docx_body_space_after
+    docx_bullet_space_after  = docx_body_space_after
+    docx_tagline_space_after = _name_sa if _name_sa is not None else 2.0
+
     section_rule_thickness = 0.5
     section_rule_color_raw = None
     # Detect border style from any paragraph in the document (name paragraph typically
@@ -863,4 +983,11 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         section_rule_color=section_rule_color,
         section_rule_thickness=section_rule_thickness,
         section_rule_style=section_rule_style,
+        name_space_after=docx_name_space_after,
+        contact_space_after=docx_contact_space_after,
+        header_space_before=docx_header_space_before,
+        header_space_after=docx_header_space_after,
+        body_space_after=docx_body_space_after,
+        bullet_space_after=docx_bullet_space_after,
+        tagline_space_after=docx_tagline_space_after,
     )
