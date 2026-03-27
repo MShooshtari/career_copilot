@@ -166,11 +166,13 @@ def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> 
     seen: set[str] = set()
     phrases: list[str] = []
 
-    # Check if all non-whitespace spans in this line are bold at body size (±4pt).
+    # Check if all non-whitespace spans in this line are bold at body size (±4pt)
+    # and long enough to be meaningful (≥2 chars each).
     # If so, capture the full concatenated line text as a single bold phrase.
     body_spans = [s for s in line_spans if s["text"].strip()]
     if body_spans and all(
-        s.get("bold") and abs(s["size"] - body_size) <= 4.0 for s in body_spans
+        s.get("bold") and abs(s["size"] - body_size) <= 4.0 and len(s["text"].strip()) >= 2
+        for s in body_spans
     ):
         full_line = "".join(s["text"] for s in body_spans).strip()
         lower_full = full_line.lower().rstrip(":")
