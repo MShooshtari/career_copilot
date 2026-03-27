@@ -39,34 +39,93 @@ _FONT_DIRS = [
 
 _registered: dict[str, tuple[str, str]] = {}  # cache: family → (reg_name, bold_name)
 
+# Tokens that indicate a bold variant of a font file
+_BOLD_TOKENS = ("bold", "bd", "b")
+# Tokens that indicate a regular (non-bold, non-italic) variant
+_REGULAR_TOKENS = ("regular", "roman", "book", "light", "medium", "")
+
+
+def _scan_font_dir(font_dir: str, family_lower: str) -> tuple[str | None, str | None]:
+    """Scan *font_dir* for TTF/OTF files matching *family_lower*.
+
+    Returns (regular_path, bold_path); either may be None if not found.
+    Prefers files whose name after stripping the family prefix is a known
+    weight token (e.g. "calibriregular.ttf" → regular, "calibribd.ttf" → bold).
+    """
+    if not os.path.isdir(font_dir):
+        return None, None
+
+    reg_path: str | None = None
+    bold_path: str | None = None
+    family_nospace = family_lower.replace(" ", "")
+
+    try:
+        entries = os.listdir(font_dir)
+    except OSError:
+        return None, None
+
+    for fname in entries:
+        ext = os.path.splitext(fname)[1].lower()
+        if ext not in (".ttf", ".otf"):
+            continue
+        base = os.path.splitext(fname.lower())[0].replace("-", "").replace("_", "").replace(" ", "")
+
+        if not base.startswith(family_nospace):
+            continue
+
+        suffix = base[len(family_nospace):]
+        full_path = os.path.join(font_dir, fname)
+
+        if suffix in _BOLD_TOKENS:
+            bold_path = full_path
+        elif suffix in _REGULAR_TOKENS and reg_path is None:
+            reg_path = full_path
+
+    return reg_path, bold_path
+
 
 def _embed_system_font(family: str) -> tuple[str, str]:
-    """Try to find and register the system font. Returns (regular_name, bold_name).
-    Falls back to built-in Helvetica names if not found."""
+    """Find and register a system font by family name. Returns (regular_name, bold_name).
+    Tries the hardcoded filename table first, then scans font directories dynamically.
+    Falls back to built-in Helvetica if the font cannot be found or embedded."""
     if family in _registered:
         return _registered[family]
 
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    def _try_register(reg_path: str, bold_path: str) -> tuple[str, str] | None:
+        try:
+            reg_name = f"Sys-{family}"
+            bold_name = f"Sys-{family}-Bold"
+            pdfmetrics.registerFont(TTFont(reg_name, reg_path))
+            pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+            _registered[family] = (reg_name, bold_name)
+            return (reg_name, bold_name)
+        except Exception:
+            return None
+
+    # 1. Hardcoded table — fast path for common fonts
     files = _WINDOWS_FONT_FILES.get(family)
-    if not files:
-        return ("Helvetica", "Helvetica-Bold")
+    if files:
+        reg_file, bold_file = files
+        for font_dir in _FONT_DIRS:
+            reg_path = os.path.join(font_dir, reg_file)
+            bold_path = os.path.join(font_dir, bold_file)
+            if os.path.exists(reg_path) and os.path.exists(bold_path):
+                result = _try_register(reg_path, bold_path)
+                if result:
+                    return result
 
-    reg_file, bold_file = files
+    # 2. Dynamic scan — handles fonts not in the hardcoded table
+    family_lower = family.lower()
     for font_dir in _FONT_DIRS:
-        reg_path = os.path.join(font_dir, reg_file)
-        bold_path = os.path.join(font_dir, bold_file)
-        if os.path.exists(reg_path) and os.path.exists(bold_path):
-            try:
-                from reportlab.pdfbase import pdfmetrics
-                from reportlab.pdfbase.ttfonts import TTFont
-
-                reg_name = f"Sys-{family}"
-                bold_name = f"Sys-{family}-Bold"
-                pdfmetrics.registerFont(TTFont(reg_name, reg_path))
-                pdfmetrics.registerFont(TTFont(bold_name, bold_path))
-                _registered[family] = (reg_name, bold_name)
-                return (reg_name, bold_name)
-            except Exception:
-                pass
+        reg_path, bold_path = _scan_font_dir(font_dir, family_lower)
+        if reg_path:
+            # Use regular as bold fallback if no dedicated bold file found
+            result = _try_register(reg_path, bold_path or reg_path)
+            if result:
+                return result
 
     return ("Helvetica", "Helvetica-Bold")
 
@@ -116,20 +175,33 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
 
-    from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+    from reportlab.platypus import BaseDocTemplate, Frame, HRFlowable, PageTemplate, Paragraph, Spacer
 
     buffer = BytesIO()
     margin = max(float(profile.margin_left), 36.0)  # min 0.5"
     top_margin = max(float(profile.margin_top), 36.0)
 
-    doc = SimpleDocTemplate(
+    page_w, page_h = A4  # (595.28, 841.89) pts
+    bottom_margin = 50.0
+    frame_w = page_w - 2 * margin
+    frame_h = page_h - top_margin - bottom_margin
+
+    # Zero-padding frame so _text_width exactly equals the frame's available width,
+    # preventing ReportLab from centering Tables that would otherwise overflow the interior.
+    _content_frame = Frame(
+        margin, bottom_margin, frame_w, frame_h,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        id="normal",
+    )
+    doc = BaseDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=margin,
         rightMargin=margin,
         topMargin=top_margin,
-        bottomMargin=50,
+        bottomMargin=bottom_margin,
     )
+    doc.addPageTemplates([PageTemplate(id="Normal", frames=[_content_frame], pagesize=A4)])
 
     # --- Styles ---
     raw = profile.raw_font_name
@@ -147,6 +219,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.name_font_size * 1.3,
         alignment=name_align,
         textColor=HexColor(profile.name_color),
+        leftIndent=0,
+        firstLineIndent=0,
         spaceAfter=profile.name_space_after,
     )
     contact_style = ParagraphStyle(
@@ -156,6 +230,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.contact_font_size * 1.4,
         alignment=name_align,
         textColor=HexColor(profile.body_color),
+        leftIndent=0,
+        firstLineIndent=0,
         spaceAfter=profile.contact_space_after,
     )
     header_style = ParagraphStyle(
@@ -166,6 +242,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         spaceBefore=profile.header_space_before,
         spaceAfter=profile.header_space_after,
         textColor=HexColor(profile.header_color),
+        leftIndent=0,
+        firstLineIndent=0,
         borderWidth=0,
     )
     tagline_style = ParagraphStyle(
@@ -175,6 +253,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         leading=profile.header_font_size * 1.4,
         alignment=name_align,
         textColor=HexColor(profile.header_color),
+        leftIndent=0,
+        firstLineIndent=0,
         spaceAfter=profile.tagline_space_after,
     )
     body_style = ParagraphStyle(
@@ -183,6 +263,8 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         fontSize=profile.body_font_size,
         leading=profile.body_font_size * profile.line_spacing,
         textColor=HexColor(profile.body_color),
+        leftIndent=0,
+        firstLineIndent=0,
         spaceAfter=profile.body_space_after,
     )
     bullet_style = ParagraphStyle(
@@ -200,27 +282,67 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     elements = parse_resume_text(improved_text, profile)
     story = []
 
+    _text_width = frame_w  # exact interior width (frame has 0 padding)
+    _RIGHT_COL = 160.0  # pts — enough for dates and locations
+
+    def _split_row(left_markup: str, right_text_raw: str, left_style, right_size: float) -> object:
+        from reportlab.platypus import Table, TableStyle as TS
+        from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+        # Left cell is always left-aligned (tab-stop-style layout); right cell right-aligned
+        left_split_style = ParagraphStyle(
+            left_style.name + "_split",
+            parent=left_style,
+            alignment=TA_LEFT,
+        )
+        right_style = ParagraphStyle(
+            "SplitRight",
+            fontName=body_font,
+            fontSize=right_size,
+            leading=right_size * profile.line_spacing,
+            textColor=HexColor(profile.body_color),
+            alignment=TA_RIGHT,
+        )
+        left_col = _text_width - _RIGHT_COL
+        t = Table(
+            [[Paragraph(left_markup, left_split_style), Paragraph(_safe(right_text_raw), right_style)]],
+            colWidths=[left_col, _RIGHT_COL],
+            spaceBefore=0,
+            spaceAfter=left_style.spaceAfter,
+        )
+        t.setStyle(TS([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        return t
+
     for el in elements:
         if el.kind == "blank":
             story.append(Spacer(1, 4))
         elif el.kind == "name":
             story.append(Paragraph(_safe(el.text), name_style))
+        elif el.kind == "contact":
+            markup = _markup(el.text, body_font_bold)
+            if el.right_text:
+                story.append(_split_row(markup, el.right_text, contact_style, profile.contact_font_size))
+            else:
+                story.append(Paragraph(markup, contact_style))
+        elif el.kind == "tagline":
+            story.append(Paragraph(_safe(el.text), tagline_style))
+        elif el.kind == "section_header":
+            story.append(Paragraph(_safe(el.text), header_style))
             if profile.has_section_rule:
                 rule_color = HexColor(profile.section_rule_color)
                 thick = profile.section_rule_thickness
                 if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
                                                    "thickThinMediumGap", "thinThickMediumGap",
                                                    "thickThinLargeGap", "thinThickLargeGap"):
-                    story.append(HRFlowable(width="100%", thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=1))
-                    story.append(HRFlowable(width="100%", thickness=thick * 0.25, color=rule_color, spaceAfter=2, spaceBefore=1))
+                    story.append(HRFlowable(width=_text_width, thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=1, hAlign='LEFT'))
+                    story.append(HRFlowable(width=_text_width, thickness=thick * 0.25, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
                 else:
-                    story.append(HRFlowable(width="100%", thickness=thick, color=rule_color, spaceAfter=2, spaceBefore=1))
-        elif el.kind == "contact":
-            story.append(Paragraph(_markup(el.text, body_font_bold), contact_style))
-        elif el.kind == "tagline":
-            story.append(Paragraph(_safe(el.text), tagline_style))
-        elif el.kind == "section_header":
-            story.append(Paragraph(_safe(el.text), header_style))
+                    story.append(HRFlowable(width=_text_width, thickness=thick, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
         elif el.kind == "bullet":
             story.append(
                 Paragraph(
@@ -229,7 +351,11 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
                 )
             )
         else:  # body
-            story.append(Paragraph(_markup(el.text, body_font_bold), body_style))
+            markup = _markup(el.text, body_font_bold)
+            if el.right_text:
+                story.append(_split_row(markup, el.right_text, body_style, profile.body_font_size))
+            else:
+                story.append(Paragraph(markup, body_style))
 
     if not story:
         story.append(Paragraph("Resume could not be generated.", body_style))

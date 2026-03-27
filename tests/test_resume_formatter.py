@@ -360,9 +360,9 @@ class TestParseResumeText:
     def test_contact_lines_classified(self):
         els = parse_resume_text(MINIMAL_RESUME, self._profile())
         contacts = [e for e in els if e.kind == "contact"]
-        texts = [c.text for c in contacts]
-        assert any("416" in t for t in texts)
-        assert any("jane@example.com" in t for t in texts)
+        all_texts = [c.text + " " + c.right_text for c in contacts]
+        assert any("416" in t for t in all_texts)
+        assert any("jane@example.com" in t for t in all_texts)
 
     def test_tagline_classified_as_tagline(self):
         els = parse_resume_text(MINIMAL_RESUME, self._profile())

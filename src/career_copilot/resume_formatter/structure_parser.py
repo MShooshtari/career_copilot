@@ -56,6 +56,17 @@ KNOWN_SECTIONS: set[str] = {
     "contact information",
     "interests",
     "hobbies",
+    "leadership & community involvement",
+    "leadership and community involvement",
+    "community involvement",
+    "professional certifications",
+    "professional development",
+    "agentic ai & applied machine learning projects",
+    "agentic ai projects",
+    "applied machine learning projects",
+    "independent projects",
+    "personal projects & contributions",
+    "hackathons",
 }
 
 BULLET_CHARS: set[str] = {"•", "·", "○", "▪", "▸", "›", "◦", "▷"}
@@ -154,10 +165,23 @@ def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> 
     """Return bold phrases for a single line (list of spans), filtered and sorted longest-first."""
     seen: set[str] = set()
     phrases: list[str] = []
+
+    # Check if all non-whitespace spans in this line are bold at body size (±4pt).
+    # If so, capture the full concatenated line text as a single bold phrase.
+    body_spans = [s for s in line_spans if s["text"].strip()]
+    if body_spans and all(
+        s.get("bold") and abs(s["size"] - body_size) <= 4.0 for s in body_spans
+    ):
+        full_line = "".join(s["text"] for s in body_spans).strip()
+        lower_full = full_line.lower().rstrip(":")
+        if len(full_line) >= 4 and lower_full not in KNOWN_SECTIONS:
+            seen.add(full_line)
+            phrases.append(full_line)
+
     for s in line_spans:
         if not s.get("bold"):
             continue
-        if abs(s["size"] - body_size) > 1.0:
+        if abs(s["size"] - body_size) > 4.0:
             continue
         text = s["text"].strip()
         lower = text.lower().rstrip(":")
@@ -204,21 +228,24 @@ def _line_words(s: str) -> frozenset[str]:
 
 def apply_original_bold(text: str, bold_phrases: list) -> str:
     """
-    Post-process LLM-generated resume text: wrap phrases bold in the original with **
-    markers, but only on lines that closely match the original line where that phrase
-    appeared.  Skips the name line and section headers.
+    Post-process LLM-generated resume text: wrap phrases that were bold in the original
+    with ** markers wherever they appear.  Skips the name line and section headers.
     """
     if not bold_phrases:
         return text
 
-    # Build per-line lookup: [(orig_word_set, [phrase, ...]), ...]
-    orig_entries: list[tuple[frozenset[str], list[str]]] = []
+    # Collect all unique phrases, longest first (avoids nested partial matches)
+    seen: set[str] = set()
+    all_phrases: list[str] = []
     for entry in bold_phrases:
-        if isinstance(entry, list) and len(entry) >= 2:
-            orig_entries.append((_line_words(entry[0]), entry[1:]))
-        elif isinstance(entry, str):
-            # Legacy flat format — treat each phrase as its own "line"
-            orig_entries.append((_line_words(entry), [entry]))
+        phrases = entry[1:] if isinstance(entry, list) and len(entry) >= 2 else (
+            [entry] if isinstance(entry, str) else []
+        )
+        for phrase in phrases:
+            if phrase not in seen:
+                seen.add(phrase)
+                all_phrases.append(phrase)
+    all_phrases.sort(key=len, reverse=True)
 
     lines = text.splitlines()
     result = []
@@ -233,30 +260,16 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
             result.append(line)
             continue
 
-        line_wds = _line_words(stripped)
-        if not line_wds:
+        if not stripped:
             result.append(line)
             continue
 
-        # Find the original line with the highest Jaccard similarity
-        best_phrases: list[str] = []
-        best_score = 0.0
-        for orig_wds, phrases in orig_entries:
-            union = len(line_wds | orig_wds)
-            if union == 0:
-                continue
-            score = len(line_wds & orig_wds) / union
-            if score > best_score:
-                best_score = score
-                best_phrases = phrases
-
-        # Only apply bold if there's meaningful overlap with the matched original line
-        if best_score >= 0.5 and best_phrases:
-            for phrase in best_phrases:
-                line = _apply_phrase_bold(line, phrase)
+        for phrase in all_phrases:
+            line = _apply_phrase_bold(line, phrase)
 
         result.append(line)
     return "\n".join(result)
+
 
 
 def split_inline_bold(text: str) -> list[tuple[str, bool]]:
@@ -275,6 +288,7 @@ class ResumeElement:
 
     kind: str  # "name" | "contact" | "section_header" | "bullet" | "body" | "blank"
     text: str
+    right_text: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +299,63 @@ class ResumeElement:
 _CONTACT_INFO_RE = re.compile(
     r"@|https?://|www\.|linkedin\.|github\.|\.com\b|\b\d{3}[-.\s]\d{3}|\(\d{3}\)"
 )
+
+_PHONE_RE = re.compile(r'\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b')
+_EMAIL_RE = re.compile(r'[\w.+%-]+@[\w.-]+\.\w+')
+_URL_RE = re.compile(r'(?:linkedin\.|github\.|https?://|www\.)\S+')
+_DATE_RANGE_RE = re.compile(
+    r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\s+\d{4}\s*[–\-]\s*'
+    r'(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\s+\d{4}|Present|Current|Now)',
+    re.IGNORECASE,
+)
+_LOCATION_END_RE = re.compile(
+    r'\b([A-Z][a-zA-Z\s\-\.\']+,\s*[A-Z]{2,3}(?:,\s*[A-Za-z\s]+)?)\s*$'
+)
+
+
+def _split_contact_line(line: str) -> tuple[str, str] | None:
+    """Split 'Location  Phone' or 'Email  URL' into (left, right). Returns None if not splittable."""
+    # Phone number at end
+    m = _PHONE_RE.search(line)
+    if m and m.start() > 5:
+        left = line[:m.start()].rstrip()
+        right = line[m.start():].strip()
+        if left:
+            return left, right
+    # URL (linkedin/github) after email
+    email_m = _EMAIL_RE.search(line)
+    url_m = _URL_RE.search(line)
+    if email_m and url_m and url_m.start() > email_m.end():
+        left = line[:url_m.start()].rstrip()
+        right = line[url_m.start():].strip()
+        if left:
+            return left, right
+    return None
+
+
+def _split_body_line(line: str) -> tuple[str, str] | None:
+    """Split 'Company  Location' or 'Title  DateRange' into (left, right). Returns None if not splittable."""
+    # Date range at end
+    m = _DATE_RANGE_RE.search(line)
+    if m and m.start() > 5:
+        after = line[m.end():].strip()
+        if len(after) <= 3:
+            left = line[:m.start()].rstrip()
+            right = line[m.start():].strip()
+            if left:
+                return left, right
+    # Location at end (e.g. "Vancouver, BC, Canada" or "Tehran, Iran")
+    m = _LOCATION_END_RE.search(line)
+    if m and m.start() > 5:
+        left = line[:m.start()].rstrip()
+        right = m.group(1).strip()
+        if left and len(left) > 3:
+            return left, right
+    return None
 
 
 def _is_contact_info_line(line: str) -> bool:
@@ -341,7 +412,12 @@ def parse_resume_text(text: str, profile: StyleProfile) -> list[ResumeElement]:
 
         if in_contact_block:
             if _is_contact_info_line(stripped):
-                elements.append(ResumeElement("contact", stripped))
+                split = _split_contact_line(stripped)
+                if split:
+                    left, right = split
+                    elements.append(ResumeElement("contact", left, right_text=right))
+                else:
+                    elements.append(ResumeElement("contact", stripped))
             elif len(stripped) <= 80:
                 # Short non-contact lines in header zone → title/tagline
                 plain = re.sub(r"\*\*", "", stripped)
@@ -361,7 +437,12 @@ def parse_resume_text(text: str, profile: StyleProfile) -> list[ResumeElement]:
             elements.append(ResumeElement("bullet", stripped[2:]))
             continue
 
-        elements.append(ResumeElement("body", stripped))
+        split = _split_body_line(stripped)
+        if split:
+            left, right = split
+            elements.append(ResumeElement("body", left, right_text=right))
+        else:
+            elements.append(ResumeElement("body", stripped))
 
     return elements
 
@@ -393,9 +474,9 @@ def _base_font_name(font_name: str) -> str:
         font_name = font_name.split("+")[-1]
     # Take everything before the first dash
     base = font_name.split("-")[0].strip()
-    # Strip trailing "MT" or "PS"
-    for suffix in ("MT", "PS"):
-        if base.upper().endswith(suffix) and len(base) > len(suffix):
+    # Strip trailing weight/variant suffixes
+    for suffix in ("MT", "PS", "Body", "Regular", "Light", "Medium", "Semibold", "SemBd", "Bd"):
+        if base.upper().endswith(suffix.upper()) and len(base) > len(suffix) + 2:
             base = base[: -len(suffix)].strip()
     return base
 
@@ -479,10 +560,13 @@ def _extract_pdf_spacing(
         return "body"
 
     gaps_after: dict[str, list[float]] = {"name": [], "contact": [], "header": [], "body": []}
+    gaps_before_header: list[float] = []
     for i in range(len(rows) - 1):
         gap = max(0.0, rows[i + 1]["y_top"] - rows[i]["y_bot"])
         role = _role(rows[i]["size"])
         gaps_after[role].append(gap)
+        if _role(rows[i + 1]["size"]) == "header":
+            gaps_before_header.append(gap)
 
     result = {}
     for role, gaps in gaps_after.items():
@@ -490,7 +574,30 @@ def _extract_pdf_spacing(
             s = sorted(gaps)
             median = s[len(s) // 2]
             result[f"{role}_gap"] = round(median, 1)
+    if gaps_before_header:
+        s = sorted(gaps_before_header)
+        result["header_before_gap"] = round(s[len(s) // 2], 1)
     return result
+
+
+def _compute_pdf_line_spacing(spans: list[dict], body_size: float) -> float:
+    """Estimate line spacing multiplier from the y-distance between tops of consecutive body rows."""
+    body_rows = sorted(
+        [s for s in spans if abs(s["size"] - body_size) < 1.0],
+        key=lambda s: float(s["bbox"][1]),
+    )
+    if len(body_rows) < 2:
+        return 1.2
+    leadings: list[float] = []
+    for i in range(len(body_rows) - 1):
+        top_gap = float(body_rows[i + 1]["bbox"][1]) - float(body_rows[i]["bbox"][1])
+        # Only count gaps that look like in-paragraph leading (not paragraph breaks)
+        if body_size * 0.9 < top_gap < body_size * 2.2:
+            leadings.append(top_gap / body_size)
+    if not leadings:
+        return 1.2
+    s = sorted(leadings)
+    return round(s[len(s) // 2], 2)
 
 
 def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
@@ -510,38 +617,54 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
 
     spans: list[dict] = []
     pdf_lines_data: list[list[dict]] = []
+
+    # Use page 0 for layout metrics and drawing detection
     page = doc[0]
     try:
-        blocks = page.get_text("dict")["blocks"]
+        _p0_blocks = page.get_text("dict")["blocks"]
     except Exception:
         doc.close()
         return StyleProfile.default()
 
-    for block in blocks:
-        if block.get("type") != 0:
-            continue
-        for line in block.get("lines", []):
-            line_span_list: list[dict] = []
-            for span in line.get("spans", []):
-                text = span.get("text", "").strip()
-                if not text:
-                    continue
-                entry = {
-                    "text": text,
-                    "size": float(span.get("size", 11.0)),
-                    "font": span.get("font", "Helvetica"),
-                    "flags": int(span.get("flags", 0)),
-                    "bold": _is_bold(
-                        span.get("font", ""), int(span.get("flags", 0))
-                    ),
-                    "bbox": span.get("bbox", (50.0, 50.0, 500.0, 60.0)),
-                    "color": int(span.get("color", 0)),
-                }
-                spans.append(entry)
-                line_span_list.append(entry)
-            if line_span_list:
-                pdf_lines_data.append(line_span_list)
+    def _extract_page_spans(blocks_list):
+        for block in blocks_list:
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                line_span_list: list[dict] = []
+                for span in line.get("spans", []):
+                    text = span.get("text", "").strip()
+                    if not text:
+                        continue
+                    entry = {
+                        "text": text,
+                        "size": float(span.get("size", 11.0)),
+                        "font": span.get("font", "Helvetica"),
+                        "flags": int(span.get("flags", 0)),
+                        "bold": _is_bold(
+                            span.get("font", ""), int(span.get("flags", 0))
+                        ),
+                        "bbox": span.get("bbox", (50.0, 50.0, 500.0, 60.0)),
+                        "color": int(span.get("color", 0)),
+                    }
+                    spans.append(entry)
+                    line_span_list.append(entry)
+                if line_span_list:
+                    pdf_lines_data.append(line_span_list)
+
+    _extract_page_spans(_p0_blocks)
+
+    # Extract spans from remaining pages (needed for bold phrase detection across all pages)
+    for pg_idx in range(1, len(doc)):
+        try:
+            _extra_blocks = doc[pg_idx].get_text("dict")["blocks"]
+            _extract_page_spans(_extra_blocks)
+        except Exception:
+            pass
+
     page_width = page.rect.width
+    # Snapshot drawings before closing the document (page becomes invalid after close)
+    _raw_drawings = list(page.get_drawings())
     doc.close()
 
     if not spans:
@@ -622,34 +745,52 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     def _clamped(key: str, default: float) -> float:
         v = _pdf_gaps.get(key)
         return round(v, 1) if v is not None and 0 <= v <= 30 else default
-    pdf_name_space_after    = _clamped("name_gap",    3.0)
-    pdf_contact_space_after = _clamped("contact_gap", 2.0)
-    pdf_header_space_after  = _clamped("header_gap",  4.0)
-    pdf_body_space_after    = _clamped("body_gap",    2.0)
+    pdf_name_space_after    = _clamped("name_gap",         3.0)
+    pdf_contact_space_after = _clamped("contact_gap",      2.0)
+    pdf_header_space_before = _clamped("header_before_gap", 10.0)
+    pdf_header_space_after  = _clamped("header_gap",        4.0)
+    pdf_body_space_after    = _clamped("body_gap",          2.0)
     pdf_bullet_space_after  = pdf_body_space_after
-    pdf_tagline_space_after = _clamped("name_gap",    2.0)
+    pdf_tagline_space_after = _clamped("name_gap",          2.0)
+    pdf_line_spacing        = _compute_pdf_line_spacing(spans, body_size)
 
-    # Detect horizontal separator lines (drawn paths spanning >40% of page width)
+    # Detect horizontal separator lines (drawn paths or thin rects spanning >30% of page width)
     pdf_has_section_rule = False
     pdf_rule_color = header_color
     pdf_rule_thickness = 0.5
     try:
-        for drawing in page.get_drawings():
+        for drawing in _raw_drawings:
+            found = False
             for item in drawing.get("items", []):
                 if item[0] == "l":
-                    x0, y0, x1, y1 = item[1].x, item[1].y, item[2].x, item[2].y
-                    if abs(y1 - y0) < 2 and abs(x1 - x0) > page_width * 0.4:
-                        pdf_has_section_rule = True
+                    # Line segment — item[1]/item[2] may be Point objects or plain tuples
+                    p1, p2 = item[1], item[2]
+                    x0 = p1.x if hasattr(p1, "x") else p1[0]
+                    y0 = p1.y if hasattr(p1, "y") else p1[1]
+                    x1 = p2.x if hasattr(p2, "x") else p2[0]
+                    y1 = p2.y if hasattr(p2, "y") else p2[1]
+                    if abs(y1 - y0) < 3 and abs(x1 - x0) > page_width * 0.3:
+                        found = True
                         pdf_rule_thickness = float(drawing.get("width") or 0.5)
-                        stroke = drawing.get("color")
-                        if stroke and len(stroke) >= 3:
-                            r, g, b = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
-                            pdf_rule_color = f"#{r:02x}{g:02x}{b:02x}"
-                        break
+                elif item[0] == "re":
+                    # Rectangle — thin filled rect used as a horizontal rule
+                    rect = item[1]
+                    rw = rect.width if hasattr(rect, "width") else (rect[2] - rect[0])
+                    rh = rect.height if hasattr(rect, "height") else (rect[3] - rect[1])
+                    if rh < 4 and rw > page_width * 0.3:
+                        found = True
+                        pdf_rule_thickness = max(rh, 0.5)
+                if found:
+                    stroke = drawing.get("color") or drawing.get("fill")
+                    if stroke and len(stroke) >= 3:
+                        r, g, b = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
+                        pdf_rule_color = f"#{r:02x}{g:02x}{b:02x}"
+                    pdf_has_section_rule = True
+                    break
             if pdf_has_section_rule:
                 break
-    except Exception:
-        pass
+    except Exception as _draw_err:
+        print(f"[StyleParser] drawing detection error: {_draw_err!r}")
 
     return StyleProfile(
         name_font_size=round(name_size, 1),
@@ -664,7 +805,7 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
         margin_top=margin_top,
         sections=sections,
         bullet_char=bullet_char,
-        line_spacing=1.2,
+        line_spacing=pdf_line_spacing,
         has_header_block=has_header_block,
         name_align=name_align,
         name_color=name_color,
@@ -678,7 +819,7 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
         section_rule_style="single",
         name_space_after=pdf_name_space_after,
         contact_space_after=pdf_contact_space_after,
-        header_space_before=10.0,  # can't reliably isolate from PDF gaps
+        header_space_before=pdf_header_space_before,
         header_space_after=pdf_header_space_after,
         body_space_after=pdf_body_space_after,
         bullet_space_after=pdf_bullet_space_after,
@@ -787,22 +928,46 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     para_meta: list[dict] = []  # one entry per paragraph for alignment lookup
 
     def _bottom_border_props(para) -> dict | None:
-        """Return {"color": "#rrggbb", "thickness": pt} if para has a bottom border, else None."""
+        """Return {"color": "#rrggbb", "thickness": pt, "style": str} if para has a bottom
+        border, else None.  Checks inline XML first, then walks the style chain."""
+        from docx.oxml.ns import qn as _qn2
+
+        def _parse_border_el(bottom) -> dict | None:
+            val = bottom.get(_qn2("w:val"), "none")
+            if val in ("none", ""):
+                return None
+            sz = int(bottom.get(_qn2("w:sz"), "4") or "4")
+            thickness = sz / 8.0
+            raw_color = bottom.get(_qn2("w:color"), "auto")
+            color = f"#{raw_color.lower()}" if raw_color not in ("auto", "") and len(raw_color) == 6 else None
+            return {"color": color, "thickness": thickness, "style": val}
+
         try:
-            from docx.oxml.ns import qn as _qn2
+            # 1. Inline paragraph properties
             pPr = para._p.find(_qn2("w:pPr"))
             if pPr is not None:
                 pBdr = pPr.find(_qn2("w:pBdr"))
                 if pBdr is not None:
                     bottom = pBdr.find(_qn2("w:bottom"))
-                    if bottom is not None and bottom.get(_qn2("w:val"), "none") not in ("none", ""):
-                        # w:sz is in eighths of a point
-                        sz = int(bottom.get(_qn2("w:sz"), "4"))
-                        thickness = sz / 8.0
-                        raw_color = bottom.get(_qn2("w:color"), "auto")
-                        color = f"#{raw_color.lower()}" if raw_color not in ("auto", "") and len(raw_color) == 6 else None
-                        style = bottom.get(_qn2("w:val"), "single")
-                        return {"color": color, "thickness": thickness, "style": style}
+                    if bottom is not None:
+                        result = _parse_border_el(bottom)
+                        if result:
+                            return result
+
+            # 2. Style chain — the border may be defined in a named style
+            style = para.style
+            while style:
+                el = style.element
+                pPr_s = el.find(_qn2("w:pPr"))
+                if pPr_s is not None:
+                    pBdr_s = pPr_s.find(_qn2("w:pBdr"))
+                    if pBdr_s is not None:
+                        bottom = pBdr_s.find(_qn2("w:bottom"))
+                        if bottom is not None:
+                            result = _parse_border_el(bottom)
+                            if result:
+                                return result
+                style = style.base_style
         except Exception:
             pass
         return None
@@ -870,6 +1035,32 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     docx_contact_space_after = docx_body_space_after
     docx_bullet_space_after  = docx_body_space_after
     docx_tagline_space_after = _name_sa if _name_sa is not None else 2.0
+
+    # Extract line spacing from body paragraphs
+    docx_line_spacing = 1.2
+    try:
+        from docx.enum.text import WD_LINE_SPACING
+        for para, sz in _para_size_pairs:
+            if abs(sz - body_size) > 0.5:
+                continue
+            pf = para.paragraph_format
+            ls = pf.line_spacing
+            lsr = pf.line_spacing_rule
+            if ls is None:
+                # Walk style chain
+                style = para.style
+                while style and ls is None:
+                    ls = style.paragraph_format.line_spacing
+                    lsr = style.paragraph_format.line_spacing_rule
+                    style = style.base_style
+            if ls is not None:
+                if lsr == WD_LINE_SPACING.MULTIPLE:
+                    docx_line_spacing = round(float(ls), 2)
+                elif hasattr(ls, "pt") and ls.pt and body_size:
+                    docx_line_spacing = round(ls.pt / body_size, 2)
+                break
+    except Exception:
+        pass
 
     section_rule_thickness = 0.5
     section_rule_color_raw = None
@@ -971,7 +1162,7 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         margin_top=margin_top,
         sections=sections,
         bullet_char=bullet_char,
-        line_spacing=1.2,
+        line_spacing=docx_line_spacing,
         has_header_block=bool(name_runs),
         name_align=name_align,
         name_color=dominant_color(name_runs),
