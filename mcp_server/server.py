@@ -1,10 +1,11 @@
 """
 MCP server for resume formatting.
 
-Exposes three tools:
-  - parse_resume_structure  : Extract visual style from an original resume PDF
-  - generate_pdf            : Render improved resume text as a styled PDF
-  - generate_docx           : Render improved resume text as a styled Word doc
+Exposes four tools:
+  - parse_resume_structure       : Extract visual style from an original resume PDF
+  - parse_resume_structure_docx  : Extract visual style from an original resume Word (.docx)
+  - generate_pdf                 : Render improved resume text as a styled PDF
+  - generate_docx                : Render improved resume text as a styled Word doc
 
 Run:
     python mcp_server/server.py
@@ -30,6 +31,7 @@ from career_copilot.resume_formatter.pdf_builder import generate_formatted_pdf
 from career_copilot.resume_formatter.structure_parser import (
     StyleProfile,
     parse_resume_structure,
+    parse_resume_structure_docx,
 )
 
 mcp = FastMCP("resume-formatter")
@@ -49,6 +51,23 @@ def parse_resume_structure_tool(pdf_bytes_b64: str) -> str:
     """
     pdf_bytes = base64.b64decode(pdf_bytes_b64)
     profile = parse_resume_structure(pdf_bytes)
+    return profile.to_json()
+
+
+@mcp.tool()
+def parse_resume_structure_docx_tool(docx_bytes_b64: str) -> str:
+    """
+    Analyse a resume Word (.docx) file and extract its visual style profile.
+
+    Args:
+        docx_bytes_b64: Base64-encoded bytes of the original resume .docx file.
+
+    Returns:
+        JSON string representing the StyleProfile (font sizes, margins,
+        sections, bullet character, etc.).
+    """
+    docx_bytes = base64.b64decode(docx_bytes_b64)
+    profile = parse_resume_structure_docx(docx_bytes)
     return profile.to_json()
 
 
