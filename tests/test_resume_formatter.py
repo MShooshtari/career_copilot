@@ -196,10 +196,11 @@ class TestExtractBoldPhrasesForLine:
         return {"text": text, "bold": bold, "size": size}
 
     def test_extracts_bold_spans(self):
+        # Multi-word bold phrase captured; single-word "Teck" is not (too generic when alone)
         spans = [self._span("Data Scientist"), self._span(" at ", bold=False), self._span("Teck")]
         phrases = _extract_bold_phrases_for_line(spans, body_size=11.0)
         assert "Data Scientist" in phrases
-        assert "Teck" in phrases
+        assert "Teck" not in phrases
 
     def test_skips_non_bold_spans(self):
         spans = [self._span("plain", bold=False)]
@@ -219,9 +220,14 @@ class TestExtractBoldPhrasesForLine:
         assert _extract_bold_phrases_for_line(spans, body_size=11.0) == []
 
     def test_deduplicates(self):
-        spans = [self._span("Teck"), self._span("Teck")]
+        # Multi-word bold phrase appearing twice in a mixed line is deduplicated
+        spans = [
+            self._span("Teck Resources"),
+            {"text": " | other", "bold": False, "size": 11.0},
+            self._span("Teck Resources"),
+        ]
         phrases = _extract_bold_phrases_for_line(spans, body_size=11.0)
-        assert phrases.count("Teck") == 1
+        assert phrases.count("Teck Resources") == 1
 
     def test_sorted_longest_first(self):
         spans = [self._span("T"), self._span("Teck Resources")]
@@ -229,11 +235,11 @@ class TestExtractBoldPhrasesForLine:
         phrases = _extract_bold_phrases_for_line(spans, body_size=11.0)
         assert phrases == ["Teck Resources"]
 
-    def test_stop_words_not_filtered(self):
-        # "and" was previously filtered but no longer should be
+    def test_stop_words_filtered(self):
+        # Common stop words like "and" must not be captured as bold phrases
         spans = [self._span("and")]
         phrases = _extract_bold_phrases_for_line(spans, body_size=11.0)
-        assert "and" in phrases
+        assert "and" not in phrases
 
 
 # ---------------------------------------------------------------------------

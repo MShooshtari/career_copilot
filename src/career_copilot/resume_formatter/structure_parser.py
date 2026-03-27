@@ -129,6 +129,8 @@ class StyleProfile:
     section_rule_color: str = "#000000"
     section_rule_thickness: float = 0.5
     section_rule_style: str = "single"
+    has_name_rule: bool = False
+    sections_with_rule: list = field(default_factory=list)
     # Paragraph spacing in points (extracted from original; used by both builders)
     name_space_after: float = 3.0
     contact_space_after: float = 2.0
@@ -166,32 +168,45 @@ def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> 
     seen: set[str] = set()
     phrases: list[str] = []
 
-    # Check if all non-whitespace spans in this line are bold at body size (±4pt)
-    # and long enough to be meaningful (≥2 chars each).
-    # If so, capture the full concatenated line text as a single bold phrase.
+    # If ALL non-whitespace spans on this line are bold at body size and long enough,
+    # capture the full concatenated line as one phrase (e.g. a standalone job title line).
+    # Individual spans are NOT added separately in this case.
     body_spans = [s for s in line_spans if s["text"].strip()]
+    whole_line_added = False
     if body_spans and all(
         s.get("bold") and abs(s["size"] - body_size) <= 4.0 and len(s["text"].strip()) >= 2
         for s in body_spans
     ):
         full_line = "".join(s["text"] for s in body_spans).strip()
         lower_full = full_line.lower().rstrip(":")
-        if len(full_line) >= 4 and lower_full not in KNOWN_SECTIONS:
+        if len(full_line) >= 4 and lower_full not in KNOWN_SECTIONS and lower_full not in _STOP_WORDS:
             seen.add(full_line)
             phrases.append(full_line)
+            whole_line_added = True
 
-    for s in line_spans:
-        if not s.get("bold"):
-            continue
-        if abs(s["size"] - body_size) > 4.0:
-            continue
-        text = s["text"].strip()
-        lower = text.lower().rstrip(":")
-        if len(text) < 2 or lower in KNOWN_SECTIONS:
-            continue
-        if text not in seen:
-            seen.add(text)
-            phrases.append(text)
+    if not whole_line_added:
+        # Mixed line: group consecutive bold body-sized spans into runs.
+        # Short bold spans (< 2 chars) are skipped but don't break a run.
+        # Only multi-word runs are kept — single-word spans like "Engineer"
+        # or "Data" are too generic and get applied in the wrong contexts.
+        bold_run: list[str] = []
+        for s in line_spans + [None]:  # type: ignore[operator]
+            if s is not None and s.get("bold") and abs(s["size"] - body_size) <= 4.0:
+                if s["text"].strip() and len(s["text"].strip()) >= 2:
+                    bold_run.append(s["text"].strip())
+            else:
+                if bold_run:
+                    phrase = " ".join(bold_run)
+                    bold_run = []
+                    lower = phrase.lower().rstrip(":")
+                    if (len(phrase) >= 2
+                            and lower not in KNOWN_SECTIONS
+                            and lower not in _STOP_WORDS
+                            and len(phrase.split()) >= 2
+                            and phrase not in seen):
+                        seen.add(phrase)
+                        phrases.append(phrase)
+
     return sorted(phrases, key=len, reverse=True)
 
 
@@ -266,6 +281,10 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
             result.append(line)
             continue
 
+        if stripped[0] in BULLET_CHARS or (len(stripped) > 2 and stripped[0] in "-*" and stripped[1] == " "):
+            result.append(line)
+            continue
+
         for phrase in all_phrases:
             line = _apply_phrase_bold(line, phrase)
 
@@ -288,9 +307,10 @@ def split_inline_bold(text: str) -> list[tuple[str, bool]]:
 class ResumeElement:
     """A single structural element of a plain-text resume."""
 
-    kind: str  # "name" | "contact" | "section_header" | "bullet" | "body" | "blank"
+    kind: str  # "name" | "contact" | "section_header" | "bullet" | "body" | "blank" | "header_rule"
     text: str
     right_text: str = ""
+    has_rule: bool = False  # True if this section_header has an HR rule below it in the original
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +465,21 @@ def parse_resume_text(text: str, profile: StyleProfile) -> list[ResumeElement]:
             elements.append(ResumeElement("body", left, right_text=right))
         else:
             elements.append(ResumeElement("body", stripped))
+
+    # Set has_rule on section headers that had rules in the original
+    _rule_section_set = {s.lower().rstrip(":") for s in (profile.sections_with_rule or [])}
+    if _rule_section_set:
+        for el in elements:
+            if el.kind == "section_header":
+                if el.text.lower().rstrip(":") in _rule_section_set:
+                    el.has_rule = True
+
+    # Insert a standalone HR rule right after the name element (for name-block dividers)
+    if profile.has_name_rule:
+        for i, el in enumerate(elements):
+            if el.kind == "name":
+                elements.insert(i + 1, ResumeElement("header_rule", ""))
+                break
 
     return elements
 
@@ -655,6 +690,7 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
                     pdf_lines_data.append(line_span_list)
 
     _extract_page_spans(_p0_blocks)
+    _page_span_ends: list[int] = [len(spans)]
 
     # Extract spans from remaining pages (needed for bold phrase detection across all pages)
     for pg_idx in range(1, len(doc)):
@@ -663,10 +699,18 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
             _extract_page_spans(_extra_blocks)
         except Exception:
             pass
+        _page_span_ends.append(len(spans))
 
     page_width = page.rect.width
-    # Snapshot drawings before closing the document (page becomes invalid after close)
-    _raw_drawings = list(page.get_drawings())
+
+    # Snapshot drawings from ALL pages before closing (page becomes invalid after close)
+    _all_page_drawings: list[tuple[int, list]] = []
+    for _pg_i in range(len(doc)):
+        try:
+            _all_page_drawings.append((_pg_i, list(doc[_pg_i].get_drawings())))
+        except Exception:
+            _all_page_drawings.append((_pg_i, []))
+
     doc.close()
 
     if not spans:
@@ -756,43 +800,112 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     pdf_tagline_space_after = _clamped("name_gap",          2.0)
     pdf_line_spacing        = _compute_pdf_line_spacing(spans, body_size)
 
-    # Detect horizontal separator lines (drawn paths or thin rects spanning >30% of page width)
+    # Detect horizontal separator lines per-page, matching each to a section header or name block
     pdf_has_section_rule = False
     pdf_rule_color = header_color
     pdf_rule_thickness = 0.5
+    _has_name_rule = False
+    _sections_with_rule_pdf: list[str] = []
+    _rule_ys_for_style: list[tuple[float, float]] = []  # (y, thickness) for style classification
+
+    def _pg_spans(pg_idx: int) -> list[dict]:
+        start = _page_span_ends[pg_idx - 1] if pg_idx > 0 else 0
+        end = _page_span_ends[pg_idx] if pg_idx < len(_page_span_ends) else len(spans)
+        return spans[start:end]
+
+    def _header_positions(page_spans: list[dict]) -> list[tuple[float, str]]:
+        result: list[tuple[float, str]] = []
+        for s in page_spans:
+            is_hdr = abs(s["size"] - header_size) < 1.5
+            is_bold_body = s.get("bold") and abs(s["size"] - body_size) < 1.0
+            if is_hdr or is_bold_body:
+                t = s["text"].strip().rstrip(":").lower()
+                if t in KNOWN_SECTIONS:
+                    y = (float(s["bbox"][1]) + float(s["bbox"][3])) / 2
+                    result.append((y, t))
+        return result
+
+    _p0_hdrs = _header_positions(_pg_spans(0))
+    _min_section_y_p0 = min((y for y, _ in _p0_hdrs), default=None)
+
     try:
-        for drawing in _raw_drawings:
-            found = False
-            for item in drawing.get("items", []):
-                if item[0] == "l":
-                    # Line segment — item[1]/item[2] may be Point objects or plain tuples
-                    p1, p2 = item[1], item[2]
-                    x0 = p1.x if hasattr(p1, "x") else p1[0]
-                    y0 = p1.y if hasattr(p1, "y") else p1[1]
-                    x1 = p2.x if hasattr(p2, "x") else p2[0]
-                    y1 = p2.y if hasattr(p2, "y") else p2[1]
-                    if abs(y1 - y0) < 3 and abs(x1 - x0) > page_width * 0.3:
-                        found = True
-                        pdf_rule_thickness = float(drawing.get("width") or 0.5)
-                elif item[0] == "re":
-                    # Rectangle — thin filled rect used as a horizontal rule
-                    rect = item[1]
-                    rw = rect.width if hasattr(rect, "width") else (rect[2] - rect[0])
-                    rh = rect.height if hasattr(rect, "height") else (rect[3] - rect[1])
-                    if rh < 4 and rw > page_width * 0.3:
-                        found = True
-                        pdf_rule_thickness = max(rh, 0.5)
-                if found:
-                    stroke = drawing.get("color") or drawing.get("fill")
-                    if stroke and len(stroke) >= 3:
-                        r, g, b = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
-                        pdf_rule_color = f"#{r:02x}{g:02x}{b:02x}"
-                    pdf_has_section_rule = True
-                    break
-            if pdf_has_section_rule:
-                break
+        for pg_idx, pg_drawings in _all_page_drawings:
+            pg_hdrs = _header_positions(_pg_spans(pg_idx))
+
+            for drawing in pg_drawings:
+                found_rule = False
+                rule_y = 0.0
+                rule_thick = 0.5
+                rule_color_str = pdf_rule_color
+
+                for item in drawing.get("items", []):
+                    if item[0] == "l":
+                        p1, p2 = item[1], item[2]
+                        x0 = p1.x if hasattr(p1, "x") else p1[0]
+                        y0 = p1.y if hasattr(p1, "y") else p1[1]
+                        x1 = p2.x if hasattr(p2, "x") else p2[0]
+                        y1 = p2.y if hasattr(p2, "y") else p2[1]
+                        if abs(y1 - y0) < 3 and abs(x1 - x0) > page_width * 0.3:
+                            found_rule = True
+                            rule_y = (y0 + y1) / 2
+                            rule_thick = float(drawing.get("width") or 0.5)
+                    elif item[0] == "re":
+                        rect = item[1]
+                        rw = rect.width if hasattr(rect, "width") else (rect[2] - rect[0])
+                        rh = rect.height if hasattr(rect, "height") else (rect[3] - rect[1])
+                        ry0 = rect.y0 if hasattr(rect, "y0") else rect[1]
+                        if rh < 4 and rw > page_width * 0.3:
+                            found_rule = True
+                            rule_y = ry0 + rh / 2
+                            rule_thick = max(rh, 0.5)
+                    if found_rule:
+                        stroke = drawing.get("color") or drawing.get("fill")
+                        if stroke and len(stroke) >= 3:
+                            r2, g2, b2 = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
+                            rule_color_str = f"#{r2:02x}{g2:02x}{b2:02x}"
+                        break
+
+                if not found_rule:
+                    continue
+
+                pdf_has_section_rule = True
+                _rule_ys_for_style.append((rule_y, rule_thick))
+                if pdf_rule_color == header_color:
+                    pdf_rule_color = rule_color_str
+                    pdf_rule_thickness = rule_thick
+
+                # Name-block rule: page 0, y is above the first section header
+                if (pg_idx == 0 and _min_section_y_p0 is not None
+                        and rule_y < _min_section_y_p0 - 5):
+                    _has_name_rule = True
+                    continue
+
+                # Match to the closest section header above this rule (within 35pt)
+                best: tuple[float, str] | None = None
+                for hdr_y, hdr_name in pg_hdrs:
+                    gap = rule_y - hdr_y
+                    if 0 < gap <= 35:
+                        if best is None or gap < (rule_y - best[0]):
+                            best = (hdr_y, hdr_name)
+                if best:
+                    if best[1] not in _sections_with_rule_pdf:
+                        _sections_with_rule_pdf.append(best[1])
+
     except Exception as _draw_err:
         print(f"[StyleParser] drawing detection error: {_draw_err!r}")
+
+    # Classify rule style: if two rules land within 6pt of each other, it's a double-line border
+    pdf_section_rule_style = "single"
+    if len(_rule_ys_for_style) >= 2:
+        sorted_ys = sorted(_rule_ys_for_style, key=lambda r: r[0])
+        for _si in range(len(sorted_ys) - 1):
+            y_a, t_a = sorted_ys[_si]
+            y_b, t_b = sorted_ys[_si + 1]
+            if y_b - y_a <= 6:
+                pdf_section_rule_style = "thickThinSmallGap" if t_a >= t_b else "thinThickSmallGap"
+                # Use the combined thickness
+                pdf_rule_thickness = t_a + t_b
+                break
 
     return StyleProfile(
         name_font_size=round(name_size, 1),
@@ -816,9 +929,11 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
         raw_font_name=raw_font,
         bold_phrases=_extract_bold_phrases_per_line(pdf_lines_data, body_size),
         has_section_rule=pdf_has_section_rule,
+        has_name_rule=_has_name_rule,
+        sections_with_rule=_sections_with_rule_pdf,
         section_rule_color=pdf_rule_color,
         section_rule_thickness=pdf_rule_thickness,
-        section_rule_style="single",
+        section_rule_style=pdf_section_rule_style,
         name_space_after=pdf_name_space_after,
         contact_space_after=pdf_contact_space_after,
         header_space_before=pdf_header_space_before,
@@ -1066,21 +1181,37 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
 
     section_rule_thickness = 0.5
     section_rule_color_raw = None
-    # Detect border style from any paragraph in the document (name paragraph typically
-    # carries the resume's decorative border which we apply under section headers too)
-    has_section_rule = False
-    section_rule_thickness = 0.5
-    section_rule_color_raw = None
     section_rule_style_val = "single"
-    from docx.oxml.ns import qn as _qn3
-    for para in all_paras:
-        props = _bottom_border_props(para)
-        if props:
-            has_section_rule = True
-            section_rule_thickness = props["thickness"]
-            section_rule_color_raw = props["color"]
-            section_rule_style_val = props.get("style", "single")
-            break
+    _docx_sections_with_rule: list[str] = []
+    _docx_has_name_rule = False
+    _first_section_seen = False
+    _rule_props_first: dict | None = None
+
+    from docx.oxml.ns import qn as _qn3  # noqa: F811
+    for pm in para_meta:
+        runs_pm = pm["runs"]
+        para_text_pm = " ".join(r["text"] for r in runs_pm).strip().rstrip(":")
+        text_lower_pm = para_text_pm.lower()
+        is_section_pm = text_lower_pm in KNOWN_SECTIONS and (
+            any(abs(r["size"] - header_size) < 1.5 for r in runs_pm)
+            or any(abs(r["size"] - body_size) < 1.0 and r["bold"] for r in runs_pm)
+        )
+        if is_section_pm:
+            _first_section_seen = True
+        if pm.get("border"):
+            if _rule_props_first is None:
+                _rule_props_first = pm["border"]
+            if is_section_pm:
+                if text_lower_pm not in _docx_sections_with_rule:
+                    _docx_sections_with_rule.append(text_lower_pm)
+            elif not _first_section_seen:
+                _docx_has_name_rule = True
+
+    has_section_rule = bool(_docx_sections_with_rule) or _docx_has_name_rule
+    if _rule_props_first:
+        section_rule_thickness = _rule_props_first.get("thickness", 0.5)
+        section_rule_color_raw = _rule_props_first.get("color")
+        section_rule_style_val = _rule_props_first.get("style", "single")
     body_runs = [r for r in runs_data if abs(r["size"] - body_size) < 1.0]
 
     name_bold = any(r["bold"] for r in name_runs) if name_runs else True
@@ -1173,6 +1304,8 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         raw_font_name=raw_font,
         bold_phrases=bold_phrases_list,
         has_section_rule=has_section_rule,
+        has_name_rule=_docx_has_name_rule,
+        sections_with_rule=_docx_sections_with_rule,
         section_rule_color=section_rule_color,
         section_rule_thickness=section_rule_thickness,
         section_rule_style=section_rule_style,

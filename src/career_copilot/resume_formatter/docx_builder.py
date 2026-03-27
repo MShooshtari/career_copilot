@@ -175,8 +175,12 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
             run.font.size = Pt(profile.header_font_size)
             run.font.bold = profile.header_bold
             run.font.color.rgb = header_color_rgb
-            if profile.has_section_rule:
+            if el.has_rule:
                 add_bottom_border(p)
+
+        elif el.kind == "header_rule":
+            p = _new_para(space_before=2.0, space_after=4.0)
+            add_bottom_border(p)
 
         elif el.kind == "bullet":
             p = _new_para(space_after=profile.bullet_space_after)

@@ -333,7 +333,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
             story.append(Paragraph(_safe(el.text), tagline_style))
         elif el.kind == "section_header":
             story.append(Paragraph(_safe(el.text), header_style))
-            if profile.has_section_rule:
+            if el.has_rule:
                 rule_color = HexColor(profile.section_rule_color)
                 thick = profile.section_rule_thickness
                 if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
@@ -343,6 +343,16 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
                     story.append(HRFlowable(width=_text_width, thickness=thick * 0.25, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
                 else:
                     story.append(HRFlowable(width=_text_width, thickness=thick, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
+        elif el.kind == "header_rule":
+            rule_color = HexColor(profile.section_rule_color)
+            thick = profile.section_rule_thickness
+            if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
+                                               "thickThinMediumGap", "thinThickMediumGap",
+                                               "thickThinLargeGap", "thinThickLargeGap"):
+                story.append(HRFlowable(width=_text_width, thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=2, hAlign="LEFT"))
+                story.append(HRFlowable(width=_text_width, thickness=thick * 0.25, color=rule_color, spaceAfter=4, spaceBefore=1, hAlign="LEFT"))
+            else:
+                story.append(HRFlowable(width=_text_width, thickness=thick, color=rule_color, spaceAfter=4, spaceBefore=2, hAlign="LEFT"))
         elif el.kind == "bullet":
             story.append(
                 Paragraph(
