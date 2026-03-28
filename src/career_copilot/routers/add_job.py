@@ -26,8 +26,9 @@ async def get_add_job(request: Request) -> HTMLResponse:
     error = request.query_params.get("error")
     msg = "Failed to save the job. Please try again." if error == "save_failed" else None
     return templates.TemplateResponse(
+        request,
         "add_job.html",
-        {"request": request, "user_id": USER_ID, "error": msg},
+        {"user_id": USER_ID, "error": msg},
     )
 
 
@@ -53,19 +54,21 @@ async def post_add_job(
 
     if mode == "url" and not url_clean:
         return templates.TemplateResponse(
+            request,
             "add_job.html",
-            {"request": request, "user_id": USER_ID, "error": "Please enter a job URL."},
+            {"user_id": USER_ID, "error": "Please enter a job URL."},
         )
     if mode == "file" and (not file or not file.filename):
         return templates.TemplateResponse(
+            request,
             "add_job.html",
-            {"request": request, "user_id": USER_ID, "error": "Please select a file to upload."},
+            {"user_id": USER_ID, "error": "Please select a file to upload."},
         )
     if mode == "manual" and not (job_text or "").strip():
         return templates.TemplateResponse(
+            request,
             "add_job.html",
             {
-                "request": request,
                 "user_id": USER_ID,
                 "error": "Please provide job description text, a file, or a URL.",
             },
@@ -90,9 +93,9 @@ async def post_add_job(
         )
     except Exception as e:
         return templates.TemplateResponse(
+            request,
             "add_job.html",
             {
-                "request": request,
                 "user_id": USER_ID,
                 "error": f"Could not extract job details: {e!s}. Try pasting the description manually.",
             },
@@ -100,9 +103,9 @@ async def post_add_job(
 
     if not proposal or (not proposal.get("title") and not proposal.get("description")):
         return templates.TemplateResponse(
+            request,
             "add_job.html",
             {
-                "request": request,
                 "user_id": USER_ID,
                 "error": "We couldn't extract enough job details. Try pasting the job description manually or a different URL.",
             },
@@ -113,8 +116,9 @@ async def post_add_job(
         proposal = {**proposal, "url": url_clean}
 
     return templates.TemplateResponse(
+        request,
         "confirm_job.html",
-        {"request": request, "user_id": USER_ID, "proposal": proposal},
+        {"user_id": USER_ID, "proposal": proposal},
     )
 
 

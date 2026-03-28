@@ -35,9 +35,9 @@ async def get_applications_page(
     applications = enrich_applications_with_job_info(conn, rows)
     conn.close()
     return templates.TemplateResponse(
+        request,
         "track_applications.html",
         {
-            "request": request,
             "applications": applications,
             "user_id": USER_ID,
         },
