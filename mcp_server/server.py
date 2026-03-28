@@ -25,6 +25,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from career_copilot.resume_formatter.docx_builder import generate_formatted_docx
 from career_copilot.resume_formatter.pdf_builder import generate_formatted_pdf
@@ -34,7 +35,10 @@ from career_copilot.resume_formatter.structure_parser import (
     parse_resume_structure_docx,
 )
 
-mcp = FastMCP("resume-formatter")
+mcp = FastMCP(
+    "resume-formatter",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 
 @mcp.tool()
@@ -106,4 +110,5 @@ def generate_docx_tool(improved_text: str, style_profile_json: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8001)
+    import uvicorn
+    uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=8001)

@@ -447,6 +447,57 @@ def chat_resume_improvement(
         return (msg.content or "").strip()
 
 
+def format_resume_via_mcp(
+    improved_text: str,
+    style_profile_json: str,
+    output_format: str,
+    mcp_server_url: str,
+) -> bytes:
+    """
+    Use the OpenAI Responses API with the remote MCP server to format an improved resume.
+
+    output_format: "pdf" or "docx"
+    Returns raw file bytes.
+    Raises RuntimeError if the MCP tool does not return a result.
+    """
+    import base64
+
+    tool_name = "generate_pdf_tool" if output_format == "pdf" else "generate_docx_tool"
+    client = _get_openai_client()
+
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "resume-formatter",
+                "server_url": mcp_server_url,
+                "require_approval": "never",
+            }
+        ],
+        input=(
+            f"Call the {tool_name} tool with the following arguments.\n\n"
+            f"improved_text:\n{improved_text}\n\n"
+            f"style_profile_json:\n{style_profile_json}"
+        ),
+    )
+
+    for item in response.output:
+        item_type = getattr(item, "type", "")
+        if item_type == "mcp_call":
+            name = getattr(item, "name", "")
+            if name == tool_name:
+                raw = getattr(item, "output", None)
+                print(f"[MCP] {tool_name} output type={type(raw).__name__} len={len(raw) if raw else 0}")
+                if isinstance(raw, str) and raw:
+                    return base64.b64decode(raw)
+
+    output_types = [(getattr(i, "type", "?"), getattr(i, "name", "")) for i in response.output]
+    raise RuntimeError(
+        f"MCP tool '{tool_name}' returned no result. Output: {output_types}"
+    )
+
+
 def generate_full_resume(
     conversation_history: list[dict[str, str]],
     resume_text: str,

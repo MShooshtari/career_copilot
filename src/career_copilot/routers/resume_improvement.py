@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from career_copilot.agents.resume_improvement import (
     build_resume_improvement_context,
     chat_resume_improvement,
+    format_resume_via_mcp,
     generate_full_resume,
     get_initial_resume_analysis,
 )
@@ -202,6 +203,11 @@ def _get_improved_text(job_id: int, body_history: list | None) -> str:
     return text or ""
 
 
+def _get_mcp_server_url() -> str | None:
+    import os
+    return os.environ.get("MCP_SERVER_URL") or None
+
+
 def _get_style_profile() -> StyleProfile:
     """Load the user's original resume and extract its StyleProfile."""
     conn = get_db()
@@ -226,11 +232,21 @@ async def post_resume_improve_download(
     text = _get_improved_text(job_id, body.history)
     profile = _get_style_profile()
     text = apply_original_bold(text, profile.bold_phrases)
-    try:
-        pdf_bytes = generate_formatted_pdf(text, profile)
-    except Exception as _pdf_err:
-        print(f"[PDF] generate_formatted_pdf failed: {_pdf_err!r}")
-        pdf_bytes = build_resume_pdf(text)
+    mcp_url = _get_mcp_server_url()
+    if mcp_url:
+        try:
+            import dataclasses
+            profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
+            pdf_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "pdf", mcp_url)
+        except Exception as _mcp_err:
+            print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
+            mcp_url = None
+    if not mcp_url:
+        try:
+            pdf_bytes = generate_formatted_pdf(text, profile)
+        except Exception as _pdf_err:
+            print(f"[PDF] generate_formatted_pdf failed: {_pdf_err!r}")
+            pdf_bytes = build_resume_pdf(text)
 
     filename = f"improved_resume_job_{job_id}.pdf"
     return StreamingResponse(
@@ -249,7 +265,17 @@ async def post_resume_improve_download_docx(
     text = _get_improved_text(job_id, body.history)
     profile = _get_style_profile()
     text = apply_original_bold(text, profile.bold_phrases)
-    docx_bytes = generate_formatted_docx(text, profile)
+    mcp_url = _get_mcp_server_url()
+    if mcp_url:
+        try:
+            import dataclasses
+            profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
+            docx_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "docx", mcp_url)
+        except Exception as _mcp_err:
+            print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
+            mcp_url = None
+    if not mcp_url:
+        docx_bytes = generate_formatted_docx(text, profile)
 
     filename = f"improved_resume_job_{job_id}.docx"
     return StreamingResponse(
