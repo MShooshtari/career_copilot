@@ -76,8 +76,12 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
     header_color_rgb = _hex_to_rgb(profile.header_color)
     body_color_rgb = _hex_to_rgb(profile.body_color)
 
-    def _new_para(alignment=left, space_before: float = 0.0, space_after: float = 2.0,
-                  line_spacing: float | None = None) -> object:
+    def _new_para(
+        alignment=left,
+        space_before: float = 0.0,
+        space_after: float = 2.0,
+        line_spacing: float | None = None,
+    ) -> object:
         """Add a Normal-style paragraph with explicit spacing."""
         p = doc.add_paragraph(style="Normal")
         p.alignment = alignment
@@ -93,8 +97,13 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
     def add_bottom_border(para) -> None:
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
+
         sz = max(1, round(profile.section_rule_thickness * 8))
-        raw_color = profile.section_rule_color.lstrip("#") if profile.section_rule_color not in ("#000000", "") else "auto"
+        raw_color = (
+            profile.section_rule_color.lstrip("#")
+            if profile.section_rule_color not in ("#000000", "")
+            else "auto"
+        )
         pPr = para._p.get_or_add_pPr()
         pBdr = OxmlElement("w:pBdr")
         bottom = OxmlElement("w:bottom")
@@ -139,8 +148,9 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
             p = _new_para(space_after=2.0)
 
         elif el.kind == "name":
-            p = _new_para(alignment=name_alignment, space_after=profile.name_space_after,
-                          line_spacing=1.0)
+            p = _new_para(
+                alignment=name_alignment, space_after=profile.name_space_after, line_spacing=1.0
+            )
             run = p.add_run(el.text)
             run.font.name = font_name
             run.font.size = Pt(profile.name_font_size)
@@ -163,13 +173,20 @@ def generate_formatted_docx(improved_text: str, profile: StyleProfile) -> bytes:
 
         elif el.kind == "tagline":
             p = _new_para(alignment=name_alignment, space_after=profile.tagline_space_after)
-            add_runs(p, el.text, profile.header_font_size, header_color_rgb,
-                     base_bold=profile.header_bold)
+            add_runs(
+                p,
+                el.text,
+                profile.header_font_size,
+                header_color_rgb,
+                base_bold=profile.header_bold,
+            )
 
         elif el.kind == "section_header":
-            p = _new_para(space_before=profile.header_space_before,
-                          space_after=profile.header_space_after,
-                          line_spacing=1.0)
+            p = _new_para(
+                space_before=profile.header_space_before,
+                space_after=profile.header_space_after,
+                line_spacing=1.0,
+            )
             run = p.add_run(el.text)
             run.font.name = font_name
             run.font.size = Pt(profile.header_font_size)

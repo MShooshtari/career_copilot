@@ -488,14 +488,14 @@ def format_resume_via_mcp(
             name = getattr(item, "name", "")
             if name == tool_name:
                 raw = getattr(item, "output", None)
-                print(f"[MCP] {tool_name} output type={type(raw).__name__} len={len(raw) if raw else 0}")
+                print(
+                    f"[MCP] {tool_name} output type={type(raw).__name__} len={len(raw) if raw else 0}"
+                )
                 if isinstance(raw, str) and raw:
                     return base64.b64decode(raw)
 
     output_types = [(getattr(i, "type", "?"), getattr(i, "name", "")) for i in response.output]
-    raise RuntimeError(
-        f"MCP tool '{tool_name}' returned no result. Output: {output_types}"
-    )
+    raise RuntimeError(f"MCP tool '{tool_name}' returned no result. Output: {output_types}")
 
 
 def generate_full_resume(

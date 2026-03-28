@@ -73,7 +73,7 @@ def _scan_font_dir(font_dir: str, family_lower: str) -> tuple[str | None, str | 
         if not base.startswith(family_nospace):
             continue
 
-        suffix = base[len(family_nospace):]
+        suffix = base[len(family_nospace) :]
         full_path = os.path.join(font_dir, fname)
 
         if suffix in _BOLD_TOKENS:
@@ -195,8 +195,14 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     # Zero-padding frame so _text_width exactly equals the frame's available width,
     # preventing ReportLab from centering Tables that would otherwise overflow the interior.
     _content_frame = Frame(
-        margin, bottom_margin, frame_w, frame_h,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        margin,
+        bottom_margin,
+        frame_w,
+        frame_h,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
         id="normal",
     )
     doc = BaseDocTemplate(
@@ -295,6 +301,7 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.platypus import Table
         from reportlab.platypus import TableStyle as TS
+
         # Left cell is always left-aligned (tab-stop-style layout); right cell right-aligned
         left_split_style = ParagraphStyle(
             left_style.name + "_split",
@@ -311,18 +318,27 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         )
         left_col = _text_width - _RIGHT_COL
         t = Table(
-            [[Paragraph(left_markup, left_split_style), Paragraph(_safe(right_text_raw), right_style)]],
+            [
+                [
+                    Paragraph(left_markup, left_split_style),
+                    Paragraph(_safe(right_text_raw), right_style),
+                ]
+            ],
             colWidths=[left_col, _RIGHT_COL],
             spaceBefore=0,
             spaceAfter=left_style.spaceAfter,
         )
-        t.setStyle(TS([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
+        t.setStyle(
+            TS(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
         return t
 
     for el in elements:
@@ -333,7 +349,9 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
         elif el.kind == "contact":
             markup = _markup(el.text, body_font_bold)
             if el.right_text:
-                story.append(_split_row(markup, el.right_text, contact_style, profile.contact_font_size))
+                story.append(
+                    _split_row(markup, el.right_text, contact_style, profile.contact_font_size)
+                )
             else:
                 story.append(Paragraph(markup, contact_style))
         elif el.kind == "tagline":
@@ -343,23 +361,87 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
             if el.has_rule:
                 rule_color = HexColor(profile.section_rule_color)
                 thick = profile.section_rule_thickness
-                if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
-                                                   "thickThinMediumGap", "thinThickMediumGap",
-                                                   "thickThinLargeGap", "thinThickLargeGap"):
-                    story.append(HRFlowable(width=_text_width, thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=1, hAlign='LEFT'))
-                    story.append(HRFlowable(width=_text_width, thickness=thick * 0.25, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
+                if profile.section_rule_style in (
+                    "thickThinSmallGap",
+                    "thinThickSmallGap",
+                    "thickThinMediumGap",
+                    "thinThickMediumGap",
+                    "thickThinLargeGap",
+                    "thinThickLargeGap",
+                ):
+                    story.append(
+                        HRFlowable(
+                            width=_text_width,
+                            thickness=thick * 0.65,
+                            color=rule_color,
+                            spaceAfter=1,
+                            spaceBefore=1,
+                            hAlign="LEFT",
+                        )
+                    )
+                    story.append(
+                        HRFlowable(
+                            width=_text_width,
+                            thickness=thick * 0.25,
+                            color=rule_color,
+                            spaceAfter=2,
+                            spaceBefore=1,
+                            hAlign="LEFT",
+                        )
+                    )
                 else:
-                    story.append(HRFlowable(width=_text_width, thickness=thick, color=rule_color, spaceAfter=2, spaceBefore=1, hAlign='LEFT'))
+                    story.append(
+                        HRFlowable(
+                            width=_text_width,
+                            thickness=thick,
+                            color=rule_color,
+                            spaceAfter=2,
+                            spaceBefore=1,
+                            hAlign="LEFT",
+                        )
+                    )
         elif el.kind == "header_rule":
             rule_color = HexColor(profile.section_rule_color)
             thick = profile.section_rule_thickness
-            if profile.section_rule_style in ("thickThinSmallGap", "thinThickSmallGap",
-                                               "thickThinMediumGap", "thinThickMediumGap",
-                                               "thickThinLargeGap", "thinThickLargeGap"):
-                story.append(HRFlowable(width=_text_width, thickness=thick * 0.65, color=rule_color, spaceAfter=1, spaceBefore=2, hAlign="LEFT"))
-                story.append(HRFlowable(width=_text_width, thickness=thick * 0.25, color=rule_color, spaceAfter=4, spaceBefore=1, hAlign="LEFT"))
+            if profile.section_rule_style in (
+                "thickThinSmallGap",
+                "thinThickSmallGap",
+                "thickThinMediumGap",
+                "thinThickMediumGap",
+                "thickThinLargeGap",
+                "thinThickLargeGap",
+            ):
+                story.append(
+                    HRFlowable(
+                        width=_text_width,
+                        thickness=thick * 0.65,
+                        color=rule_color,
+                        spaceAfter=1,
+                        spaceBefore=2,
+                        hAlign="LEFT",
+                    )
+                )
+                story.append(
+                    HRFlowable(
+                        width=_text_width,
+                        thickness=thick * 0.25,
+                        color=rule_color,
+                        spaceAfter=4,
+                        spaceBefore=1,
+                        hAlign="LEFT",
+                    )
+                )
             else:
-                story.append(HRFlowable(width=_text_width, thickness=thick, color=rule_color, spaceAfter=4, spaceBefore=2, hAlign="LEFT"))
+                story.append(
+                    HRFlowable(
+                        width=_text_width,
+                        thickness=thick,
+                        color=rule_color,
+                        spaceAfter=4,
+                        spaceBefore=2,
+                        hAlign="LEFT",
+                    )
+                )
         elif el.kind == "bullet":
             story.append(
                 Paragraph(

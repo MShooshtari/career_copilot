@@ -6,6 +6,7 @@ Uses OpenAI embeddings (career_copilot.rag.embedding). Set OPENAI_API_KEY in .en
 Run after ingestion so that the RAG store is populated from the jobs table.
 Does not modify the existing ingestion or DB schema.
 """
+
 from __future__ import annotations
 
 import sys

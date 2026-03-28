@@ -205,6 +205,7 @@ def _get_improved_text(job_id: int, body_history: list | None) -> str:
 
 def _get_mcp_server_url() -> str | None:
     import os
+
     return os.environ.get("MCP_SERVER_URL") or None
 
 
@@ -236,6 +237,7 @@ async def post_resume_improve_download(
     if mcp_url:
         try:
             import dataclasses
+
             profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
             pdf_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "pdf", mcp_url)
         except Exception as _mcp_err:
@@ -269,6 +271,7 @@ async def post_resume_improve_download_docx(
     if mcp_url:
         try:
             import dataclasses
+
             profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
             docx_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "docx", mcp_url)
         except Exception as _mcp_err:

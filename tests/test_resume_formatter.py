@@ -68,6 +68,7 @@ class TestStyleProfile:
 
     def test_from_json_partial_overrides_defaults(self):
         import json
+
         data = {"name_font_size": 24.0}
         p = StyleProfile.from_json(json.dumps({**StyleProfile().__dict__, **data}))
         assert p.name_font_size == 24.0
@@ -97,28 +98,34 @@ class TestResumeElement:
 
 
 class TestIsContactInfoLine:
-    @pytest.mark.parametrize("line", [
-        "jane@example.com",
-        "https://linkedin.com/in/jane",
-        "www.janedoe.com",
-        "linkedin.com/in/jane",
-        "github.com/jane",
-        "janedoe.com",
-        "416-527-2903",
-        "416.527.2903",
-        "(416) 527-2903",
-        "Vancouver, BC  416 527 2903",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "jane@example.com",
+            "https://linkedin.com/in/jane",
+            "www.janedoe.com",
+            "linkedin.com/in/jane",
+            "github.com/jane",
+            "janedoe.com",
+            "416-527-2903",
+            "416.527.2903",
+            "(416) 527-2903",
+            "Vancouver, BC  416 527 2903",
+        ],
+    )
     def test_contact_lines_detected(self, line):
         assert _is_contact_info_line(line)
 
-    @pytest.mark.parametrize("line", [
-        "Data Scientist and Process Engineer",
-        "Advanced Analytics and Optimization",
-        "Vancouver, BC",
-        "Results-driven senior engineer",
-        "WORK EXPERIENCE",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Data Scientist and Process Engineer",
+            "Advanced Analytics and Optimization",
+            "Vancouver, BC",
+            "Results-driven senior engineer",
+            "WORK EXPERIENCE",
+        ],
+    )
     def test_non_contact_lines_rejected(self, line):
         assert not _is_contact_info_line(line)
 
@@ -160,8 +167,10 @@ class TestSplitInlineBold:
 
 class TestApplyPhraseBold:
     def test_wraps_matching_phrase(self):
-        assert _apply_phrase_bold("Teck Resources, Vancouver", "Teck Resources") == \
-               "**Teck Resources**, Vancouver"
+        assert (
+            _apply_phrase_bold("Teck Resources, Vancouver", "Teck Resources")
+            == "**Teck Resources**, Vancouver"
+        )
 
     def test_case_insensitive(self):
         result = _apply_phrase_bold("teck resources, Vancouver", "Teck Resources")
@@ -279,7 +288,12 @@ class TestExtractBoldPhrasesPerLine:
 BOLD_PHRASES = [
     ["Data Scientist, 08/2020 - 09/2025", "Data Scientist"],
     ["Teck Resources, Vancouver, BC", "Teck Resources"],
-    ["Blend Optimization and Inventory Management (BOIM)", "Blend Optimization", "and", "Inventory Management (BOIM)"],
+    [
+        "Blend Optimization and Inventory Management (BOIM)",
+        "Blend Optimization",
+        "and",
+        "Inventory Management (BOIM)",
+    ],
 ]
 
 

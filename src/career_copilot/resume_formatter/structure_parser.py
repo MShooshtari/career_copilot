@@ -153,13 +153,56 @@ class StyleProfile:
         return cls()
 
 
-_STOP_WORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "and", "or", "but", "nor", "so", "yet", "for",
-    "in", "on", "at", "to", "of", "by", "as", "is", "was", "are",
-    "were", "be", "been", "with", "from", "that", "this", "which",
-    "it", "its", "not", "no", "if", "up", "do", "did", "has", "have",
-    "had", "may", "can", "will", "all", "both", "each", "per",
-})
+_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "so",
+        "yet",
+        "for",
+        "in",
+        "on",
+        "at",
+        "to",
+        "of",
+        "by",
+        "as",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "with",
+        "from",
+        "that",
+        "this",
+        "which",
+        "it",
+        "its",
+        "not",
+        "no",
+        "if",
+        "up",
+        "do",
+        "did",
+        "has",
+        "have",
+        "had",
+        "may",
+        "can",
+        "will",
+        "all",
+        "both",
+        "each",
+        "per",
+    }
+)
 
 
 def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> list[str]:
@@ -178,7 +221,11 @@ def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> 
     ):
         full_line = "".join(s["text"] for s in body_spans).strip()
         lower_full = full_line.lower().rstrip(":")
-        if len(full_line) >= 4 and lower_full not in KNOWN_SECTIONS and lower_full not in _STOP_WORDS:
+        if (
+            len(full_line) >= 4
+            and lower_full not in KNOWN_SECTIONS
+            and lower_full not in _STOP_WORDS
+        ):
             seen.add(full_line)
             phrases.append(full_line)
             whole_line_added = True
@@ -198,11 +245,13 @@ def _extract_bold_phrases_for_line(line_spans: list[dict], body_size: float) -> 
                     phrase = " ".join(bold_run)
                     bold_run = []
                     lower = phrase.lower().rstrip(":")
-                    if (len(phrase) >= 2
-                            and lower not in KNOWN_SECTIONS
-                            and lower not in _STOP_WORDS
-                            and len(phrase.split()) >= 2
-                            and phrase not in seen):
+                    if (
+                        len(phrase) >= 2
+                        and lower not in KNOWN_SECTIONS
+                        and lower not in _STOP_WORDS
+                        and len(phrase.split()) >= 2
+                        and phrase not in seen
+                    ):
                         seen.add(phrase)
                         phrases.append(phrase)
 
@@ -234,7 +283,14 @@ def _apply_phrase_bold(line: str, phrase: str) -> str:
         if i % 2 == 1:  # already bold
             out.append(part)
         else:
-            out.append(re.sub(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", lambda m: f"**{m.group(0)}**", part, flags=re.IGNORECASE))
+            out.append(
+                re.sub(
+                    r"(?<!\w)" + re.escape(phrase) + r"(?!\w)",
+                    lambda m: f"**{m.group(0)}**",
+                    part,
+                    flags=re.IGNORECASE,
+                )
+            )
     return "".join(out)
 
 
@@ -254,8 +310,10 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
     seen: set[str] = set()
     all_phrases: list[str] = []
     for entry in bold_phrases:
-        phrases = entry[1:] if isinstance(entry, list) and len(entry) >= 2 else (
-            [entry] if isinstance(entry, str) else []
+        phrases = (
+            entry[1:]
+            if isinstance(entry, list) and len(entry) >= 2
+            else ([entry] if isinstance(entry, str) else [])
         )
         for phrase in phrases:
             if phrase not in seen:
@@ -270,9 +328,7 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
             result.append(line)
             continue
         stripped = line.strip().rstrip(":")
-        if stripped.lower() in KNOWN_SECTIONS or (
-            stripped.isupper() and 1 < len(stripped) < 45
-        ):
+        if stripped.lower() in KNOWN_SECTIONS or (stripped.isupper() and 1 < len(stripped) < 45):
             result.append(line)
             continue
 
@@ -280,7 +336,9 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
             result.append(line)
             continue
 
-        if stripped[0] in BULLET_CHARS or (len(stripped) > 2 and stripped[0] in "-*" and stripped[1] == " "):
+        if stripped[0] in BULLET_CHARS or (
+            len(stripped) > 2 and stripped[0] in "-*" and stripped[1] == " "
+        ):
             result.append(line)
             continue
 
@@ -289,7 +347,6 @@ def apply_original_bold(text: str, bold_phrases: list) -> str:
 
         result.append(line)
     return "\n".join(result)
-
 
 
 def split_inline_bold(text: str) -> list[tuple[str, bool]]:
@@ -321,21 +378,19 @@ _CONTACT_INFO_RE = re.compile(
     r"@|https?://|www\.|linkedin\.|github\.|\.com\b|\b\d{3}[-.\s]\d{3}|\(\d{3}\)"
 )
 
-_PHONE_RE = re.compile(r'\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b')
-_EMAIL_RE = re.compile(r'[\w.+%-]+@[\w.-]+\.\w+')
-_URL_RE = re.compile(r'(?:linkedin\.|github\.|https?://|www\.)\S+')
+_PHONE_RE = re.compile(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b")
+_EMAIL_RE = re.compile(r"[\w.+%-]+@[\w.-]+\.\w+")
+_URL_RE = re.compile(r"(?:linkedin\.|github\.|https?://|www\.)\S+")
 _DATE_RANGE_RE = re.compile(
-    r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
-    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
-    r'\s+\d{4}\s*[–\-]\s*'
-    r'(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
-    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
-    r'\s+\d{4}|Present|Current|Now)',
+    r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\s+\d{4}\s*[–\-]\s*"
+    r"(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\s+\d{4}|Present|Current|Now)",
     re.IGNORECASE,
 )
-_LOCATION_END_RE = re.compile(
-    r'\b([A-Z][a-zA-Z\s\-\.\']+,\s*[A-Z]{2,3}(?:,\s*[A-Za-z\s]+)?)\s*$'
-)
+_LOCATION_END_RE = re.compile(r"\b([A-Z][a-zA-Z\s\-\.\']+,\s*[A-Z]{2,3}(?:,\s*[A-Za-z\s]+)?)\s*$")
 
 
 def _split_contact_line(line: str) -> tuple[str, str] | None:
@@ -343,16 +398,16 @@ def _split_contact_line(line: str) -> tuple[str, str] | None:
     # Phone number at end
     m = _PHONE_RE.search(line)
     if m and m.start() > 5:
-        left = line[:m.start()].rstrip()
-        right = line[m.start():].strip()
+        left = line[: m.start()].rstrip()
+        right = line[m.start() :].strip()
         if left:
             return left, right
     # URL (linkedin/github) after email
     email_m = _EMAIL_RE.search(line)
     url_m = _URL_RE.search(line)
     if email_m and url_m and url_m.start() > email_m.end():
-        left = line[:url_m.start()].rstrip()
-        right = line[url_m.start():].strip()
+        left = line[: url_m.start()].rstrip()
+        right = line[url_m.start() :].strip()
         if left:
             return left, right
     return None
@@ -363,16 +418,16 @@ def _split_body_line(line: str) -> tuple[str, str] | None:
     # Date range at end
     m = _DATE_RANGE_RE.search(line)
     if m and m.start() > 5:
-        after = line[m.end():].strip()
+        after = line[m.end() :].strip()
         if len(after) <= 3:
-            left = line[:m.start()].rstrip()
-            right = line[m.start():].strip()
+            left = line[: m.start()].rstrip()
+            right = line[m.start() :].strip()
             if left:
                 return left, right
     # Location at end (e.g. "Vancouver, BC, Canada" or "Tehran, Iran")
     m = _LOCATION_END_RE.search(line)
     if m and m.start() > 5:
-        left = line[:m.start()].rstrip()
+        left = line[: m.start()].rstrip()
         right = m.group(1).strip()
         if left and len(left) > 3:
             return left, right
@@ -549,9 +604,7 @@ def _find_header_size(spans: list[dict], name_size: float, body_size: float) -> 
     return body_size
 
 
-def _extract_sections(
-    spans: list[dict], header_size: float, body_size: float
-) -> list[str]:
+def _extract_sections(spans: list[dict], header_size: float, body_size: float) -> list[str]:
     sections: list[str] = []
     for span in spans:
         text_lower = span["text"].strip().rstrip(":").lower()
@@ -677,9 +730,7 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
                         "size": float(span.get("size", 11.0)),
                         "font": span.get("font", "Helvetica"),
                         "flags": int(span.get("flags", 0)),
-                        "bold": _is_bold(
-                            span.get("font", ""), int(span.get("flags", 0))
-                        ),
+                        "bold": _is_bold(span.get("font", ""), int(span.get("flags", 0))),
                         "bbox": span.get("bbox", (50.0, 50.0, 500.0, 60.0)),
                         "color": int(span.get("color", 0)),
                     }
@@ -737,9 +788,8 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
     # Header styling
     header_spans = [s for s in spans if abs(s["size"] - header_size) < 0.5]
     header_bold = any(s["bold"] for s in header_spans) if header_spans else True
-    header_all_caps = (
-        bool(header_spans)
-        and all(s["text"].isupper() for s in header_spans[:6] if len(s["text"]) > 2)
+    header_all_caps = bool(header_spans) and all(
+        s["text"].isupper() for s in header_spans[:6] if len(s["text"]) > 2
     )
 
     # Sections in order
@@ -787,17 +837,19 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
 
     # Paragraph spacing from y-coordinate gap analysis
     _pdf_gaps = _extract_pdf_spacing(spans, name_size, header_size, body_size)
+
     def _clamped(key: str, default: float) -> float:
         v = _pdf_gaps.get(key)
         return round(v, 1) if v is not None and 0 <= v <= 30 else default
-    pdf_name_space_after    = _clamped("name_gap",         3.0)
-    pdf_contact_space_after = _clamped("contact_gap",      2.0)
+
+    pdf_name_space_after = _clamped("name_gap", 3.0)
+    pdf_contact_space_after = _clamped("contact_gap", 2.0)
     pdf_header_space_before = _clamped("header_before_gap", 10.0)
-    pdf_header_space_after  = _clamped("header_gap",        4.0)
-    pdf_body_space_after    = _clamped("body_gap",          2.0)
-    pdf_bullet_space_after  = pdf_body_space_after
-    pdf_tagline_space_after = _clamped("name_gap",          2.0)
-    pdf_line_spacing        = _compute_pdf_line_spacing(spans, body_size)
+    pdf_header_space_after = _clamped("header_gap", 4.0)
+    pdf_body_space_after = _clamped("body_gap", 2.0)
+    pdf_bullet_space_after = pdf_body_space_after
+    pdf_tagline_space_after = _clamped("name_gap", 2.0)
+    pdf_line_spacing = _compute_pdf_line_spacing(spans, body_size)
 
     # Detect horizontal separator lines per-page, matching each to a section header or name block
     pdf_has_section_rule = False
@@ -860,7 +912,11 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
                     if found_rule:
                         stroke = drawing.get("color") or drawing.get("fill")
                         if stroke and len(stroke) >= 3:
-                            r2, g2, b2 = int(stroke[0]*255), int(stroke[1]*255), int(stroke[2]*255)
+                            r2, g2, b2 = (
+                                int(stroke[0] * 255),
+                                int(stroke[1] * 255),
+                                int(stroke[2] * 255),
+                            )
                             rule_color_str = f"#{r2:02x}{g2:02x}{b2:02x}"
                         break
 
@@ -874,8 +930,7 @@ def parse_resume_structure(pdf_bytes: bytes) -> StyleProfile:
                     pdf_rule_thickness = rule_thick
 
                 # Name-block rule: page 0, y is above the first section header
-                if (pg_idx == 0 and _min_section_y_p0 is not None
-                        and rule_y < _min_section_y_p0 - 5):
+                if pg_idx == 0 and _min_section_y_p0 is not None and rule_y < _min_section_y_p0 - 5:
                     _has_name_rule = True
                     continue
 
@@ -1012,6 +1067,7 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         # Try run-level XML first (handles theme colors that python-docx can't resolve)
         try:
             from docx.oxml.ns import qn as _qn
+
             rPr = run._r.find(_qn("w:rPr"))
             if rPr is not None:
                 color_el = rPr.find(_qn("w:color"))
@@ -1055,7 +1111,11 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
             sz = int(bottom.get(_qn2("w:sz"), "4") or "4")
             thickness = sz / 8.0
             raw_color = bottom.get(_qn2("w:color"), "auto")
-            color = f"#{raw_color.lower()}" if raw_color not in ("auto", "") and len(raw_color) == 6 else None
+            color = (
+                f"#{raw_color.lower()}"
+                if raw_color not in ("auto", "") and len(raw_color) == 6
+                else None
+            )
             return {"color": color, "thickness": thickness, "style": val}
 
         try:
@@ -1103,7 +1163,9 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
             runs_data.append(entry)
             para_runs.append(entry)
         if para_runs:
-            para_meta.append({"runs": para_runs, "align": para.alignment, "border": _bottom_border_props(para)})
+            para_meta.append(
+                {"runs": para_runs, "align": para.alignment, "border": _bottom_border_props(para)}
+            )
 
     if not runs_data:
         return StyleProfile.default()
@@ -1144,18 +1206,19 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     _hdr_sb, _hdr_sa = _sample_space(header_size, bold_only=_hdr_bold_only)
     _body_sb, _body_sa = _sample_space(body_size)
 
-    docx_name_space_after    = _name_sa if _name_sa is not None else 3.0
-    docx_header_space_before = _hdr_sb  if _hdr_sb  is not None else 10.0
-    docx_header_space_after  = _hdr_sa  if _hdr_sa  is not None else 4.0
-    docx_body_space_after    = _body_sa if _body_sa is not None else 2.0
+    docx_name_space_after = _name_sa if _name_sa is not None else 3.0
+    docx_header_space_before = _hdr_sb if _hdr_sb is not None else 10.0
+    docx_header_space_after = _hdr_sa if _hdr_sa is not None else 4.0
+    docx_body_space_after = _body_sa if _body_sa is not None else 2.0
     docx_contact_space_after = docx_body_space_after
-    docx_bullet_space_after  = docx_body_space_after
+    docx_bullet_space_after = docx_body_space_after
     docx_tagline_space_after = _name_sa if _name_sa is not None else 2.0
 
     # Extract line spacing from body paragraphs
     docx_line_spacing = 1.2
     try:
         from docx.enum.text import WD_LINE_SPACING
+
         for para, sz in _para_size_pairs:
             if abs(sz - body_size) > 0.5:
                 continue
@@ -1244,12 +1307,14 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
 
     # --- Sections ---
 
-    sections = list(dict.fromkeys(
-        r["text"].rstrip(":")
-        for r in runs_data
-        if abs(r["size"] - header_size) < 0.5
-        and r["text"].strip().rstrip(":").lower() in KNOWN_SECTIONS
-    ))
+    sections = list(
+        dict.fromkeys(
+            r["text"].rstrip(":")
+            for r in runs_data
+            if abs(r["size"] - header_size) < 0.5
+            and r["text"].strip().rstrip(":").lower() in KNOWN_SECTIONS
+        )
+    )
 
     # --- Bullet character ---
 
@@ -1264,8 +1329,10 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     # --- Bold body phrases ---
 
     bold_phrases_list = _extract_bold_phrases_per_line(
-        [[{"text": r["text"], "size": r["size"], "bold": r["bold"]} for r in pm["runs"]]
-         for pm in para_meta],
+        [
+            [{"text": r["text"], "size": r["size"], "bold": r["bold"]} for r in pm["runs"]]
+            for pm in para_meta
+        ],
         body_size,
     )
 
@@ -1287,7 +1354,9 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
         header_bold=header_bold,
         header_all_caps=header_all_caps,
         body_font_size=round(body_size, 1),
-        contact_font_size=round(min(sizes), 1) if len(sizes) > 2 else max(round(body_size - 1.0, 1), 8.0),
+        contact_font_size=round(min(sizes), 1)
+        if len(sizes) > 2
+        else max(round(body_size - 1.0, 1), 8.0),
         base_font_family=base_font,
         margin_left=margin_left,
         margin_top=margin_top,

@@ -5,6 +5,7 @@ Applies the same html_to_plain_text logic (strip HTML, fix mojibake, normalize
 whitespace) to every existing row with a description, then UPDATEs the row
 if the repaired text differs. Safe to run multiple times.
 """
+
 from __future__ import annotations
 
 import sys

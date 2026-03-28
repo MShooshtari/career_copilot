@@ -111,4 +111,5 @@ def generate_docx_tool(improved_text: str, style_profile_json: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=8001)

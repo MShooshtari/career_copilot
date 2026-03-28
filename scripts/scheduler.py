@@ -2,6 +2,7 @@
 Run ingestion on a schedule (e.g. every 5 minutes or every hour).
 Duplicates are avoided: the ingestion script upserts by (source, source_id).
 """
+
 from __future__ import annotations
 
 import sys

@@ -7,6 +7,7 @@ Usage (from project root):
 Ensures the `src` directory is on PYTHONPATH so that `career_copilot` is
 importable both in the main process and in the uvicorn reload subprocess.
 """
+
 from __future__ import annotations
 
 import os
