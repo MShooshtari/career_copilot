@@ -202,6 +202,7 @@
                 </form>
                 <div class="download-row">
                     <button type="button" id="downloadBtn" class="download-btn" disabled>Download PDF of latest version</button>
+                    <button type="button" id="downloadDocxBtn" class="download-btn" disabled>Download Word of latest version</button>
                 </div>
             </div>
         </article>
@@ -216,6 +217,7 @@
             const sendBtn = document.getElementById('sendBtn');
             const initialLoading = document.getElementById('initialLoading');
             const downloadBtn = document.getElementById('downloadBtn');
+            const downloadDocxBtn = document.getElementById('downloadDocxBtn');
 
             let history = [];
             const jobSource = (jobBase === '/my-jobs') ? 'user' : 'ingested';
@@ -311,6 +313,38 @@
                 }
             }
 
+            async function downloadDocxFromLatest() {
+                if (!history.length) {
+                    alert('No conversation yet. Ask the assistant to analyze or rewrite your resume first.');
+                    return;
+                }
+                downloadDocxBtn.disabled = true;
+                try {
+                    const res = await fetch(jobBase + '/' + jobId + '/improve-resume/download-docx', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ history: history }),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(text || res.statusText);
+                    }
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'improved-resume-job-' + jobId + '.docx';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Could not generate Word document: ' + err.message);
+                } finally {
+                    downloadDocxBtn.disabled = false;
+                }
+            }
+
             chatForm.addEventListener('submit', async function (e) {
                 e.preventDefault();
                 const text = (chatInput.value || '').trim();
@@ -324,6 +358,7 @@
                     history.push({ role: 'assistant', content: reply });
                     addMessage('assistant', renderMarkdownLike(reply));
                     downloadBtn.disabled = false;
+                    downloadDocxBtn.disabled = false;
                 } catch (err) {
                     addMessage('assistant', 'Error: ' + err.message);
                 }
@@ -344,6 +379,7 @@
                                 addMessage(role, renderMarkdownLike(h.content || ''));
                             });
                             downloadBtn.disabled = false;
+                            downloadDocxBtn.disabled = false;
                             setLoading(false);
                             return;
                         }
@@ -356,6 +392,7 @@
                     history = [{ role: 'assistant', content: reply }];
                     addMessage('assistant', renderMarkdownLike(reply));
                     downloadBtn.disabled = false;
+                    downloadDocxBtn.disabled = false;
                 } catch (err) {
                     initialLoading.textContent = 'Error: ' + err.message;
                 }
@@ -364,6 +401,9 @@
 
             downloadBtn.addEventListener('click', function () {
                 downloadPdfFromLatest();
+            });
+            downloadDocxBtn.addEventListener('click', function () {
+                downloadDocxFromLatest();
             });
         })();
     </script>

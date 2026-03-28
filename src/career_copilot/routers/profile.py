@@ -34,11 +34,10 @@ async def get_profile(
     row = get_profile_by_user_id(conn, USER_ID)
     conn.close()
     context = {
-        "request": request,
         "profile": row,
         "user_id": USER_ID,
     }
-    return templates.TemplateResponse("profile.html", context)
+    return templates.TemplateResponse(request, "profile.html", context)
 
 
 @router.get("/resume")

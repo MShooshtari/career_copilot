@@ -110,10 +110,16 @@ def build_resume_improvement_context(
         }
 
     job_document = _job_dict_to_document(job)
-    similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
-    similar_resumes = get_similar_resumes_for_resume_improvement(
-        job_document, exclude_user_id=user_id, n_results=5
-    )
+    try:
+        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+    except Exception:
+        similar_jobs = []
+    try:
+        similar_resumes = get_similar_resumes_for_resume_improvement(
+            job_document, exclude_user_id=user_id, n_results=5
+        )
+    except Exception:
+        similar_resumes = []
 
     return {
         "resume_text": resume_text,
@@ -146,10 +152,16 @@ def build_resume_improvement_context_from_job_dict(
             resume_text = extract_resume_text(row[0], row[1]) or ""
 
     job_document = _job_dict_to_document(job)
-    similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
-    similar_resumes = get_similar_resumes_for_resume_improvement(
-        job_document, exclude_user_id=user_id, n_results=5
-    )
+    try:
+        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+    except Exception:
+        similar_jobs = []
+    try:
+        similar_resumes = get_similar_resumes_for_resume_improvement(
+            job_document, exclude_user_id=user_id, n_results=5
+        )
+    except Exception:
+        similar_resumes = []
     return {
         "resume_text": resume_text,
         "job": job,
@@ -435,6 +447,57 @@ def chat_resume_improvement(
         return (msg.content or "").strip()
 
 
+def format_resume_via_mcp(
+    improved_text: str,
+    style_profile_json: str,
+    output_format: str,
+    mcp_server_url: str,
+) -> bytes:
+    """
+    Use the OpenAI Responses API with the remote MCP server to format an improved resume.
+
+    output_format: "pdf" or "docx"
+    Returns raw file bytes.
+    Raises RuntimeError if the MCP tool does not return a result.
+    """
+    import base64
+
+    tool_name = "generate_pdf_tool" if output_format == "pdf" else "generate_docx_tool"
+    client = _get_openai_client()
+
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "resume-formatter",
+                "server_url": mcp_server_url,
+                "require_approval": "never",
+            }
+        ],
+        input=(
+            f"Call the {tool_name} tool with the following arguments.\n\n"
+            f"improved_text:\n{improved_text}\n\n"
+            f"style_profile_json:\n{style_profile_json}"
+        ),
+    )
+
+    for item in response.output:
+        item_type = getattr(item, "type", "")
+        if item_type == "mcp_call":
+            name = getattr(item, "name", "")
+            if name == tool_name:
+                raw = getattr(item, "output", None)
+                print(
+                    f"[MCP] {tool_name} output type={type(raw).__name__} len={len(raw) if raw else 0}"
+                )
+                if isinstance(raw, str) and raw:
+                    return base64.b64decode(raw)
+
+    output_types = [(getattr(i, "type", "?"), getattr(i, "name", "")) for i in response.output]
+    raise RuntimeError(f"MCP tool '{tool_name}' returned no result. Output: {output_types}")
+
+
 def generate_full_resume(
     conversation_history: list[dict[str, str]],
     resume_text: str,
@@ -462,15 +525,25 @@ def generate_full_resume(
         {
             "role": "user",
             "content": (
-                "Using the conversation above, output the complete updated resume as plain text.\n\n"
+                "Using the conversation above, output the complete updated resume as formatted plain text.\n\n"
                 'Critical: Where you already gave specific text in your replies (e.g. under "After:", '
                 "rewritten bullets, or suggested wording), use that exact wording in the resume so "
                 "the document matches what the user saw in the chat. Do not invent new wording for "
                 "those sections.\n\n"
-                "Requirements:\n"
-                "- Include only resume sections (contact, summary, experience, projects, education, skills, etc.).\n"
-                "- No commentary, analysis, ATS scores, or instructions.\n"
-                "- No Markdown (no **bold**, no ```, no # headings). Plain text only."
+                "Formatting rules — follow exactly:\n"
+                "1. Copy the name and contact block (name, location, phone, email, website) EXACTLY as they appear "
+                "in the original resume — same line breaks, same separators (tabs, pipes, spaces), same order. "
+                "Do not reformat, reorder, or combine these lines.\n"
+                "2. Section headers (EXPERIENCE, EDUCATION, SKILLS, etc.) on their own line, no ** around them.\n"
+                "3. Project sub-headers within a job (e.g. 'Blend Optimization and Inventory Management - Site, Location') "
+                "must be preserved on their own line between the job title line and its bullets. Do not omit them.\n"
+                "4. Bullet points start with - (dash space).\n"
+                "5. Do NOT use ** anywhere in your output. Do not bold any text. Plain text only — "
+                "bold formatting is applied separately and must not be added here.\n"
+                "6. No # headings, no ``` code blocks, no other markdown.\n"
+                "7. No commentary, analysis, ATS scores, or instructions — resume content only.\n"
+                "8. Include ALL jobs, projects, education entries, and bullets from the original resume unless the user "
+                "explicitly asked to remove something. Do not silently drop any section or sub-section."
             ),
         }
     )

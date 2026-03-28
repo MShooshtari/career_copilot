@@ -67,6 +67,7 @@ def apply_schema(conn) -> None:
         cur.execute(sql_text)
     conn.commit()
 
+
 def ensure_database(dbname: str) -> None:
     """
     Create the target database if missing (best-effort).
@@ -78,9 +79,7 @@ def ensure_database(dbname: str) -> None:
                     cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
                     exists = cur.fetchone() is not None
                     if not exists:
-                        cur.execute(
-                            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(dbname))
-                        )
+                        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(dbname)))
                 conn.commit()
             return
         except psycopg.OperationalError:
@@ -125,6 +124,7 @@ def _fetch_all_sources() -> list[tuple[str, list[NormalizedJob]]]:
 
 def main() -> None:
     from datetime import datetime, timezone
+
     load_env()
     run_at = datetime.now(timezone.utc).isoformat()
     source_batches = _fetch_all_sources()
@@ -144,8 +144,8 @@ def main() -> None:
             except psycopg.OperationalError:
                 raise RuntimeError(
                     'Database "career_copilot" does not exist and could not be created automatically.\n'
-                    'Create it manually, then re-run:\n\n'
-                    "  psql -U postgres -d postgres -c \"CREATE DATABASE career_copilot;\""
+                    "Create it manually, then re-run:\n\n"
+                    '  psql -U postgres -d postgres -c "CREATE DATABASE career_copilot;"'
                 ) from e
         else:
             raise
@@ -190,4 +190,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

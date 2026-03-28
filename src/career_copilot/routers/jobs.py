@@ -34,8 +34,9 @@ async def get_job_detail(
     if job.get("description"):
         job = {**job, "description": html_to_plain_text(job["description"]) or job["description"]}
     return templates.TemplateResponse(
+        request,
         "job_detail.html",
-        {"request": request, "job": job, "user_id": USER_ID},
+        {"job": job, "user_id": USER_ID},
     )
 
 
@@ -52,8 +53,9 @@ async def get_improve_resume(
         return RedirectResponse(url="/recommendations", status_code=303)
     job = row_to_job_dict_snippet(row, description_max_chars=JOB_DESCRIPTION_SNIPPET_MAX_CHARS)
     return templates.TemplateResponse(
+        request,
         "improve_resume.html",
-        {"request": request, "job": job, "job_id": job_id, "user_id": USER_ID},
+        {"job": job, "job_id": job_id, "user_id": USER_ID},
     )
 
 
@@ -70,6 +72,7 @@ async def get_prepare_interview(
         return RedirectResponse(url="/recommendations", status_code=303)
     job = row_to_job_dict_snippet(row, description_max_chars=JOB_DESCRIPTION_SNIPPET_MAX_CHARS)
     return templates.TemplateResponse(
+        request,
         "prepare_interview.html",
-        {"request": request, "job": job, "job_id": job_id, "user_id": USER_ID},
+        {"job": job, "job_id": job_id, "user_id": USER_ID},
     )

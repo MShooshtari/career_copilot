@@ -8,6 +8,7 @@ Usage:
   python scripts/explore_embeddings.py
   python scripts/explore_embeddings.py "remote Python backend"
 """
+
 from __future__ import annotations
 
 import sys
@@ -78,9 +79,7 @@ def _show_collection(
 
     sample = coll.get(limit=min(5, n), include=["documents", "metadatas"])
     ids = sample.get("ids") or [f"#{j}" for j in range(len(sample["documents"]))]
-    for i, (doc_id, doc, meta) in enumerate(
-        zip(ids, sample["documents"], sample["metadatas"]), 1
-    ):
+    for i, (doc_id, doc, meta) in enumerate(zip(ids, sample["documents"], sample["metadatas"]), 1):
         title = meta.get(id_key, doc_id)
         extra = f" | {meta.get(meta_company, '')}" if meta_company else ""
         print(f"  [{i}] id={doc_id} | {title}{extra}")
@@ -99,7 +98,9 @@ def _show_collection(
 def main() -> None:
     if not CHROMA_PATH.exists():
         print(f"Chroma path not found: {CHROMA_PATH}")
-        print("Run: python scripts/run_rag_index.py (jobs) or save a profile in the web app (user_profiles).")
+        print(
+            "Run: python scripts/run_rag_index.py (jobs) or save a profile in the web app (user_profiles)."
+        )
         sys.exit(1)
 
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
@@ -127,14 +128,22 @@ def main() -> None:
     )
     # Show stored resume file content from DB (what was uploaded; used for embedding when present)
     if n_users > 0:
-        print("--- Stored resumes (from DB; this text is included in the embedding when present) ---\n")
+        print(
+            "--- Stored resumes (from DB; this text is included in the embedding when present) ---\n"
+        )
         stored = _fetch_stored_resumes()
         if not stored:
-            print("  No resume files stored in DB. Upload a resume in the profile page and save to include it in the embedding.\n")
+            print(
+                "  No resume files stored in DB. Upload a resume in the profile page and save to include it in the embedding.\n"
+            )
         for user_id, filename, text in stored:
             print(f"  user_id={user_id}  file={filename or '(unknown)'}")
             if text.strip():
-                snippet = (text[:RESUME_SNIPPET_CHARS] + "...") if len(text) > RESUME_SNIPPET_CHARS else text
+                snippet = (
+                    (text[:RESUME_SNIPPET_CHARS] + "...")
+                    if len(text) > RESUME_SNIPPET_CHARS
+                    else text
+                )
                 print(f"  {snippet}")
             else:
                 print("  (no text extracted)")
@@ -143,7 +152,7 @@ def main() -> None:
     # Similarity search on jobs (only if non-empty)
     query_text = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "remote Python backend developer"
     if n_jobs > 0:
-        print(f"--- Query (jobs): \"{query_text}\" (top 5) ---")
+        print(f'--- Query (jobs): "{query_text}" (top 5) ---')
         results = coll_jobs.query(
             query_texts=[query_text],
             n_results=min(5, n_jobs),
@@ -158,7 +167,9 @@ def main() -> None:
             print(f"  {doc[:180]}{'...' if len(doc) > 180 else ''}")
             print()
     else:
-        print(f"--- Query skipped (jobs collection is empty). Run: python scripts/run_rag_index.py ---")
+        print(
+            f"--- Query skipped (jobs collection is empty). Run: python scripts/run_rag_index.py ---"
+        )
 
     print("Done.")
 

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from career_copilot.agents.resume_improvement import (
     build_resume_improvement_context,
     chat_resume_improvement,
+    format_resume_via_mcp,
     generate_full_resume,
     get_initial_resume_analysis,
 )
@@ -28,6 +29,15 @@ from career_copilot.database.applications import (
     set_application_memory,
 )
 from career_copilot.database.deps import get_db
+from career_copilot.database.profiles import get_resume_file_by_user_id
+from career_copilot.resume_formatter.docx_builder import generate_formatted_docx
+from career_copilot.resume_formatter.pdf_builder import generate_formatted_pdf
+from career_copilot.resume_formatter.structure_parser import (
+    StyleProfile,
+    apply_original_bold,
+    parse_resume_structure,
+    parse_resume_structure_docx,
+)
 from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import ResumeChatRequest, ResumePdfRequest
 
@@ -171,49 +181,108 @@ async def post_resume_improve_chat(
     return JSONResponse(content={"reply": reply})
 
 
-@router.post("/jobs/{job_id:int}/improve-resume/download")
-async def post_resume_improve_download(
-    job_id: int,
-    body: ResumePdfRequest,
-) -> StreamingResponse:
-    """
-    Generate a simple PDF from the latest improved resume text.
-
-    The frontend sends the full chat history. We regenerate a clean, updated resume
-    (no commentary) from the original resume + job + RAG context + conversation,
-    then render that into a simple PDF.
-    """
+def _get_improved_text(job_id: int, body_history: list | None) -> str:
+    """Resolve the latest improved resume text from DB or regenerate from history."""
     conn = get_db()
     try:
         ctx = build_resume_improvement_context(job_id, USER_ID, conn)
     finally:
         conn.close()
+
     resume_text = ctx["resume_text"]
     job = ctx["job"]
     similar_jobs = ctx["similar_jobs"]
     similar_resumes = ctx["similar_resumes"]
 
-    history = body.history or []
+    history = body_history or []
     try:
         text = generate_full_resume(history, resume_text, job, similar_jobs, similar_resumes)
     except Exception:
         text = resume_text or ""
-    # If we have a stored last resume for this application, prefer it
-    try:
-        conn2 = get_db()
-        try:
-            row = get_application_by_key(conn2, USER_ID, job_id, "ingested", "resume_improvement")
-            if row and row[8]:
-                text = row[8]
-        finally:
-            conn2.close()
-    except Exception:
-        pass
 
-    pdf_bytes = build_resume_pdf(text or "")
+    return text or ""
+
+
+def _get_mcp_server_url() -> str | None:
+    import os
+
+    return os.environ.get("MCP_SERVER_URL") or None
+
+
+def _get_style_profile() -> StyleProfile:
+    """Load the user's original resume and extract its StyleProfile."""
+    conn = get_db()
+    try:
+        resume_bytes, filename = get_resume_file_by_user_id(conn, USER_ID)
+    finally:
+        conn.close()
+
+    if resume_bytes:
+        if (filename or "").lower().endswith((".docx", ".doc")):
+            return parse_resume_structure_docx(resume_bytes)
+        return parse_resume_structure(resume_bytes)
+    return StyleProfile.default()
+
+
+@router.post("/jobs/{job_id:int}/improve-resume/download")
+async def post_resume_improve_download(
+    job_id: int,
+    body: ResumePdfRequest,
+) -> StreamingResponse:
+    """Generate a formatted PDF of the improved resume, cloning the original's style."""
+    text = _get_improved_text(job_id, body.history)
+    profile = _get_style_profile()
+    text = apply_original_bold(text, profile.bold_phrases)
+    mcp_url = _get_mcp_server_url()
+    if mcp_url:
+        try:
+            import dataclasses
+
+            profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
+            pdf_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "pdf", mcp_url)
+        except Exception as _mcp_err:
+            print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
+            mcp_url = None
+    if not mcp_url:
+        try:
+            pdf_bytes = generate_formatted_pdf(text, profile)
+        except Exception as _pdf_err:
+            print(f"[PDF] generate_formatted_pdf failed: {_pdf_err!r}")
+            pdf_bytes = build_resume_pdf(text)
+
     filename = f"improved_resume_job_{job_id}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/jobs/{job_id:int}/improve-resume/download-docx")
+async def post_resume_improve_download_docx(
+    job_id: int,
+    body: ResumePdfRequest,
+) -> StreamingResponse:
+    """Generate a formatted Word document of the improved resume, cloning the original's style."""
+    text = _get_improved_text(job_id, body.history)
+    profile = _get_style_profile()
+    text = apply_original_bold(text, profile.bold_phrases)
+    mcp_url = _get_mcp_server_url()
+    if mcp_url:
+        try:
+            import dataclasses
+
+            profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
+            docx_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "docx", mcp_url)
+        except Exception as _mcp_err:
+            print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
+            mcp_url = None
+    if not mcp_url:
+        docx_bytes = generate_formatted_docx(text, profile)
+
+    filename = f"improved_resume_job_{job_id}.docx"
+    return StreamingResponse(
+        BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

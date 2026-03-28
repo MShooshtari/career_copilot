@@ -70,9 +70,9 @@ async def get_recommendations(
     jobs_online_page = jobs_online[start:end]
 
     return templates.TemplateResponse(
+        request,
         "recommendations.html",
         {
-            "request": request,
             "jobs_added": jobs_added,
             "jobs_online": jobs_online_page,
             "total_online": total_online,

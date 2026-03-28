@@ -79,8 +79,9 @@ async def get_my_job_detail(
     if job.get("description"):
         job = {**job, "description": html_to_plain_text(job["description"]) or job["description"]}
     return templates.TemplateResponse(
+        request,
         "job_detail.html",
-        {"request": request, "job": job, "user_id": USER_ID, "is_user_job": True},
+        {"job": job, "user_id": USER_ID, "is_user_job": True},
     )
 
 
@@ -98,9 +99,9 @@ async def get_my_job_improve_resume(
     if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}
     return templates.TemplateResponse(
+        request,
         "improve_resume.html",
         {
-            "request": request,
             "job": job,
             "job_id": job_id,
             "user_id": USER_ID,
@@ -123,9 +124,9 @@ async def get_my_job_prepare_interview(
     if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}
     return templates.TemplateResponse(
+        request,
         "prepare_interview.html",
         {
-            "request": request,
             "job": job,
             "job_id": job_id,
             "user_id": USER_ID,
