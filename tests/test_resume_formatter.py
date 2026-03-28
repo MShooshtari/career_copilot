@@ -16,6 +16,7 @@ Covers:
 from __future__ import annotations
 
 import io
+
 import pytest
 
 from career_copilot.resume_formatter.structure_parser import (
@@ -29,7 +30,6 @@ from career_copilot.resume_formatter.structure_parser import (
     parse_resume_text,
     split_inline_bold,
 )
-
 
 # ---------------------------------------------------------------------------
 # StyleProfile
@@ -511,6 +511,7 @@ class TestGenerateFormattedDocx:
 
     def test_docx_contains_name(self):
         from docx import Document
+
         from career_copilot.resume_formatter.docx_builder import generate_formatted_docx
 
         docx_bytes = generate_formatted_docx(MINIMAL_RESUME, StyleProfile())
@@ -520,6 +521,7 @@ class TestGenerateFormattedDocx:
 
     def test_docx_contains_section_headers(self):
         from docx import Document
+
         from career_copilot.resume_formatter.docx_builder import generate_formatted_docx
 
         docx_bytes = generate_formatted_docx(MINIMAL_RESUME, StyleProfile())

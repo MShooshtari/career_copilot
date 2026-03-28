@@ -174,8 +174,14 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
-
-    from reportlab.platypus import BaseDocTemplate, Frame, HRFlowable, PageTemplate, Paragraph, Spacer
+    from reportlab.platypus import (
+        BaseDocTemplate,
+        Frame,
+        HRFlowable,
+        PageTemplate,
+        Paragraph,
+        Spacer,
+    )
 
     buffer = BytesIO()
     margin = max(float(profile.margin_left), 36.0)  # min 0.5"
@@ -286,8 +292,9 @@ def generate_formatted_pdf(improved_text: str, profile: StyleProfile) -> bytes:
     _RIGHT_COL = 160.0  # pts — enough for dates and locations
 
     def _split_row(left_markup: str, right_text_raw: str, left_style, right_size: float) -> object:
-        from reportlab.platypus import Table, TableStyle as TS
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+        from reportlab.platypus import Table
+        from reportlab.platypus import TableStyle as TS
         # Left cell is always left-aligned (tab-stop-style layout); right cell right-aligned
         left_split_style = ParagraphStyle(
             left_style.name + "_split",

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Iterator
 from dataclasses import asdict, dataclass, field, fields
 
 # ---------------------------------------------------------------------------
@@ -144,13 +143,13 @@ class StyleProfile:
         return json.dumps(asdict(self))
 
     @classmethod
-    def from_json(cls, s: str) -> "StyleProfile":
+    def from_json(cls, s: str) -> StyleProfile:
         data = json.loads(s)
         valid = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in valid})
 
     @classmethod
-    def default(cls) -> "StyleProfile":
+    def default(cls) -> StyleProfile:
         return cls()
 
 
@@ -1187,7 +1186,6 @@ def parse_resume_structure_docx(docx_bytes: bytes) -> StyleProfile:
     _first_section_seen = False
     _rule_props_first: dict | None = None
 
-    from docx.oxml.ns import qn as _qn3  # noqa: F811
     for pm in para_meta:
         runs_pm = pm["runs"]
         para_text_pm = " ".join(r["text"] for r in runs_pm).strip().rstrip(":")
