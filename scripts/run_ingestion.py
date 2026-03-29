@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -68,10 +69,18 @@ def apply_schema(conn) -> None:
     conn.commit()
 
 
+def _skip_ensure_database() -> bool:
+    v = os.environ.get("POSTGRES_SKIP_ENSURE_DATABASE", "").strip().lower()
+    return v in ("1", "true", "yes")
+
+
 def ensure_database(dbname: str) -> None:
     """
     Create the target database if missing (best-effort).
+    Skipped when POSTGRES_SKIP_ENSURE_DATABASE=1 (e.g. Azure: DB is pre-provisioned).
     """
+    if _skip_ensure_database():
+        return
     for maintenance_db in ("postgres", "template1"):
         try:
             with connect(dbname=maintenance_db) as conn:
@@ -84,6 +93,8 @@ def ensure_database(dbname: str) -> None:
             return
         except psycopg.OperationalError:
             continue
+        except psycopg.errors.InsufficientPrivilege:
+            return
         except Exception:
             return
 
@@ -126,26 +137,29 @@ def main() -> None:
     from datetime import datetime, timezone
 
     load_env()
+    target_db = os.environ.get("POSTGRES_DB") or "career_copilot"
     run_at = datetime.now(timezone.utc).isoformat()
     source_batches = _fetch_all_sources()
     normalized: list[NormalizedJob] = []
     for _name, jobs in source_batches:
         normalized.extend(jobs)
 
-    ensure_database("career_copilot")
+    ensure_database(target_db)
     try:
-        conn = connect(dbname="career_copilot")
+        conn = connect(dbname=target_db)
     except psycopg.OperationalError as e:
         msg = str(e)
-        if 'database "career_copilot" does not exist' in msg:
-            ensure_database("career_copilot")
+        missing = f'database "{target_db}" does not exist'
+        if missing in msg:
+            ensure_database(target_db)
             try:
-                conn = connect(dbname="career_copilot")
+                conn = connect(dbname=target_db)
             except psycopg.OperationalError:
                 raise RuntimeError(
-                    'Database "career_copilot" does not exist and could not be created automatically.\n'
-                    "Create it manually, then re-run:\n\n"
-                    '  psql -U postgres -d postgres -c "CREATE DATABASE career_copilot;"'
+                    f'Database "{target_db}" does not exist and could not be created automatically.\n'
+                    "On Azure, create the database in the portal (or set POSTGRES_DB to an existing name).\n"
+                    "For local Postgres you can run:\n\n"
+                    f'  psql -U postgres -d postgres -c "CREATE DATABASE {target_db};"'
                 ) from e
         else:
             raise

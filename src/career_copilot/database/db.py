@@ -6,6 +6,7 @@ from getpass import getpass
 from pathlib import Path
 
 import psycopg
+from psycopg.conninfo import make_conninfo
 from dotenv import load_dotenv
 
 
@@ -13,7 +14,6 @@ def load_env() -> None:
     """
     Load environment variables from `.env` if present.
     """
-    # Prefer project root `.env`, but don't fail if missing.
     root = Path(__file__).resolve().parents[3]
     load_dotenv(root / ".env")
 
@@ -29,8 +29,12 @@ def get_connection_kwargs(*, dbname: str | None = None) -> dict:
     - POSTGRES_DSN, or
     - discrete POSTGRES_* env vars (with interactive password prompt if missing)
     """
+    sslmode = _env("POSTGRES_SSLMODE")
+
     dsn = _env("POSTGRES_DSN")
     if dsn:
+        if sslmode:
+            return {"conninfo": make_conninfo(dsn, sslmode=sslmode)}
         return {"conninfo": dsn}
 
     host = _env("POSTGRES_HOST", "localhost")
@@ -43,7 +47,10 @@ def get_connection_kwargs(*, dbname: str | None = None) -> dict:
     elif password is None:
         password = ""
 
-    return {"host": host, "port": port, "user": user, "password": password, "dbname": db}
+    kw: dict = {"host": host, "port": port, "user": user, "password": password, "dbname": db}
+    if sslmode:
+        kw["sslmode"] = sslmode
+    return kw
 
 
 def connect(*, dbname: str | None = None) -> psycopg.Connection:
