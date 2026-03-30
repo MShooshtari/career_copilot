@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+"""
+Job ingestion entrypoint for local runs and containers (e.g. Azure Container Apps jobs).
+
+Layout expected at CAREER_COPILOT_ROOT (default: repo root — two levels above this file):
+  src/career_copilot/   — application package (includes API client modules)
+  sql/                  — schema SQL
+  scripts/ingestion/    — this package
+
+Set CAREER_COPILOT_ROOT=/app in Docker when WORKDIR is /app.
+"""
+
 import os
 import sys
 from pathlib import Path
@@ -8,7 +19,16 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Json
 
-ROOT = Path(__file__).resolve().parents[1]
+
+def _project_root() -> Path:
+    env = os.environ.get("CAREER_COPILOT_ROOT", "").strip()
+    if env:
+        return Path(env).resolve()
+    # scripts/ingestion/run.py -> parents[2] == repo root
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT = _project_root()
 SRC_DIR = ROOT / "src"
 SQL_DIR = ROOT / "sql"
 

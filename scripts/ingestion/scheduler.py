@@ -8,20 +8,22 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+SCRIPTS_DIR = ROOT / "scripts"
+for d in (SCRIPTS_DIR, SRC_DIR):
+    s = str(d)
+    if s not in sys.path:
+        sys.path.insert(0, s)
 
-# Import after path setup so run_ingestion can load career_copilot
-import run_ingestion  # noqa: E402
 from apscheduler.schedulers.blocking import BlockingScheduler  # noqa: E402
+from ingestion.run import main as run_ingestion  # noqa: E402
 
 # Run every 5 minutes; change to hours=1 for hourly
 scheduler = BlockingScheduler()
-# scheduler.add_job(run_ingestion.main, "interval", minutes=5)
-scheduler.add_job(run_ingestion.main, "interval", hours=6)
+# scheduler.add_job(run_ingestion, "interval", minutes=5)
+scheduler.add_job(run_ingestion, "interval", hours=6)
 
 if __name__ == "__main__":
-    print("Ingestion scheduler started (every 5 minutes). Ctrl+C to stop.")
+    print("Ingestion scheduler started (every 6 hours). Ctrl+C to stop.")
     scheduler.start()

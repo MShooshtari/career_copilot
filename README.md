@@ -77,7 +77,7 @@ docker compose up -d
 psql -d career_copilot -f sql/001_create_jobs.sql
 
 # Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
-python scripts/run_ingestion.py
+python scripts/ingestion/run.py
 
 # Index jobs into Chroma for RAG recommendations
 python scripts/run_rag_index.py
@@ -173,7 +173,7 @@ Then open `http://127.0.0.1:5000` and look for:
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
-To refresh jobs on a schedule, run `python scripts/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/run_rag_index.py` after ingestion to update Chroma.
+To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/run_rag_index.py` after ingestion to update Chroma.
 
 ## Project structure
 
@@ -197,10 +197,13 @@ career_copilot/
 │   └── config.example.env  # Example .env (use project root .env)
 ├── tests/                  # Pytest unit tests
 ├── scripts/
+│   ├── ingestion/
+│   │   ├── Dockerfile      # Scheduled ingestion image (build from repo root; see file header)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   ├── run.py          # Fetch jobs → Postgres
+│   │   └── scheduler.py    # Optional: run ingestion on a schedule (e.g. every 6 hours)
 │   ├── run_web.py          # Start uvicorn
-│   ├── run_ingestion.py    # Fetch jobs → Postgres
 │   ├── run_rag_index.py    # Postgres jobs → Chroma
-│   ├── scheduler.py        # Optional: run ingestion on a schedule (e.g. every 6 hours)
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
 ├── sql/                    # 001_create_jobs.sql, 002_create_user_jobs.sql (user_jobs also created by init_schema)
