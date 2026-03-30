@@ -26,7 +26,7 @@ from career_copilot.database.jobs import (
     resolve_job_ids,
 )
 from career_copilot.ml.inference import score_candidates_by_distance
-from career_copilot.rag.azure_search_jobs import get_recommended_job_results
+from career_copilot.rag.pgvector_rag import get_recommended_job_results
 
 router = APIRouter(tags=["recommendations"])
 
@@ -46,6 +46,7 @@ async def get_recommendations(
     user_rows = list_user_jobs(conn, USER_ID)
     jobs_added = format_user_jobs_for_recommendations(user_rows)
     raw = get_recommended_job_results(
+        conn,
         user_id=USER_ID,
         n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
     )

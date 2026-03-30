@@ -1,7 +1,8 @@
 version: "3.3"
 services:
   postgres:
-    image:  postgres:16-bullseye
+    # Includes pgvector (same major as local Postgres for dev parity)
+    image: pgvector/pgvector:pg16
     container_name: career_copilot_postgres
     environment:
       POSTGRES_DB: career_copilot

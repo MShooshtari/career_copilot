@@ -1,4 +1,4 @@
-"""Build searchable text, metadata, and keys for job RAG (Azure AI Search)."""
+"""Build searchable text, metadata, and keys for job RAG (pgvector / embedding text)."""
 
 from __future__ import annotations
 

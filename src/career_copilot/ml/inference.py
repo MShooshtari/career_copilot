@@ -80,8 +80,10 @@ def score_candidates_by_distance(raw_results: list[dict]) -> list[dict]:
     If the MLflow model is not configured or loading/scoring fails, the input list
     is returned unchanged.
     """
+    if not raw_results:
+        return raw_results
     model = get_ranking_model()
-    if model is None or not raw_results:
+    if model is None:
         return raw_results
 
     try:

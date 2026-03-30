@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import psycopg
 
+from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS
+
 
 def init_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
@@ -60,8 +62,42 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        # Job and user profile vectors: Azure AI Search (separate indexes). No vectors in Postgres.
-        cur.execute("DROP TABLE IF EXISTS user_embeddings")
+        # pgvector: job embeddings on jobs.embedding; user profiles in user_embeddings
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+        except psycopg.Error:
+            conn.rollback()
+            raise
+        cur.execute(
+            f"""
+            ALTER TABLE jobs
+            ADD COLUMN IF NOT EXISTS embedding vector({EMBEDDING_VECTOR_DIMENSIONS})
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_embeddings (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                content TEXT,
+                embedding vector(%s) NOT NULL
+            )
+            """
+            % EMBEDDING_VECTOR_DIMENSIONS
+        )
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
+            ON jobs USING hnsw (embedding vector_cosine_ops)
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS user_embeddings_hnsw_idx
+            ON user_embeddings USING hnsw (embedding vector_cosine_ops)
+            """
+        )
+        conn.commit()
 
         # User-added jobs (separate from ingested jobs table)
         cur.execute(

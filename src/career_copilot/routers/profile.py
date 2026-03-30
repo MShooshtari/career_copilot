@@ -123,6 +123,7 @@ async def post_profile(
                 extract_resume_text(content_bytes, resume_filename)
             )
         index_user_embedding(
+            conn,
             user_id=USER_ID,
             resume_text=resume_text_for_embedding,
             skill_tags=skill_tags,

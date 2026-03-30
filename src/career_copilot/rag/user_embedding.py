@@ -1,11 +1,12 @@
-"""User profile embedding indexing in Azure AI Search."""
+"""User profile embedding storage in PostgreSQL (pgvector)."""
 
 from __future__ import annotations
 
-from career_copilot.rag.azure_search_users import (
-    DEFAULT_USER_INDEX_NAME,
+import psycopg
+
+from career_copilot.rag.pgvector_rag import (
     fetch_user_profile_embedding,
-    upsert_user_profile_document,
+    upsert_user_profile_embedding,
 )
 
 # OpenAI text-embedding-3-large max context is 8192 tokens; ~4 chars/token → safe limit
@@ -20,6 +21,7 @@ def truncate_for_embedding(text: str, max_chars: int = EMBEDDING_MAX_CHARS) -> s
 
 
 def index_user_embedding(
+    conn: psycopg.Connection,
     *,
     user_id: int,
     resume_text: str,
@@ -31,12 +33,11 @@ def index_user_embedding(
     preferred_locations: str,
 ) -> tuple[str, str]:
     """
-    Store the user's profile embedding in the Azure AI Search user profiles index.
+    Store the user's profile embedding in ``user_embeddings`` (pgvector).
 
-    Uses OpenAI text-embedding-3-large (same as jobs; see career_copilot.rag.embedding).
-    If Azure Search is not configured, this is a no-op.
+    Uses OpenAI text-embedding-3-large (see career_copilot.rag.embedding).
 
-    Returns (index_name, document_id) where document_id is ``user:{user_id}``.
+    Returns (\"pgvector\", document_id) where document_id is ``user:{user_id}``.
     """
     pieces = [
         resume_text or "",
@@ -51,10 +52,12 @@ def index_user_embedding(
     document = truncate_for_embedding(document)
     document_id = f"user:{user_id}"
 
-    upsert_user_profile_document(user_id, document)
-    return DEFAULT_USER_INDEX_NAME, document_id
+    upsert_user_profile_embedding(conn, user_id, document)
+    return "pgvector", document_id
 
 
-def get_user_profile_embedding_vector(user_id: int) -> list[float] | None:
-    """Return the stored embedding vector for ``user:{user_id}`` in Azure AI Search, or None."""
-    return fetch_user_profile_embedding(user_id)
+def get_user_profile_embedding_vector(
+    conn: psycopg.Connection, user_id: int
+) -> list[float] | None:
+    """Return the stored embedding vector for ``user:{user_id}``, or None."""
+    return fetch_user_profile_embedding(conn, user_id)

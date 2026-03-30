@@ -1,7 +1,7 @@
 """
 Single source of truth for embeddings: OpenAI text-embedding-3-large.
 
-Used by: Azure AI Search (jobs and user profiles), explore_embeddings.
+Used by: pgvector in Postgres (jobs + user_embeddings), explore_embeddings.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ load_env()
 
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
-# Default vector size for text-embedding-3-large (Azure Search index definitions must match).
+# Default vector size for text-embedding-3-large (pgvector columns must match).
 EMBEDDING_VECTOR_DIMENSIONS = 3072
 
 _EMBED_BATCH = 100

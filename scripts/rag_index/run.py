@@ -1,9 +1,8 @@
 """
-Index job listings from Postgres into Azure AI Search for RAG.
+Index job listings into Postgres pgvector (jobs.embedding) for RAG.
 
-Requires: AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY, OPENAI_API_KEY (see configs/config.example.env).
-Optional: AZURE_SEARCH_INDEX_NAME (default career-copilot-jobs),
-  AZURE_SEARCH_USER_INDEX_NAME (default career-copilot-user-profiles).
+Requires: POSTGRES_* or POSTGRES_DSN, OPENAI_API_KEY (see configs/config.example.env).
+Job embeddings are stored in Postgres (pgvector on ``jobs.embedding``).
 
 Run after ingestion so the search index matches the jobs table.
 """
@@ -20,9 +19,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.database.schema import init_schema  # noqa: E402
 from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
-from career_copilot.rag.azure_search_jobs import index_jobs_into_azure_search  # noqa: E402
-from career_copilot.rag.azure_search_users import ensure_users_index  # noqa: E402
+from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E402
 
 LOAD_JOBS_SQL = """
 SELECT id, source, source_id, title, company, location,
@@ -69,15 +68,15 @@ def _row_to_normalized_job(row: tuple) -> NormalizedJob:
 
 def main() -> None:
     load_env()
-    ensure_users_index()
     with connect(dbname="career_copilot") as conn:
+        init_schema(conn)
         with conn.cursor() as cur:
             cur.execute(LOAD_JOBS_SQL)
             rows = cur.fetchall()
 
-    jobs = [_row_to_normalized_job(r) for r in rows]
-    count = index_jobs_into_azure_search(jobs)
-    print(f"RAG index: {count} job(s) upserted into Azure AI Search")
+        jobs = [_row_to_normalized_job(r) for r in rows]
+        count = index_jobs_into_pgvector(conn, jobs)
+        print(f"RAG index: {count} job(s) updated with embeddings in Postgres (pgvector)")
 
 
 if __name__ == "__main__":
