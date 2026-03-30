@@ -3,16 +3,22 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS embedding vector(3072);
+CREATE TABLE IF NOT EXISTS jobs_embeddings (
+  job_id BIGINT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+  content TEXT,
+  embedding vector(1536) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS jobs_embeddings_job_id_idx
+  ON jobs_embeddings (job_id);
 
 CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
-  ON jobs USING hnsw (embedding vector_cosine_ops);
+  ON jobs_embeddings USING hnsw (embedding vector_cosine_ops);
 
 CREATE TABLE IF NOT EXISTS user_embeddings (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   content TEXT,
-  embedding vector(3072) NOT NULL
+  embedding vector(1536) NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS user_embeddings_hnsw_idx

@@ -37,11 +37,11 @@ def _explore_jobs(conn: psycopg.Connection, query_text: str) -> int:
     from pgvector.psycopg import register_vector
 
     register_vector(conn)
-    print("=== Jobs (pgvector on jobs.embedding) ===\n")
+    print("=== Jobs (pgvector on jobs_embeddings.embedding) ===\n")
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT count(*) FROM jobs WHERE embedding IS NOT NULL
+            SELECT count(*) FROM jobs_embeddings
             """
         )
         n = int(cur.fetchone()[0])
@@ -53,13 +53,13 @@ def _explore_jobs(conn: psycopg.Connection, query_text: str) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, left(
+            SELECT j.id, left(
                 coalesce(title, '') || ' @ ' || coalesce(company, ''),
                 80
             )
-            FROM jobs
-            WHERE embedding IS NOT NULL
-            ORDER BY id
+            FROM jobs_embeddings e
+            JOIN jobs j ON j.id = e.job_id
+            ORDER BY j.id
             LIMIT 5
             """
         )

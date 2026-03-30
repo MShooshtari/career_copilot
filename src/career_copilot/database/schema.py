@@ -62,7 +62,48 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        # pgvector: job embeddings on jobs.embedding; user profiles in user_embeddings
+        # Ingested jobs table (used by RAG indexer). Kept in sync with sql/001_create_jobs.sql.
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS jobs (
+                id BIGSERIAL PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_id TEXT NULL,
+                title TEXT NULL,
+                company TEXT NULL,
+                location TEXT NULL,
+                salary_min INTEGER NULL,
+                salary_max INTEGER NULL,
+                description TEXT NULL,
+                skills TEXT[] NULL,
+                posted_at TIMESTAMPTZ NULL,
+                url TEXT NULL,
+                raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+        # Idempotency + common query indexes (same intent as sql/001_create_jobs.sql).
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_source_id_uniq
+              ON jobs (source, source_id)
+              WHERE source_id IS NOT NULL;
+            """
+        )
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_url_uniq
+              ON jobs (source, url)
+              WHERE url IS NOT NULL;
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS jobs_posted_at_idx ON jobs (posted_at DESC);")
+        conn.commit()
+
+        # pgvector: job embeddings in jobs_embeddings; user profiles in user_embeddings
+        # NOTE: HNSW has a dimensions limit on common pgvector builds; keep embedding dims <= 2000.
         try:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             conn.commit()
@@ -70,10 +111,14 @@ def init_schema(conn: psycopg.Connection) -> None:
             conn.rollback()
             raise
         cur.execute(
-            f"""
-            ALTER TABLE jobs
-            ADD COLUMN IF NOT EXISTS embedding vector({EMBEDDING_VECTOR_DIMENSIONS})
             """
+            CREATE TABLE IF NOT EXISTS jobs_embeddings (
+                job_id BIGINT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+                content TEXT,
+                embedding vector(%s) NOT NULL
+            )
+            """
+            % EMBEDDING_VECTOR_DIMENSIONS
         )
         cur.execute(
             """
@@ -85,10 +130,11 @@ def init_schema(conn: psycopg.Connection) -> None:
             """
             % EMBEDDING_VECTOR_DIMENSIONS
         )
+        cur.execute("CREATE INDEX IF NOT EXISTS jobs_embeddings_job_id_idx ON jobs_embeddings (job_id)")
         cur.execute(
             """
             CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
-            ON jobs USING hnsw (embedding vector_cosine_ops)
+            ON jobs_embeddings USING hnsw (embedding vector_cosine_ops)
             """
         )
         cur.execute(

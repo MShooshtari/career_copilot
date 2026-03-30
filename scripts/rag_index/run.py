@@ -1,8 +1,8 @@
 """
-Index job listings into Postgres pgvector (jobs.embedding) for RAG.
+Index job listings into Postgres pgvector (jobs_embeddings) for RAG.
 
 Requires: POSTGRES_* or POSTGRES_DSN, OPENAI_API_KEY (see configs/config.example.env).
-Job embeddings are stored in Postgres (pgvector on ``jobs.embedding``).
+Job embeddings are stored in Postgres (pgvector in ``jobs_embeddings``).
 
 Run after ingestion so the search index matches the jobs table.
 """

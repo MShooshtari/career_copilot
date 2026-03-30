@@ -1,5 +1,8 @@
 """
-Single source of truth for embeddings: OpenAI text-embedding-3-large.
+Single source of truth for embeddings.
+
+We use OpenAI's text-embedding-3-small (1536 dims) so pgvector HNSW indexes work
+on common pgvector builds (HNSW has a dimensions limit).
 
 Used by: pgvector in Postgres (jobs + user_embeddings), explore_embeddings.
 """
@@ -13,17 +16,17 @@ from career_copilot.database.db import load_env
 # So OPENAI_API_KEY from .env is available
 load_env()
 
-OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
-# Default vector size for text-embedding-3-large (pgvector columns must match).
-EMBEDDING_VECTOR_DIMENSIONS = 3072
+# Vector size for text-embedding-3-small (pgvector columns + indexes must match).
+EMBEDDING_VECTOR_DIMENSIONS = 1536
 
 _EMBED_BATCH = 100
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """
-    Embed each non-empty string with text-embedding-3-large.
+    Embed each non-empty string with text-embedding-3-small.
 
     Requires OPENAI_API_KEY. Order matches input (empty strings are skipped in batching
     only when entire batch is built per job — caller should not pass empty docs).

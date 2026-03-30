@@ -1,8 +1,8 @@
 """
 pgvector in PostgreSQL: job and user profile embeddings (cosine / HNSW).
 
-Requires: CREATE EXTENSION vector; jobs.embedding and user_embeddings (see database.schema).
-Embeddings: OpenAI text-embedding-3-large via career_copilot.rag.embedding.embed_texts.
+Requires: CREATE EXTENSION vector; jobs_embeddings and user_embeddings (see database.schema).
+Embeddings: OpenAI via career_copilot.rag.embedding.embed_texts.
 """
 
 from __future__ import annotations
@@ -136,12 +136,12 @@ def vector_search_jobs(
     _register_vector(conn)
     k = max(1, top_k)
     sql = """
-        SELECT id, source, source_id, title, company, location,
-               salary_min, salary_max, description, skills, posted_at, url,
-               (embedding <=> %(q)s::vector) AS distance
-        FROM jobs
-        WHERE embedding IS NOT NULL
-        ORDER BY embedding <=> %(q)s::vector
+        SELECT j.id, j.source, j.source_id, j.title, j.company, j.location,
+               j.salary_min, j.salary_max, j.description, j.skills, j.posted_at, j.url,
+               (e.embedding <=> %(q)s::vector) AS distance
+        FROM jobs_embeddings e
+        JOIN jobs j ON j.id = e.job_id
+        ORDER BY e.embedding <=> %(q)s::vector
         LIMIT %(k)s
     """
     with conn.cursor() as cur:
@@ -152,7 +152,7 @@ def vector_search_jobs(
 
 def index_jobs_into_pgvector(conn: psycopg.Connection, jobs: list[NormalizedJob]) -> int:
     """
-    Compute embeddings for normalized jobs and UPDATE jobs.embedding.
+    Compute embeddings for normalized jobs and UPSERT into jobs_embeddings.
 
     Each job must have ``db_id`` set (Postgres ``jobs.id``).
     """
@@ -181,12 +181,18 @@ def index_jobs_into_pgvector(conn: psycopg.Connection, jobs: list[NormalizedJob]
         if len(embeddings) != len(chunk):
             raise RuntimeError("Embedding count mismatch")
         with conn.cursor() as cur:
-            for jid, emb in zip(ids_, embeddings, strict=True):
+            for (jid, doc), emb in zip(chunk, embeddings, strict=True):
                 cur.execute(
-                    "UPDATE jobs SET embedding = %s::vector WHERE id = %s",
-                    (emb, jid),
+                    """
+                    INSERT INTO jobs_embeddings (job_id, content, embedding)
+                    VALUES (%s, %s, %s::vector)
+                    ON CONFLICT (job_id) DO UPDATE SET
+                      content = EXCLUDED.content,
+                      embedding = EXCLUDED.embedding
+                    """,
+                    (jid, doc, emb),
                 )
-                total += cur.rowcount
+                total += 1
     return total
 
 

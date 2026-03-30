@@ -79,7 +79,7 @@ psql -d career_copilot -f sql/001_create_jobs.sql
 # Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
 python scripts/ingestion/run.py
 
-# Compute embeddings and store them on jobs.embedding (pgvector) — requires OPENAI_API_KEY
+# Compute embeddings and store them in jobs_embeddings (pgvector) — requires OPENAI_API_KEY
 python scripts/rag_index/run.py
 ```
 
@@ -205,7 +205,7 @@ career_copilot/
 │   ├── rag_index/
 │   │   ├── Dockerfile      # RAG index image (build from repo root; see file header)
 │   │   ├── requirements.txt # Pip deps for that image only
-│   │   └── run.py          # Postgres jobs → embeddings on jobs.embedding
+│   │   └── run.py          # Postgres jobs → embeddings in jobs_embeddings
 │   ├── run_web.py          # Start uvicorn
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
