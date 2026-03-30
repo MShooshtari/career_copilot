@@ -6,8 +6,8 @@ from getpass import getpass
 from pathlib import Path
 
 import psycopg
-from psycopg.conninfo import make_conninfo
 from dotenv import load_dotenv
+from psycopg.conninfo import make_conninfo
 
 
 def load_env() -> None:

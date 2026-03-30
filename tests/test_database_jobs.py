@@ -6,8 +6,8 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 from career_copilot.database.jobs import (
-    _rag_doc_id_to_source_source_id,
     _norm_sid,
+    _rag_doc_id_to_source_source_id,
     delete_user_job,
     format_recommendation_jobs,
     insert_user_job,

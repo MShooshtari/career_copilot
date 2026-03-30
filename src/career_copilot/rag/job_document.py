@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from career_copilot.constants import RAG_JOB_DOC_MAX_CHARS
 from career_copilot.ingestion.common import NormalizedJob
 

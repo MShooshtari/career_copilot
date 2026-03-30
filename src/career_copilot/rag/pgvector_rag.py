@@ -176,7 +176,6 @@ def index_jobs_into_pgvector(conn: psycopg.Connection, jobs: list[NormalizedJob]
     for i in range(0, len(batch_docs), RAG_JOB_UPSERT_BATCH_SIZE):
         print(f"Processing batch {i} of {len(batch_docs)}")
         chunk = batch_docs[i : i + RAG_JOB_UPSERT_BATCH_SIZE]
-        ids_ = [c[0] for c in chunk]
         texts = [c[1] for c in chunk]
         embeddings = embed_texts(texts)
         if len(embeddings) != len(chunk):

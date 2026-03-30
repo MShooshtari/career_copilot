@@ -111,24 +111,22 @@ def init_schema(conn: psycopg.Connection) -> None:
             conn.rollback()
             raise
         cur.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS jobs_embeddings (
                 job_id BIGINT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
                 content TEXT,
-                embedding vector(%s) NOT NULL
+                embedding vector({EMBEDDING_VECTOR_DIMENSIONS}) NOT NULL
             )
             """
-            % EMBEDDING_VECTOR_DIMENSIONS
         )
         cur.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS user_embeddings (
                 user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                 content TEXT,
-                embedding vector(%s) NOT NULL
+                embedding vector({EMBEDDING_VECTOR_DIMENSIONS}) NOT NULL
             )
             """
-            % EMBEDDING_VECTOR_DIMENSIONS
         )
         cur.execute("CREATE INDEX IF NOT EXISTS jobs_embeddings_job_id_idx ON jobs_embeddings (job_id)")
         cur.execute(
