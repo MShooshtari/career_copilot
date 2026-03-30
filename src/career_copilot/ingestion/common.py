@@ -78,6 +78,8 @@ class NormalizedJob:
     posted_at: datetime | None
     url: str | None
     raw: dict[str, Any]
+    # Set when indexing from Postgres (Azure AI Search document key).
+    db_id: int | None = None
 
 
 def parse_datetime(value: Any) -> datetime | None:

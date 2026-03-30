@@ -10,17 +10,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from career_copilot.rag.chroma_store import (
-    get_similar_jobs_for_resume_improvement,
-    get_similar_resumes_for_resume_improvement,
-)
+from career_copilot.rag.azure_search_jobs import get_similar_jobs_for_resume_improvement
+from career_copilot.rag.azure_search_users import get_similar_resumes_for_resume_improvement
 
-# Reuse same doc size as Chroma job docs
 JOB_DOC_MAX_CHARS = 6_000
 
 
 def _job_dict_to_document(job: dict[str, Any], max_chars: int = JOB_DOC_MAX_CHARS) -> str:
-    """Build searchable document string from job dict (same format as Chroma job docs)."""
+    """Build searchable document string from job dict (same format as indexed job documents)."""
     parts = []
     if job.get("title"):
         parts.append(job["title"])

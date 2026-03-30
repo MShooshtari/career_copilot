@@ -1,4 +1,4 @@
-"""Job-related database operations and Chroma result resolution."""
+"""Job-related database operations and vector-hit → template resolution."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ def _norm_sid(sid: str | int | float | None) -> str | None:
     return str(int(sid))
 
 
-def _chroma_id_to_source_source_id(chroma_id: str) -> tuple[str | None, str | None]:
-    """Parse Chroma doc id 'source:source_id' into (source, source_id)."""
-    if ":" in chroma_id:
-        a, b = chroma_id.split(":", 1)
+def _rag_doc_id_to_source_source_id(doc_id: str) -> tuple[str | None, str | None]:
+    """Parse legacy RAG doc id 'source:source_id' into (source, source_id)."""
+    if ":" in doc_id:
+        a, b = doc_id.split(":", 1)
         return (a or None, b or None)
-    return (chroma_id or None, None)
+    return (doc_id or None, None)
 
 
 def resolve_job_ids(
@@ -35,8 +35,8 @@ def resolve_job_ids(
         src = meta.get("source")
         sid = _norm_sid(meta.get("source_id"))
         if src is None and sid is None:
-            chroma_id = r.get("id") or ""
-            src, sid = _chroma_id_to_source_source_id(chroma_id)
+            fallback_id = r.get("id") or ""
+            src, sid = _rag_doc_id_to_source_source_id(fallback_id)
         pairs.append((src, sid))
     pairs = list(dict.fromkeys(pairs))  # unique
     out: dict[tuple[str | None, str | None], int] = {}
@@ -281,13 +281,15 @@ def format_recommendation_jobs(
     id_map: dict[tuple[str | None, str | None], int],
     snippet_max_chars: int = 400,
 ) -> list[dict]:
-    """Build list of job dicts for the recommendations template from Chroma results and Postgres id map."""
+    """Build list of job dicts for the recommendations template from vector hits and Postgres id map."""
     jobs_for_template: list[dict] = []
     for r in raw:
         meta = r.get("metadata") or {}
-        src = meta.get("source")
-        sid = _norm_sid(meta.get("source_id"))
-        postgres_id = id_map.get((src, sid)) if src is not None else None
+        postgres_id = r.get("postgres_job_id")
+        if postgres_id is None:
+            src = meta.get("source")
+            sid = _norm_sid(meta.get("source_id"))
+            postgres_id = id_map.get((src, sid)) if src is not None else None
         doc = (r.get("document") or "")[:snippet_max_chars]
         if len(r.get("document") or "") > snippet_max_chars:
             doc = doc.rstrip() + "…"

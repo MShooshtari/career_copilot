@@ -40,10 +40,10 @@ def _build_feature_frame_from_distances(
     distances: Iterable[float | None],
 ) -> pd.DataFrame:
     """
-    Build a feature DataFrame expected by the ranking model from raw Chroma distances.
+    Build a feature DataFrame expected by the ranking model from raw vector distances.
 
-    For now we derive only embedding_similarity from distance and set all other
-    features to 0.0, relying on the model's preprocessing to handle scaling.
+    For now we derive only embedding_similarity from distance (lower = more similar)
+    and set all other features to 0.0, relying on the model's preprocessing to handle scaling.
     """
     rows: list[dict[str, float]] = []
     for d in distances:
@@ -76,7 +76,7 @@ def score_candidates_by_distance(raw_results: list[dict]) -> list[dict]:
     """
     Attach ranking model scores to candidate results and sort in descending order.
 
-    Each item in raw_results is expected to have a 'distance' field (from Chroma).
+    Each item in raw_results is expected to have a 'distance' field (lower = more similar).
     If the MLflow model is not configured or loading/scoring fails, the input list
     is returned unchanged.
     """

@@ -6,7 +6,7 @@
 
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
 - **Job recommendations (two-stage)** — Candidate retrieval + ranking:
-  - **Candidate retrieval**: fetch a larger candidate pool from Chroma (e.g. top 100 by vector similarity to your profile).
+  - **Candidate retrieval**: fetch a larger candidate pool from Azure AI Search (e.g. top 100 by vector similarity to your profile).
   - **Ranking**: re-rank those candidates (optionally via an MLflow-configured model) and **only show the top X** results (default **15**, paginated within that window).
   - **Tuning**: adjust recommendation knobs (candidate pool size, top-X window, default page sizes) in `src/career_copilot/constants.py`.
 - **Job detail** — View full job description, skills, and salary
@@ -18,7 +18,7 @@
 
 ## Tech stack
 
-- **Backend:** FastAPI, PostgreSQL (jobs, profiles, user_jobs), Chroma (vector store)
+- **Backend:** FastAPI, PostgreSQL (jobs, profiles, user_jobs), Azure AI Search (job and user-profile vectors)
 - **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
 - **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement, interview prep, add job)
 - **Optional:** Tavily or SerpAPI for add-job agent web search
@@ -79,8 +79,8 @@ psql -d career_copilot -f sql/001_create_jobs.sql
 # Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
 python scripts/ingestion/run.py
 
-# Index jobs into Chroma for RAG recommendations
-python scripts/run_rag_index.py
+# Index jobs into Azure AI Search for RAG (set AZURE_SEARCH_* and OPENAI_API_KEY in .env)
+python scripts/rag_index/run.py
 ```
 
 ### 4. Run the web app
@@ -173,7 +173,7 @@ Then open `http://127.0.0.1:5000` and look for:
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
-To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/run_rag_index.py` after ingestion to update Chroma.
+To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/rag_index/run.py` after ingestion to refresh the Azure AI Search job index.
 
 ## Project structure
 
@@ -186,7 +186,7 @@ career_copilot/
 │   ├── utils.py            # Shared helpers
 │   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation, track_applications
 │   ├── database/           # db, schema, profiles, jobs, applications, deps
-│   ├── rag/                # Chroma store, embedding, user_embedding
+│   ├── rag/                # Azure AI Search (jobs + user profiles), embedding, job_document
 │   ├── ml/                 # Ranking datasets (ranking_dataset, dataset_store), create_ranking_dataset, train_logreg_mlflow
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
 │   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
@@ -202,8 +202,11 @@ career_copilot/
 │   │   ├── requirements.txt # Pip deps for that image only
 │   │   ├── run.py          # Fetch jobs → Postgres
 │   │   └── scheduler.py    # Optional: run ingestion on a schedule (e.g. every 6 hours)
+│   ├── rag_index/
+│   │   ├── Dockerfile      # RAG index image (build from repo root; see file header)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   └── run.py          # Postgres jobs → Azure AI Search
 │   ├── run_web.py          # Start uvicorn
-│   ├── run_rag_index.py    # Postgres jobs → Chroma
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
 ├── sql/                    # 001_create_jobs.sql, 002_create_user_jobs.sql (user_jobs also created by init_schema)

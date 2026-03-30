@@ -60,7 +60,7 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        # Embeddings live only in Chroma (user_profiles collection); no vector storage in Postgres
+        # Job and user profile vectors: Azure AI Search (separate indexes). No vectors in Postgres.
         cur.execute("DROP TABLE IF EXISTS user_embeddings")
 
         # User-added jobs (separate from ingested jobs table)

@@ -26,7 +26,7 @@ from career_copilot.database.jobs import (
     resolve_job_ids,
 )
 from career_copilot.ml.inference import score_candidates_by_distance
-from career_copilot.rag.chroma_store import get_recommended_job_results
+from career_copilot.rag.azure_search_jobs import get_recommended_job_results
 
 router = APIRouter(tags=["recommendations"])
 

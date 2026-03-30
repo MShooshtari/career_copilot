@@ -1,8 +1,7 @@
 """
-Explore the Chroma RAG store: list collections, count, sample documents, and similarity search.
+Explore RAG stores: jobs and user profiles in Azure AI Search.
 
-Uses OpenAI embeddings for both jobs and user_profiles (career_copilot.rag.embedding).
-Set OPENAI_API_KEY in .env.
+Uses OpenAI embeddings. Set OPENAI_API_KEY, and AZURE_SEARCH_* (see configs/config.example.env).
 
 Usage:
   python scripts/explore_embeddings.py
@@ -16,17 +15,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT / "src"
-CHROMA_PATH = ROOT / "data" / "chroma"
-JOBS_COLLECTION = "jobs"
-USER_PROFILES_COLLECTION = "user_profiles"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import chromadb
-
-from career_copilot.database.db import connect
-from career_copilot.rag.embedding import get_embedding_function
+from career_copilot.database.db import connect, load_env
+from career_copilot.rag.azure_search_jobs import (
+    CONTENT_FIELD,
+    azure_search_configured,
+    get_jobs_search_client,
+    vector_search_jobs,
+)
+from career_copilot.rag.azure_search_users import (
+    USER_CONTENT_FIELD,
+    USER_KEY_FIELD,
+    get_user_profiles_search_client,
+    user_profiles_search_configured,
+    vector_search_user_profiles,
+)
+from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS, embed_texts
 from career_copilot.resume_io import extract_resume_text
 
 RESUME_SNIPPET_CHARS = 800
@@ -51,135 +58,174 @@ def _fetch_stored_resumes() -> list[tuple[int, str | None, str]]:
     return out
 
 
-def _get_collection(client: chromadb.PersistentClient, name: str):
-    ef = get_embedding_function()
+def _explore_azure_jobs(query_text: str) -> int:
+    """Print Azure AI Search jobs sample and optional vector query. Returns document count or 0."""
+    print("=== Jobs (Azure AI Search) ===\n")
     try:
-        return client.get_or_create_collection(name, embedding_function=ef)
-    except ValueError as e:
-        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
-            client.delete_collection(name=name)
-            return client.get_or_create_collection(name, embedding_function=ef)
-        raise
-
-
-def _show_collection(
-    coll,
-    name: str,
-    id_key: str = "title",
-    meta_company: str = "company",
-    *,
-    snippet_chars: int = 200,
-    doc_label: str | None = None,
-) -> int:
-    n = coll.count()
-    print(f"=== {name} (count: {n}) ===\n")
-    if n == 0:
-        print("  (empty)\n")
+        client = get_jobs_search_client()
+    except Exception as e:
+        print(f"  Could not connect: {e}\n")
         return 0
 
-    sample = coll.get(limit=min(5, n), include=["documents", "metadatas"])
-    ids = sample.get("ids") or [f"#{j}" for j in range(len(sample["documents"]))]
-    for i, (doc_id, doc, meta) in enumerate(zip(ids, sample["documents"], sample["metadatas"]), 1):
-        title = meta.get(id_key, doc_id)
-        extra = f" | {meta.get(meta_company, '')}" if meta_company else ""
-        print(f"  [{i}] id={doc_id} | {title}{extra}")
-        if doc_label:
-            print(f"      {doc_label}")
-        snippet = (doc[:snippet_chars] + "...") if len(doc) > snippet_chars else doc
-        print(f"      {snippet}")
-        print()
-    one = coll.get(limit=1, include=["embeddings"])
-    embs = one.get("embeddings")
-    if embs is not None and len(embs) > 0:
-        print(f"  Embedding dimension: {len(embs[0])}\n")
-    return n
+    total = 0
+    try:
+        page = client.search(
+            search_text="*",
+            include_total_count=True,
+            top=5,
+            select=["job_id", "title", "company", "location", CONTENT_FIELD],
+        )
+        total = int(page.get_count() or 0)
+        print(f"  Document count: {total}\n")
+        for i, doc in enumerate(page, 1):
+            d = dict(doc)
+            title = d.get("title") or ""
+            company = d.get("company") or ""
+            jid = d.get("job_id") or ""
+            content = d.get(CONTENT_FIELD) or ""
+            snippet = (content[:200] + "...") if len(content) > 200 else content
+            print(f"  [{i}] job_id={jid} | {title} @ {company}")
+            print(f"      {snippet}\n")
+    except Exception as e:
+        print(f"  Search failed (is the index created? run scripts/rag_index/run.py): {e}\n")
+        return 0
+
+    if total <= 0:
+        print("  Run: python scripts/rag_index/run.py\n")
+        return 0
+
+    print(f'--- Vector query (jobs): "{query_text}" (top 5) ---')
+    try:
+        vec = embed_texts([query_text])[0]
+        hits = vector_search_jobs(vec, top_k=min(5, max(1, total)))
+        for h in hits:
+            meta = h.get("metadata") or {}
+            dist = h.get("distance")
+            doc = (h.get("document") or "")[:180]
+            dist_s = f"{dist:.6f}" if dist is not None else "n/a"
+            print(f"  distance~={dist_s} | {meta.get('title', '')} @ {meta.get('company', '')}")
+            print(f"  {doc}{'...' if len(h.get('document') or '') > 180 else ''}\n")
+    except Exception as e:
+        print(f"  Vector query failed: {e}\n")
+
+    return int(total)
+
+
+def _explore_azure_user_profiles(query_text: str) -> int:
+    """Print user profile index sample and optional vector query."""
+    print("=== User profiles (Azure AI Search) ===\n")
+    try:
+        client = get_user_profiles_search_client()
+    except Exception as e:
+        print(f"  Could not connect: {e}\n")
+        return 0
+
+    total = 0
+    try:
+        page = client.search(
+            search_text="*",
+            include_total_count=True,
+            top=5,
+            select=[USER_KEY_FIELD, USER_CONTENT_FIELD],
+        )
+        total = int(page.get_count() or 0)
+        print(f"  Document count: {total}\n")
+        for i, doc in enumerate(page, 1):
+            d = dict(doc)
+            uid = d.get(USER_KEY_FIELD) or ""
+            content = d.get(USER_CONTENT_FIELD) or ""
+            snippet = (content[:200] + "...") if len(content) > 200 else content
+            print(f"  [{i}] user_id={uid}")
+            print(f"      {snippet}\n")
+    except Exception as e:
+        print(
+            f"  Search failed (save a profile in the app or ensure the user index exists): {e}\n"
+        )
+        return 0
+
+    if total > 0:
+        print(f"  Vector field size: {EMBEDDING_VECTOR_DIMENSIONS} dimensions\n")
+
+    if total <= 0:
+        print(
+            "  No documents yet. Set AZURE_SEARCH_* and OPENAI_API_KEY, then save a profile in the web app.\n"
+        )
+        return 0
+
+    print(f'--- Vector query (user profiles): "{query_text}" (top 5) ---')
+    try:
+        vec = embed_texts([query_text])[0]
+        hits = vector_search_user_profiles(vec, top_k=min(5, max(1, total)))
+        for h in hits:
+            meta = h.get("metadata") or {}
+            dist = h.get("distance")
+            doc = (h.get("document") or "")[:180]
+            dist_s = f"{dist:.6f}" if dist is not None else "n/a"
+            print(f"  distance~={dist_s} | user_id={meta.get('user_id', '')}")
+            print(f"  {doc}{'...' if len(h.get('document') or '') > 180 else ''}\n")
+    except Exception as e:
+        print(f"  Vector query failed: {e}\n")
+
+    return int(total)
 
 
 def main() -> None:
-    if not CHROMA_PATH.exists():
-        print(f"Chroma path not found: {CHROMA_PATH}")
-        print(
-            "Run: python scripts/run_rag_index.py (jobs) or save a profile in the web app (user_profiles)."
-        )
-        sys.exit(1)
-
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-
-    # List what collections exist
-    try:
-        existing = client.list_collections()
-        print("Collections in Chroma:", [c.name for c in existing], "\n")
-    except Exception:
-        existing = []
-
-    # Show jobs collection
-    coll_jobs = _get_collection(client, JOBS_COLLECTION)
-    n_jobs = _show_collection(coll_jobs, JOBS_COLLECTION)
-
-    # Show user_profiles collection (resume + skills + preferences; resume is first in embedded text)
-    coll_users = _get_collection(client, USER_PROFILES_COLLECTION)
-    n_users = _show_collection(
-        coll_users,
-        USER_PROFILES_COLLECTION,
-        id_key="user_id",
-        meta_company="",
-        snippet_chars=600,
-        doc_label="Embedded text (resume first, then skills/preferences):",
+    load_env()
+    query_text = (
+        " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "remote Python backend developer"
     )
-    # Show stored resume file content from DB (what was uploaded; used for embedding when present)
-    if n_users > 0:
-        print(
-            "--- Stored resumes (from DB; this text is included in the embedding when present) ---\n"
-        )
-        stored = _fetch_stored_resumes()
-        if not stored:
-            print(
-                "  No resume files stored in DB. Upload a resume in the profile page and save to include it in the embedding.\n"
-            )
-        for user_id, filename, text in stored:
-            print(f"  user_id={user_id}  file={filename or '(unknown)'}")
-            if text.strip():
-                snippet = (
-                    (text[:RESUME_SNIPPET_CHARS] + "...")
-                    if len(text) > RESUME_SNIPPET_CHARS
-                    else text
-                )
-                print(f"  {snippet}")
-            else:
-                print("  (no text extracted)")
-            print()
 
-    # Similarity search on jobs (only if non-empty)
-    query_text = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "remote Python backend developer"
-    if n_jobs > 0:
-        print(f'--- Query (jobs): "{query_text}" (top 5) ---')
-        results = coll_jobs.query(
-            query_texts=[query_text],
-            n_results=min(5, n_jobs),
-            include=["documents", "metadatas", "distances"],
-        )
-        for doc, meta, dist in zip(
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0],
-        ):
-            print(f"  distance={dist:.4f} | {meta.get('title', '')} @ {meta.get('company', '')}")
-            print(f"  {doc[:180]}{'...' if len(doc) > 180 else ''}")
-            print()
+    n_jobs = 0
+    if azure_search_configured():
+        n_jobs = _explore_azure_jobs(query_text)
     else:
         print(
-            f"--- Query skipped (jobs collection is empty). Run: python scripts/run_rag_index.py ---"
+            "=== Jobs (Azure AI Search) ===\n"
+            "  Not configured. Set AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_API_KEY in .env, "
+            "then run: python scripts/rag_index/run.py\n"
         )
+
+    n_users = 0
+    if user_profiles_search_configured():
+        n_users = _explore_azure_user_profiles(query_text)
+        if n_users > 0:
+            print(
+                "--- Stored resumes (from DB; this text is included in the embedding when present) ---\n"
+            )
+            stored = _fetch_stored_resumes()
+            if not stored:
+                print(
+                    "  No resume files stored in DB. Upload a resume in the profile page and save to include it in the embedding.\n"
+                )
+            for user_id, filename, text in stored:
+                print(f"  user_id={user_id}  file={filename or '(unknown)'}")
+                if text.strip():
+                    snippet = (
+                        (text[:RESUME_SNIPPET_CHARS] + "...")
+                        if len(text) > RESUME_SNIPPET_CHARS
+                        else text
+                    )
+                    print(f"  {snippet}")
+                else:
+                    print("  (no text extracted)")
+                print()
+    else:
+        print(
+            "=== User profiles (Azure AI Search) ===\n"
+            "  Not configured. Set AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_API_KEY in .env, "
+            "then save a profile in the web app to index user embeddings.\n"
+        )
+
+    if (
+        n_jobs == 0
+        and n_users == 0
+        and not azure_search_configured()
+        and not user_profiles_search_configured()
+    ):
+        sys.exit(1)
 
     print("Done.")
 
-
-# # Default query: "remote Python backend developer"
-# python scripts/explore_embeddings.py
-
-# # Custom query
-# python scripts/explore_embeddings.py "remote Python backend"
-# python scripts/explore_embeddings.py "data engineer"
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,7 @@
 """
-Single source of truth for embeddings: all Chroma collections (jobs and user
-profiles) use OpenAI text-embedding-3-large via this module.
+Single source of truth for embeddings: OpenAI text-embedding-3-large.
 
-Used by: chroma_store (job indexing), web_app (profile embedding), explore_embeddings.
+Used by: Azure AI Search (jobs and user profiles), explore_embeddings.
 """
 
 from __future__ import annotations
@@ -16,23 +15,33 @@ load_env()
 
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
+# Default vector size for text-embedding-3-large (Azure Search index definitions must match).
+EMBEDDING_VECTOR_DIMENSIONS = 3072
+
+_EMBED_BATCH = 100
 
 
-def get_embedding_function():
+def embed_texts(texts: list[str]) -> list[list[float]]:
     """
-    Return Chroma embedding function using OpenAI text-embedding-3-large.
+    Embed each non-empty string with text-embedding-3-large.
 
-    All embeddings (jobs and user profiles) use this; requires OPENAI_API_KEY
-    in the environment (e.g. in .env).
+    Requires OPENAI_API_KEY. Order matches input (empty strings are skipped in batching
+    only when entire batch is built per job — caller should not pass empty docs).
     """
+    if not texts:
+        return []
     if not os.environ.get(OPENAI_API_KEY_ENV):
         raise RuntimeError(
-            f"{OPENAI_API_KEY_ENV} is not set. Add it to .env (see .env.example) "
-            "so that job and profile embeddings can use the OpenAI API."
+            f"{OPENAI_API_KEY_ENV} is not set. Add it to .env (see configs/config.example.env) "
+            "so embeddings can be computed."
         )
-    import chromadb.utils.embedding_functions as embedding_functions
+    from openai import OpenAI
 
-    return embedding_functions.OpenAIEmbeddingFunction(
-        api_key_env_var=OPENAI_API_KEY_ENV,
-        model_name=OPENAI_EMBEDDING_MODEL,
-    )
+    client = OpenAI()
+    out: list[list[float]] = []
+    for i in range(0, len(texts), _EMBED_BATCH):
+        chunk = texts[i : i + _EMBED_BATCH]
+        resp = client.embeddings.create(model=OPENAI_EMBEDDING_MODEL, input=chunk)
+        ordered = sorted(resp.data, key=lambda d: d.index)
+        out.extend(item.embedding for item in ordered)
+    return out
