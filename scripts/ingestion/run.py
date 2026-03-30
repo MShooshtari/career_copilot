@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Job ingestion entrypoint for local runs and containers (e.g. Azure Container Apps jobs).
 
@@ -11,8 +9,11 @@ Layout expected at CAREER_COPILOT_ROOT (default: repo root — two levels above 
 Set CAREER_COPILOT_ROOT=/app in Docker when WORKDIR is /app.
 """
 
+from __future__ import annotations
+
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import psycopg
@@ -35,11 +36,16 @@ SQL_DIR = ROOT / "sql"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.database.db import connect, load_env  # noqa: E402
+from career_copilot.ingestion.adzuna_api import (  # noqa: E402
+    fetch_adzuna_jobs,
+    normalize_adzuna_job,
+)
 from career_copilot.ingestion.arbeitnow_api import (  # noqa: E402
     fetch_arbeitnow_jobs,
     normalize_arbeitnow_job,
 )
+from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
 from career_copilot.ingestion.remoteok_api import (  # noqa: E402
     fetch_remoteok_jobs,
     normalize_remoteok_job,
@@ -48,11 +54,6 @@ from career_copilot.ingestion.remotive_api import (  # noqa: E402
     fetch_remotive_jobs,
     normalize_remotive_job,
 )
-from career_copilot.ingestion.adzuna_api import (  # noqa: E402
-    fetch_adzuna_jobs,
-    normalize_adzuna_job,
-)
-from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
 
 UPSERT_SQL = """
 INSERT INTO jobs (
@@ -154,11 +155,11 @@ def _fetch_all_sources() -> list[tuple[str, list[NormalizedJob]]]:
 
 
 def main() -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     load_env()
     target_db = os.environ.get("POSTGRES_DB") or "career_copilot"
-    run_at = datetime.now(timezone.utc).isoformat()
+    run_at = datetime.now(UTC).isoformat()
     source_batches = _fetch_all_sources()
     normalized: list[NormalizedJob] = []
     for _name, jobs in source_batches:

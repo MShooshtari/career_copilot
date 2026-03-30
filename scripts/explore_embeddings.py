@@ -20,15 +20,15 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import psycopg
+import psycopg  # noqa: E402
 
-from career_copilot.database.db import connect, load_env
-from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS, embed_texts
-from career_copilot.rag.pgvector_rag import (
+from career_copilot.database.db import connect, load_env  # noqa: E402
+from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS, embed_texts  # noqa: E402
+from career_copilot.rag.pgvector_rag import (  # noqa: E402
     vector_search_jobs,
     vector_search_user_profiles,
 )
-from career_copilot.resume_io import extract_resume_text
+from career_copilot.resume_io import extract_resume_text  # noqa: E402
 
 RESUME_SNIPPET_CHARS = 800
 

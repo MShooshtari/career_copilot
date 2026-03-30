@@ -35,7 +35,6 @@ from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
 from career_copilot.rag.job_document import job_to_document  # noqa: E402
 from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E402
 
-
 CLAIM_LIMIT_DEFAULT = 50
 
 

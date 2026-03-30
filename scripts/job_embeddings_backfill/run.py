@@ -19,7 +19,7 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.database.db import connect, load_env  # noqa: E402
 from career_copilot.database.schema import init_schema  # noqa: E402
 from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
 from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E402

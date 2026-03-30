@@ -24,12 +24,12 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.transport_security import TransportSecuritySettings  # noqa: E402
 
-from career_copilot.resume_formatter.docx_builder import generate_formatted_docx
-from career_copilot.resume_formatter.pdf_builder import generate_formatted_pdf
-from career_copilot.resume_formatter.structure_parser import (
+from career_copilot.resume_formatter.docx_builder import generate_formatted_docx  # noqa: E402
+from career_copilot.resume_formatter.pdf_builder import generate_formatted_pdf  # noqa: E402
+from career_copilot.resume_formatter.structure_parser import (  # noqa: E402
     StyleProfile,
     parse_resume_structure,
     parse_resume_structure_docx,

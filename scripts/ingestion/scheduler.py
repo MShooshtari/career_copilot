@@ -17,6 +17,7 @@ for d in (SCRIPTS_DIR, SRC_DIR):
         sys.path.insert(0, s)
 
 from apscheduler.schedulers.blocking import BlockingScheduler  # noqa: E402
+
 from ingestion.run import main as run_ingestion  # noqa: E402
 
 # Run every 5 minutes; change to hours=1 for hourly
