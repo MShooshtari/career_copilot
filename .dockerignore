@@ -1,0 +1,27 @@
+# Used for any `docker build ... .` from the repo root (ingestion, mcp_server, etc.).
+# Docker only reads this file from the context directory, not from the Dockerfile path.
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+.env
+.env.local
+.env.*.local
+.venv
+venv
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.eggs
+dist
+build
+node_modules
+data
+
+# Tests not needed inside runtime images
+tests

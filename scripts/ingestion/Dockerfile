@@ -4,8 +4,8 @@
 # Azure Database: set POSTGRES_SSLMODE=require and POSTGRES_SKIP_ENSURE_DATABASE=1
 # Optional: ADZUNA_APP_ID, ADZUNA_APP_KEY
 #
-# Build from repository root (context must include src/, sql/, and this folder):
-#   docker buildx build -f scripts/ingestion/Dockerfile --ignorefile scripts/ingestion/.dockerignore -t career-copilot-ingestion .
+# Build from repository root (uses /.dockerignore; no --ignorefile needed):
+#   docker build -f scripts/ingestion/Dockerfile -t career-copilot-ingestion:local .
 # Run:
 #   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_USER=... ... career-copilot-ingestion
 
