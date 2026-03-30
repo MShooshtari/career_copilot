@@ -6,9 +6,9 @@
 # Database must allow CREATE EXTENSION vector (or run sql/003_pgvector.sql once).
 #
 # Build from repository root (uses /.dockerignore; no --ignorefile needed):
-#   docker build -f scripts/rag_index/Dockerfile -t career-copilot-rag-index:local .
+#   docker build -f scripts/job_embeddings_backfill/Dockerfile -t career-copilot-job-embeddings-backfill:local .
 # Run:
-#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_PASSWORD=... -e OPENAI_API_KEY=... career-copilot-rag-index:local
+#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_PASSWORD=... -e OPENAI_API_KEY=... career-copilot-job-embeddings-backfill:local
 
 FROM python:3.11-slim
 
@@ -18,9 +18,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     CAREER_COPILOT_ROOT=/app
 
-COPY scripts/rag_index/requirements.txt /tmp/requirements.txt
+COPY scripts/job_embeddings_backfill/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY . .
 
-CMD ["python", "scripts/rag_index/run.py"]
+CMD ["python", "scripts/job_embeddings_backfill/run.py"]

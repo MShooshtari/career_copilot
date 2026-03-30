@@ -47,7 +47,7 @@ def _explore_jobs(conn: psycopg.Connection, query_text: str) -> int:
         n = int(cur.fetchone()[0])
     print(f"  Rows with embeddings: {n}\n")
     if n <= 0:
-        print("  Run: python scripts/rag_index/run.py after ingesting jobs.\n")
+        print("  Run: python scripts/job_embeddings_backfill/run.py after ingesting jobs.\n")
         return 0
 
     with conn.cursor() as cur:

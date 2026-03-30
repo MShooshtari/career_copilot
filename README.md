@@ -76,11 +76,42 @@ docker compose up -d
 # Create jobs table (if not already present)
 psql -d career_copilot -f sql/001_create_jobs.sql
 
+# Incremental embedding updates (queue + trigger)
+psql -d career_copilot -f sql/004_jobs_embedding_queue.sql
+
 # Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
 python scripts/ingestion/run.py
 
-# Compute embeddings and store them in jobs_embeddings (pgvector) — requires OPENAI_API_KEY
-python scripts/rag_index/run.py
+# Compute embeddings (two options):
+# 1) One-shot backfill: Postgres jobs → embeddings in jobs_embeddings (requires OPENAI_API_KEY)
+python scripts/job_embeddings_backfill/run.py
+#
+# 2) Incremental mode (recommended for online): DB trigger enqueues changes; run worker as a job
+python scripts/job_embeddings_worker/run.py
+```
+
+#### Smoke test the incremental embedding queue (optional)
+
+After applying `sql/004_jobs_embedding_queue.sql`, any new job insert or job `description` update will enqueue work:
+
+```sql
+-- Insert a dummy job
+INSERT INTO jobs (source, source_id, title, description)
+VALUES ('manual', 'smoke-1', 'Smoke test', 'First description');
+
+-- Queue should have 1 row
+SELECT * FROM jobs_embedding_queue ORDER BY requested_at DESC LIMIT 5;
+
+-- Update description (queues again via UPSERT; row stays one-per-job)
+UPDATE jobs SET description = 'Updated description' WHERE source='manual' AND source_id='smoke-1';
+SELECT * FROM jobs_embedding_queue ORDER BY requested_at DESC LIMIT 5;
+```
+
+Then run the worker (needs `OPENAI_API_KEY`) and confirm the embedding upsert:
+
+```bash
+python scripts/job_embeddings_worker/run.py
+psql -d career_copilot -c "SELECT count(*) FROM jobs_embeddings;"
 ```
 
 ### 4. Run the web app
@@ -173,7 +204,7 @@ Then open `http://127.0.0.1:5000` and look for:
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
-To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/rag_index/run.py` after ingestion to refresh **job embeddings** in Postgres (pgvector).
+To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/job_embeddings_backfill/run.py` after ingestion to refresh **job embeddings** in Postgres (pgvector).
 
 ## Project structure
 
@@ -202,10 +233,14 @@ career_copilot/
 │   │   ├── requirements.txt # Pip deps for that image only
 │   │   ├── run.py          # Fetch jobs → Postgres
 │   │   └── scheduler.py    # Optional: run ingestion on a schedule (e.g. every 6 hours)
-│   ├── rag_index/
-│   │   ├── Dockerfile      # RAG index image (build from repo root; see file header)
+│   ├── job_embeddings_backfill/
+│   │   ├── Dockerfile      # One-shot backfill image (build from repo root; see file header)
 │   │   ├── requirements.txt # Pip deps for that image only
 │   │   └── run.py          # Postgres jobs → embeddings in jobs_embeddings
+│   ├── job_embeddings_worker/
+│   │   ├── Dockerfile      # Incremental worker image (drains queue → upserts embeddings)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   └── run.py          # Drain jobs_embedding_queue → upsert jobs_embeddings
 │   ├── run_web.py          # Start uvicorn
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
