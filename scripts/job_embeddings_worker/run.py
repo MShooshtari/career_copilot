@@ -207,16 +207,34 @@ def main() -> None:
     if max_loops <= 0:
         max_loops = 1
 
-    with connect(dbname=os.environ.get("POSTGRES_DB") or "career_copilot") as conn:
-        init_schema(conn)
+    print(f"[job-embeddings-worker] worker_id={worker_id} claim_limit={claim_limit} max_loops={max_loops}")
+
+    try:
+        conn = connect()
+    except Exception as e:
+        raise RuntimeError(f"Database connection failed: {e}") from e
+
+    with conn:
+        try:
+            init_schema(conn)
+        except Exception as e:
+            raise RuntimeError(
+                "Schema init failed. On managed Postgres (e.g. Azure), make sure pgvector "
+                "is enabled (CREATE EXTENSION vector) and your DB user has permissions."
+                f"\nUnderlying error: {e}"
+            ) from e
+
         total_upserts = 0
         total_deleted = 0
         total_errors = 0
+        total_claimed = 0
 
         for _ in range(max_loops):
             claimed = _claim_pending(conn, limit=claim_limit, worker_id=worker_id)
             if not claimed:
                 break
+            total_claimed += len(claimed)
+            print(f"[job-embeddings-worker] claimed {len(claimed)} job(s) from queue")
 
             job_ids = [jid for jid, _h in claimed]
             rows_by_id = _load_jobs(conn, job_ids)
@@ -261,7 +279,10 @@ def main() -> None:
                     )
                 break
 
-    print("Embedding worker done.")
+    print(
+        "[job-embeddings-worker] done "
+        f"(claimed={total_claimed} upserted={total_upserts} deleted={total_deleted} errors={total_errors})"
+    )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ Run after ingestion so the search index matches the jobs table.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -68,7 +69,8 @@ def _row_to_normalized_job(row: tuple) -> NormalizedJob:
 
 def main() -> None:
     load_env()
-    with connect(dbname="career_copilot") as conn:
+    target_db = os.environ.get("POSTGRES_DB") or "career_copilot"
+    with connect(dbname=target_db) as conn:
         init_schema(conn)
         with conn.cursor() as cur:
             cur.execute(LOAD_JOBS_SQL)
@@ -76,7 +78,10 @@ def main() -> None:
 
         jobs = [_row_to_normalized_job(r) for r in rows]
         count = index_jobs_into_pgvector(conn, jobs)
-        print(f"RAG index: {count} job(s) updated with embeddings in Postgres (pgvector)")
+        print(
+            f"Job embeddings backfill: {count} job(s) upserted into jobs_embeddings "
+            f"(db={target_db}, total_jobs={len(jobs)})"
+        )
 
 
 if __name__ == "__main__":
