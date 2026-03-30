@@ -110,9 +110,7 @@ def build_resume_improvement_context(
 
     job_document = _job_dict_to_document(job)
     try:
-        similar_jobs = get_similar_jobs_for_resume_improvement(
-            conn, job_document, n_results=5
-        )
+        similar_jobs = get_similar_jobs_for_resume_improvement(conn, job_document, n_results=5)
     except Exception:
         similar_jobs = []
     try:
@@ -154,9 +152,7 @@ def build_resume_improvement_context_from_job_dict(
 
     job_document = _job_dict_to_document(job)
     try:
-        similar_jobs = get_similar_jobs_for_resume_improvement(
-            conn, job_document, n_results=5
-        )
+        similar_jobs = get_similar_jobs_for_resume_improvement(conn, job_document, n_results=5)
     except Exception:
         similar_jobs = []
     try:

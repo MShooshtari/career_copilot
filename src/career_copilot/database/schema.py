@@ -128,7 +128,9 @@ def init_schema(conn: psycopg.Connection) -> None:
             )
             """
         )
-        cur.execute("CREATE INDEX IF NOT EXISTS jobs_embeddings_job_id_idx ON jobs_embeddings (job_id)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS jobs_embeddings_job_id_idx ON jobs_embeddings (job_id)"
+        )
         cur.execute(
             """
             CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx

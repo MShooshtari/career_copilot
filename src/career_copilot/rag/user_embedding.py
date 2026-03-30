@@ -56,8 +56,6 @@ def index_user_embedding(
     return "pgvector", document_id
 
 
-def get_user_profile_embedding_vector(
-    conn: psycopg.Connection, user_id: int
-) -> list[float] | None:
+def get_user_profile_embedding_vector(conn: psycopg.Connection, user_id: int) -> list[float] | None:
     """Return the stored embedding vector for ``user:{user_id}``, or None."""
     return fetch_user_profile_embedding(conn, user_id)
