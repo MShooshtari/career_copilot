@@ -19,7 +19,7 @@
 ## Tech stack
 
 - **Backend:** FastAPI, PostgreSQL with **pgvector** (job and user-profile embeddings; HNSW indexes)
-- **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
+- **Embeddings:** OpenAI **text-embedding-3-small** (1536 dimensions; matches `EMBEDDING_VECTOR_DIMENSIONS` in `src/career_copilot/rag/embedding.py` and pgvector columns created by `init_schema`)
 - **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement, interview prep, add job)
 - **Optional:** Tavily or SerpAPI for add-job agent web search
 - **Web search (interview prep):** `ddgs` (DuckDuckGo search client)
@@ -262,6 +262,8 @@ pytest tests/ -v
 # Or with PYTHONPATH
 PYTHONPATH=src pytest tests/ -v
 ```
+
+There are unit tests for RAG job-document helpers (`tests/test_job_document.py`) and a small contract test that pgvector DDL in `init_schema` still interpolates `EMBEDDING_VECTOR_DIMENSIONS` (`tests/test_embedding_schema_contract.py`), so schema and embedding config stay aligned.
 
 ### Linting and formatting
 
