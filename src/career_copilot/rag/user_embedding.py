@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+
 import psycopg
 
+from career_copilot.rag.embedding import OPENAI_API_KEY_ENV
 from career_copilot.rag.pgvector_rag import (
     fetch_user_profile_embedding,
     upsert_user_profile_embedding,
@@ -51,6 +54,10 @@ def index_user_embedding(
     document = "\n\n".join(p for p in pieces if p.strip())
     document = truncate_for_embedding(document)
     document_id = f"user:{user_id}"
+
+    # Local/dev can run without embeddings configured.
+    if not os.environ.get(OPENAI_API_KEY_ENV):
+        return "skipped", document_id
 
     upsert_user_profile_embedding(conn, user_id, document)
     return "pgvector", document_id

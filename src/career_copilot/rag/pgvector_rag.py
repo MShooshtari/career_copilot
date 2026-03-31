@@ -11,10 +11,16 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from pgvector.psycopg import register_vector
+
+try:
+    from pgvector.psycopg import register_vector
+except ModuleNotFoundError:  # pragma: no cover
+    # Allows importing this module in minimal test envs without pgvector installed.
+    def register_vector(*_args, **_kwargs):  # type: ignore[no-redef]
+        raise RuntimeError("pgvector is required (pip install pgvector)")
+
 
 from career_copilot.constants import (
-    DEFAULT_USER_ID,
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RAG_JOB_DOC_MAX_CHARS,
     RAG_JOB_UPSERT_BATCH_SIZE,
@@ -235,7 +241,7 @@ def fetch_user_profile_embedding(conn: psycopg.Connection, user_id: int) -> list
 def get_recommended_job_results(
     conn: psycopg.Connection,
     *,
-    user_id: int = DEFAULT_USER_ID,
+    user_id: int,
     n_results: int = RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     jobs_collection_name: str = "jobs",
 ) -> list[dict[str, Any]]:

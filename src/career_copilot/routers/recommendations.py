@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
-    DEFAULT_USER_ID,
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RECOMMENDATIONS_CANDIDATE_POOL_SIZE,
     RECOMMENDATIONS_DEFAULT_PAGE_SIZE,
@@ -30,24 +30,23 @@ from career_copilot.rag.pgvector_rag import get_recommended_job_results
 
 router = APIRouter(tags=["recommendations"])
 
-USER_ID = DEFAULT_USER_ID
-
 
 @router.get("/recommendations", response_class=HTMLResponse)
 async def get_recommendations(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
     page: int = Query(1, ge=1),
     page_size: int = Query(
         RECOMMENDATIONS_DEFAULT_PAGE_SIZE, ge=1, le=RECOMMENDATIONS_MAX_PAGE_SIZE
     ),
 ) -> HTMLResponse:
     """Candidate retrieval: user-added jobs plus top 100 jobs by similarity to profile."""
-    user_rows = list_user_jobs(conn, USER_ID)
+    user_rows = list_user_jobs(conn, user_id)
     jobs_added = format_user_jobs_for_recommendations(user_rows)
     raw = get_recommended_job_results(
         conn,
-        user_id=USER_ID,
+        user_id=user_id,
         n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
     )
     raw = score_candidates_by_distance(raw)
@@ -80,6 +79,6 @@ async def get_recommendations(
             "page": page,
             "page_size": page_size,
             "page_size_options": RECOMMENDATIONS_PAGE_SIZE_OPTIONS,
-            "user_id": USER_ID,
+            "user_id": user_id,
         },
     )
