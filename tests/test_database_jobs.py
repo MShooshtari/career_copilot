@@ -6,8 +6,8 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 from career_copilot.database.jobs import (
-    _chroma_id_to_source_source_id,
     _norm_sid,
+    _rag_doc_id_to_source_source_id,
     delete_user_job,
     format_recommendation_jobs,
     insert_user_job,
@@ -39,19 +39,19 @@ def test_norm_sid_float() -> None:
     assert _norm_sid(3.14) == "3"
 
 
-# --- _chroma_id_to_source_source_id ---
+# --- _rag_doc_id_to_source_source_id ---
 
 
-def test_chroma_id_to_source_source_id_with_colon() -> None:
-    assert _chroma_id_to_source_source_id("remotive:123") == ("remotive", "123")
+def test_rag_doc_id_to_source_source_id_with_colon() -> None:
+    assert _rag_doc_id_to_source_source_id("remotive:123") == ("remotive", "123")
 
 
-def test_chroma_id_to_source_source_id_no_colon() -> None:
-    assert _chroma_id_to_source_source_id("abc") == ("abc", None)
+def test_rag_doc_id_to_source_source_id_no_colon() -> None:
+    assert _rag_doc_id_to_source_source_id("abc") == ("abc", None)
 
 
-def test_chroma_id_to_source_source_id_multiple_colons() -> None:
-    assert _chroma_id_to_source_source_id("a:b:c") == ("a", "b:c")
+def test_rag_doc_id_to_source_source_id_multiple_colons() -> None:
+    assert _rag_doc_id_to_source_source_id("a:b:c") == ("a", "b:c")
 
 
 # --- row_to_job_dict ---
@@ -147,9 +147,23 @@ def test_format_recommendation_jobs_one() -> None:
     out = format_recommendation_jobs(raw, id_map)
     assert len(out) == 1
     assert out[0]["job_id"] == 42
+
+
+def test_format_recommendation_jobs_prefers_postgres_job_id() -> None:
+    raw = [
+        {
+            "id": "7",
+            "postgres_job_id": 7,
+            "metadata": {"source": "remotive", "source_id": "99", "title": "Dev", "company": "Co"},
+            "document": "Text",
+            "distance": 0.2,
+        }
+    ]
+    out = format_recommendation_jobs(raw, {})
+    assert out[0]["job_id"] == 7
     assert out[0]["title"] == "Dev"
     assert out[0]["company"] == "Co"
-    assert out[0]["snippet"] == "Full text here."
+    assert out[0]["snippet"] == "Text"
 
 
 def test_format_recommendation_jobs_snippet_truncated() -> None:

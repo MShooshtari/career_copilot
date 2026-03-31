@@ -1,0 +1,5 @@
+# Minimal dependencies for scripts/ingestion/run.py (scheduled jobs / Container Apps).
+# For the full API stack, use repository root requirements.txt instead.
+requests>=2.32.0
+psycopg[binary]>=3.2.0
+python-dotenv>=1.0.0

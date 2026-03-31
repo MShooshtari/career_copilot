@@ -1,0 +1,6 @@
+# Minimal dependencies for scripts/job_embeddings_backfill/run.py (scheduled jobs / Container Apps).
+# For the full API stack, use repository root requirements.txt instead.
+psycopg[binary]>=3.2.0
+python-dotenv>=1.0.0
+openai>=1.0.0
+pgvector>=0.2.5

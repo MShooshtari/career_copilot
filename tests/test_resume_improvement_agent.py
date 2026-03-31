@@ -94,7 +94,9 @@ def test_chat_resume_improvement_handles_tool_call() -> None:
             self.chat = MagicMock()
             self.chat.completions = _FakeChat()
 
-    def _fake_get_similar_jobs(job_document: str, n_results: int = 5) -> list[dict[str, Any]]:
+    def _fake_get_similar_jobs(
+        conn: object, job_document: str, n_results: int = 5
+    ) -> list[dict[str, Any]]:
         calls.append(job_document)
         return [{"id": "job1", "document": "doc", "metadata": {}, "distance": 0.1}]
 

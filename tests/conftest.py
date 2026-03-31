@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 # Skip app DB init when running tests (no Postgres in CI). Set before any app import.
@@ -21,7 +22,16 @@ if str(SRC) not in sys.path:
 try:
     import psycopg  # noqa: F401
 except ModuleNotFoundError:
-    sys.modules["psycopg"] = MagicMock()
+    # Provide a minimal module-shaped stub so imports like
+    # `from psycopg.conninfo import make_conninfo` keep working.
+    psycopg_stub = ModuleType("psycopg")
+    psycopg_stub.connect = MagicMock()
+
+    conninfo_stub = ModuleType("psycopg.conninfo")
+    conninfo_stub.make_conninfo = MagicMock(side_effect=lambda dsn, **kw: dsn)
+
+    sys.modules["psycopg"] = psycopg_stub
+    sys.modules["psycopg.conninfo"] = conninfo_stub
 
 import career_copilot.database.db as _db  # noqa: E402
 

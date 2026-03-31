@@ -10,17 +10,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from career_copilot.rag.chroma_store import (
+from career_copilot.rag.pgvector_rag import (
     get_similar_jobs_for_resume_improvement,
     get_similar_resumes_for_resume_improvement,
 )
 
-# Reuse same doc size as Chroma job docs
 JOB_DOC_MAX_CHARS = 6_000
 
 
 def _job_dict_to_document(job: dict[str, Any], max_chars: int = JOB_DOC_MAX_CHARS) -> str:
-    """Build searchable document string from job dict (same format as Chroma job docs)."""
+    """Build searchable document string from job dict (same format as indexed job documents)."""
     parts = []
     if job.get("title"):
         parts.append(job["title"])
@@ -111,12 +110,12 @@ def build_resume_improvement_context(
 
     job_document = _job_dict_to_document(job)
     try:
-        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+        similar_jobs = get_similar_jobs_for_resume_improvement(conn, job_document, n_results=5)
     except Exception:
         similar_jobs = []
     try:
         similar_resumes = get_similar_resumes_for_resume_improvement(
-            job_document, exclude_user_id=user_id, n_results=5
+            conn, job_document, exclude_user_id=user_id, n_results=5
         )
     except Exception:
         similar_resumes = []
@@ -153,12 +152,12 @@ def build_resume_improvement_context_from_job_dict(
 
     job_document = _job_dict_to_document(job)
     try:
-        similar_jobs = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+        similar_jobs = get_similar_jobs_for_resume_improvement(conn, job_document, n_results=5)
     except Exception:
         similar_jobs = []
     try:
         similar_resumes = get_similar_resumes_for_resume_improvement(
-            job_document, exclude_user_id=user_id, n_results=5
+            conn, job_document, exclude_user_id=user_id, n_results=5
         )
     except Exception:
         similar_resumes = []
@@ -169,6 +168,13 @@ def build_resume_improvement_context_from_job_dict(
         "similar_jobs": similar_jobs,
         "similar_resumes": similar_resumes,
     }
+
+
+def _rag_db():
+    """Short-lived connection for tool calls (router may have closed its own conn)."""
+    from career_copilot.database.db import connect
+
+    return connect()
 
 
 def _get_openai_client():
@@ -324,13 +330,15 @@ Keep it concise and actionable."""
             for tool_call in tool_calls:
                 name = tool_call.function.name
                 if name == "get_more_similar_jobs":
-                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+                    with _rag_db() as c:
+                        result = get_similar_jobs_for_resume_improvement(
+                            c, job_document, n_results=5
+                        )
                 elif name == "get_more_similar_resumes":
-                    # Exclude current user if present in metadata; user id is not
-                    # strictly required for usefulness here.
-                    result = get_similar_resumes_for_resume_improvement(
-                        job_document, exclude_user_id=None, n_results=5
-                    )
+                    with _rag_db() as c:
+                        result = get_similar_resumes_for_resume_improvement(
+                            c, job_document, exclude_user_id=None, n_results=5
+                        )
                 else:
                     result = {"error": f"Unknown tool {name}"}
 
@@ -426,11 +434,15 @@ def chat_resume_improvement(
             for tool_call in tool_calls:
                 name = tool_call.function.name
                 if name == "get_more_similar_jobs":
-                    result = get_similar_jobs_for_resume_improvement(job_document, n_results=5)
+                    with _rag_db() as c:
+                        result = get_similar_jobs_for_resume_improvement(
+                            c, job_document, n_results=5
+                        )
                 elif name == "get_more_similar_resumes":
-                    result = get_similar_resumes_for_resume_improvement(
-                        job_document, exclude_user_id=None, n_results=5
-                    )
+                    with _rag_db() as c:
+                        result = get_similar_resumes_for_resume_improvement(
+                            c, job_document, exclude_user_id=None, n_results=5
+                        )
                 else:
                     result = {"error": f"Unknown tool {name}"}
 

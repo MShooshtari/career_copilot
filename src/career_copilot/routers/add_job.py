@@ -10,31 +10,30 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from career_copilot.agents.add_job import run_add_job_agent
 from career_copilot.app_config import templates
-from career_copilot.constants import DEFAULT_USER_ID
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import insert_user_job
 from career_copilot.ingestion.common import html_to_plain_text
 
 router = APIRouter(tags=["add_job"])
 
-USER_ID = DEFAULT_USER_ID
-
 
 @router.get("/add-job", response_class=HTMLResponse)
-async def get_add_job(request: Request) -> HTMLResponse:
+async def get_add_job(request: Request, user_id: CurrentUserId) -> HTMLResponse:
     """Show Add Job form: manual entry, file upload, or URL."""
     error = request.query_params.get("error")
     msg = "Failed to save the job. Please try again." if error == "save_failed" else None
     return templates.TemplateResponse(
         request,
         "add_job.html",
-        {"user_id": USER_ID, "error": msg},
+        {"user_id": user_id, "error": msg},
     )
 
 
 @router.post("/add-job", response_class=HTMLResponse, response_model=None)
 async def post_add_job(
     request: Request,
+    user_id: CurrentUserId,
     mode: str = Form("manual"),
     job_text: str = Form(""),
     location: str = Form(""),
@@ -56,20 +55,20 @@ async def post_add_job(
         return templates.TemplateResponse(
             request,
             "add_job.html",
-            {"user_id": USER_ID, "error": "Please enter a job URL."},
+            {"user_id": user_id, "error": "Please enter a job URL."},
         )
     if mode == "file" and (not file or not file.filename):
         return templates.TemplateResponse(
             request,
             "add_job.html",
-            {"user_id": USER_ID, "error": "Please select a file to upload."},
+            {"user_id": user_id, "error": "Please select a file to upload."},
         )
     if mode == "manual" and not (job_text or "").strip():
         return templates.TemplateResponse(
             request,
             "add_job.html",
             {
-                "user_id": USER_ID,
+                "user_id": user_id,
                 "error": "Please provide job description text, a file, or a URL.",
             },
         )
@@ -96,7 +95,7 @@ async def post_add_job(
             request,
             "add_job.html",
             {
-                "user_id": USER_ID,
+                "user_id": user_id,
                 "error": f"Could not extract job details: {e!s}. Try pasting the description manually.",
             },
         )
@@ -106,7 +105,7 @@ async def post_add_job(
             request,
             "add_job.html",
             {
-                "user_id": USER_ID,
+                "user_id": user_id,
                 "error": "We couldn't extract enough job details. Try pasting the job description manually or a different URL.",
             },
         )
@@ -118,13 +117,14 @@ async def post_add_job(
     return templates.TemplateResponse(
         request,
         "confirm_job.html",
-        {"user_id": USER_ID, "proposal": proposal},
+        {"user_id": user_id, "proposal": proposal},
     )
 
 
 @router.post("/add-job/confirm", response_class=RedirectResponse)
 async def post_add_job_confirm(
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
     title: str = Form(""),
     company: str = Form(""),
     location: str = Form(""),
@@ -149,7 +149,7 @@ async def post_add_job_confirm(
     try:
         job_id = insert_user_job(
             conn,
-            USER_ID,
+            user_id,
             title=title_clean,
             company=company_clean,
             location=location_clean,

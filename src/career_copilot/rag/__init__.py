@@ -1,5 +1,9 @@
 """RAG (Retrieval Augmented Generation) storage for job search."""
 
-from career_copilot.rag.chroma_store import index_jobs_into_chroma
+try:
+    from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector
+except ModuleNotFoundError:  # pragma: no cover
+    # Keep package importable even if optional deps aren't installed in a given environment.
+    index_jobs_into_pgvector = None  # type: ignore[assignment]
 
-__all__ = ["index_jobs_into_chroma"]
+__all__ = ["index_jobs_into_pgvector"]
