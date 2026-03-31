@@ -1,0 +1,87 @@
+# Deploy the FastAPI API image to Azure Container Registry and roll the Container App.
+# Prereqs: ACR + Container App already exist (see docs/azure/CONTAINER_APPS_QUICKSTART.md).
+# Configure repository Variables (Settings → Secrets and variables → Actions → Variables):
+#   AZURE_RESOURCE_GROUP, AZURE_CONTAINER_REGISTRY (short name, e.g. careercopilotacr),
+#   AZURE_CONTAINER_APP_NAME
+# Optional variable: AZURE_CONTAINER_IMAGE_NAME (default: career-copilot-api)
+# Configure Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC federated credential for GitHub).
+
+name: deploy-azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-azure-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  deploy:
+    name: Build image and update Container App
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CONTAINER_IMAGE_NAME: ${{ vars.AZURE_CONTAINER_IMAGE_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image variables
+        id: cfg
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_NAME="${AZURE_CONTAINER_IMAGE_NAME:-career-copilot-api}"
+          REGISTRY="${{ vars.AZURE_CONTAINER_REGISTRY }}"
+          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          APP="${{ vars.AZURE_CONTAINER_APP_NAME }}"
+          if [[ -z "$REGISTRY" || -z "$RG" || -z "$APP" ]]; then
+            echo "::error::Set Actions variables AZURE_CONTAINER_REGISTRY, AZURE_RESOURCE_GROUP, and AZURE_CONTAINER_APP_NAME."
+            exit 1
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          echo "image_name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "registry_login_server=${REGISTRY}.azurecr.io" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Build and push image (ACR Tasks)
+        run: |
+          set -euo pipefail
+          REGISTRY="${{ vars.AZURE_CONTAINER_REGISTRY }}"
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          SHA_TAG="${{ steps.cfg.outputs.short_sha }}"
+          az acr build \
+            -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -r "$REGISTRY" \
+            -t "${IMAGE}:${SHA_TAG}" \
+            -t "${IMAGE}:latest" \
+            .
+
+      - name: Update Container App revision
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          TAG="${{ steps.cfg.outputs.short_sha }}"
+          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:${TAG}"
+          az containerapp update \
+            -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
+            --image "$FULL_IMAGE"
