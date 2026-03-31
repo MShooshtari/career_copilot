@@ -185,6 +185,11 @@ def _get_improved_text(job_id: int, body_history: list | None) -> str:
     """Resolve the latest improved resume text from DB or regenerate from history."""
     conn = get_db()
     try:
+        app_row = get_application_by_key(conn, USER_ID, job_id, "ingested", "resume_improvement")
+        last_resume_text = app_row[8] if app_row else None
+        if last_resume_text:
+            return last_resume_text
+
         ctx = build_resume_improvement_context(job_id, USER_ID, conn)
     finally:
         conn.close()
