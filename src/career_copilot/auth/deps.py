@@ -26,7 +26,7 @@ async def get_external_identity(request: Request) -> ExternalIdentity | None:
     - Session (set by /auth/login flow)
     """
     # Session-based (interactive login)
-    sess = getattr(request, "session", None)
+    sess = request.session if "session" in request.scope else None
     if isinstance(sess, dict) and sess.get("ext_identity"):
         ext = sess.get("ext_identity")
         if isinstance(ext, dict) and ext.get("provider") and ext.get("subject"):
