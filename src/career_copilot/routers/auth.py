@@ -82,11 +82,13 @@ async def callback(request: Request) -> RedirectResponse:
     claims: dict[str, Any] = {}
     if "id_token" in token and isinstance(token["id_token"], str):
         try:
-            claims = oauth.entra.parse_id_token(request, token) or {}
+            # Authlib's OpenID helpers can be async depending on client type/config.
+            parsed = await oauth.entra.parse_id_token(request, token)
+            claims = dict(parsed or {})
         except Exception:
             claims = {}
     if userinfo:
-        claims = {**claims, **userinfo}
+        claims = {**claims, **dict(userinfo)}
 
     subject = str(claims.get("sub") or claims.get("oid") or "").strip()
     if not subject:
