@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from career_copilot.agents.add_job import run_add_job_agent
-from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import insert_user_job
 from career_copilot.ingestion.common import html_to_plain_text

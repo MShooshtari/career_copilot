@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+
 try:
     from pgvector.psycopg import register_vector
 except ModuleNotFoundError:  # pragma: no cover

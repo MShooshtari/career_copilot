@@ -20,8 +20,8 @@ from career_copilot.agents.resume_improvement import (
     generate_full_resume,
     get_initial_resume_analysis,
 )
-from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
     APPLICATION_CHAT_MAX_STORED_MESSAGES,
     APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,

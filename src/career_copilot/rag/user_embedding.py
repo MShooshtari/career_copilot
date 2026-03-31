@@ -6,11 +6,11 @@ import os
 
 import psycopg
 
+from career_copilot.rag.embedding import OPENAI_API_KEY_ENV
 from career_copilot.rag.pgvector_rag import (
     fetch_user_profile_embedding,
     upsert_user_profile_embedding,
 )
-from career_copilot.rag.embedding import OPENAI_API_KEY_ENV
 
 # OpenAI text-embedding-3-large max context is 8192 tokens; ~4 chars/token → safe limit
 EMBEDDING_MAX_CHARS = 28_000

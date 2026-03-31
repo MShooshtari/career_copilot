@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from career_copilot.agents.track_applications import chat_track_applications
-from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.database.applications import (
     enrich_applications_with_job_info,
     get_application_by_key,

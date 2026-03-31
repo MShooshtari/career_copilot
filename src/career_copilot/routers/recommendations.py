@@ -8,8 +8,8 @@ import psycopg
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
-from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RECOMMENDATIONS_CANDIDATE_POOL_SIZE,

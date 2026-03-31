@@ -8,8 +8,8 @@ import psycopg
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.database.deps import get_db
 from career_copilot.database.profiles import (
     get_profile_by_user_id,

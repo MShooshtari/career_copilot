@@ -7,6 +7,7 @@ import os
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from career_copilot.auth.config import auth_enabled, session_secret_key
 from career_copilot.database.db import connect
 from career_copilot.database.schema import init_schema
 from career_copilot.routers import (
@@ -21,7 +22,6 @@ from career_copilot.routers import (
     resume_improvement,
     track_applications,
 )
-from career_copilot.auth.config import auth_enabled, session_secret_key
 
 app = FastAPI(title="Career Copilot - User Profile")
 
