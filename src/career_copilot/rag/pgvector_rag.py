@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from pgvector.psycopg import register_vector
+try:
+    from pgvector.psycopg import register_vector
+except ModuleNotFoundError:  # pragma: no cover
+    # Allows importing this module in minimal test envs without pgvector installed.
+    def register_vector(*_args, **_kwargs):  # type: ignore[no-redef]
+        raise RuntimeError("pgvector is required (pip install pgvector)")
 
 from career_copilot.constants import (
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
