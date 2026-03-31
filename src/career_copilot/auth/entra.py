@@ -165,4 +165,3 @@ def validate_bearer_jwt(token: str) -> ExternalIdentity:
         email=email,
         claims=json.loads(json.dumps(claims)),
     )
-

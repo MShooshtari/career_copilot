@@ -19,6 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover
     def register_vector(*_args, **_kwargs):  # type: ignore[no-redef]
         raise RuntimeError("pgvector is required (pip install pgvector)")
 
+
 from career_copilot.constants import (
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RAG_JOB_DOC_MAX_CHARS,

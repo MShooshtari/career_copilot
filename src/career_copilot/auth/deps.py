@@ -43,9 +43,7 @@ async def get_external_identity(request: Request) -> ExternalIdentity | None:
         try:
             return validate_bearer_jwt(token)
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
-            ) from e
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
 
     return None
 
@@ -59,4 +57,3 @@ async def require_external_identity(
     if ext is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return ext
-

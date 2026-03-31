@@ -41,4 +41,3 @@ def get_or_create_user(
         row2 = cur.fetchone()
         assert row2 is not None
         return int(row2[0])
-

@@ -51,4 +51,3 @@ def entra_tenant_domain() -> str:
 
 def entra_provider_name() -> str:
     return "entra_external_id"
-

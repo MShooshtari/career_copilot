@@ -31,9 +31,11 @@ if auth_enabled():
         raise RuntimeError("AUTH_ENABLED=1 requires SESSION_SECRET_KEY")
     app.add_middleware(SessionMiddleware, secret_key=secret)
 
+
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"ok": True}
+
 
 app.include_router(home.router)
 app.include_router(auth.router)

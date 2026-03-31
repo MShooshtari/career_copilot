@@ -55,9 +55,7 @@ def put_resume(*, user_id: int, filename: str | None, content: bytes) -> tuple[s
     if filename and filename.lower().endswith(".pdf"):
         content_type = "application/pdf"
     elif filename and filename.lower().endswith(".docx"):
-        content_type = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
     client.upload_blob(
         content,
@@ -74,4 +72,3 @@ def get_resume(*, container: str, blob_name: str) -> bytes:
     client = service.get_blob_client(container=container, blob=blob_name)
     downloader = client.download_blob()
     return bytes(downloader.readall())
-

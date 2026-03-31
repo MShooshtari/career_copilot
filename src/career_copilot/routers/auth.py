@@ -121,4 +121,3 @@ async def logout(request: Request) -> RedirectResponse:
     if getattr(request, "session", None) is not None:
         request.session.pop("ext_identity", None)
     return RedirectResponse(url="/profile", status_code=303)
-
