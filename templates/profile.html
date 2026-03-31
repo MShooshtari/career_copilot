@@ -410,7 +410,7 @@
                 <div class="card-header">
                     <div>
                         <h2>Stored representation</h2>
-                        <p>What we keep in Postgres and Chroma for this user.</p>
+                        <p>What we keep in Postgres (including pgvector profile embedding) for this user.</p>
                     </div>
                 </div>
 
@@ -474,7 +474,7 @@
                     </div>
 
                     <p class="hint" style="margin-top: 10px;">
-                        Embedding is stored in a dedicated Chroma collection (<code>user_profiles</code>) keyed by <code>user:{{ user_id }}</code>.
+                        Profile embedding is stored in the <code>user_embeddings</code> table (vector + text; keyed by <code>user_id</code>).
                     </p>
                 </div>
                 {% else %}

@@ -6,7 +6,7 @@
 
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
 - **Job recommendations (two-stage)** — Candidate retrieval + ranking:
-  - **Candidate retrieval**: fetch a larger candidate pool from Chroma (e.g. top 100 by vector similarity to your profile).
+  - **Candidate retrieval**: fetch a larger candidate pool using **pgvector** in PostgreSQL (e.g. top 100 by cosine distance to your profile embedding).
   - **Ranking**: re-rank those candidates (optionally via an MLflow-configured model) and **only show the top X** results (default **15**, paginated within that window).
   - **Tuning**: adjust recommendation knobs (candidate pool size, top-X window, default page sizes) in `src/career_copilot/constants.py`.
 - **Job detail** — View full job description, skills, and salary
@@ -18,8 +18,8 @@
 
 ## Tech stack
 
-- **Backend:** FastAPI, PostgreSQL (jobs, profiles, user_jobs), Chroma (vector store)
-- **Embeddings:** OpenAI text-embedding-3-large (jobs and user profiles)
+- **Backend:** FastAPI, PostgreSQL with **pgvector** (job and user-profile embeddings; HNSW indexes)
+- **Embeddings:** OpenAI **text-embedding-3-small** (1536 dimensions; matches `EMBEDDING_VECTOR_DIMENSIONS` in `src/career_copilot/rag/embedding.py` and pgvector columns created by `init_schema`)
 - **LLM:** OpenAI chat models with tool-calling for agentic behaviour (resume improvement, interview prep, add job)
 - **Optional:** Tavily or SerpAPI for add-job agent web search
 - **Web search (interview prep):** `ddgs` (DuckDuckGo search client)
@@ -70,17 +70,48 @@ OPENAI_API_KEY=sk-your-openai-key
 The web app creates **users**, **profiles**, **user_skills**, and **user_jobs** on startup. The **jobs** table (ingested listings) must exist before indexing; create it and run ingestion:
 
 ```bash
-# Optional: run Postgres via Docker
+# Optional: run Postgres via Docker (image includes pgvector; see docker-compose.yml)
 docker compose up -d
 
 # Create jobs table (if not already present)
 psql -d career_copilot -f sql/001_create_jobs.sql
 
-# Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
-python scripts/run_ingestion.py
+# Incremental embedding updates (queue + trigger)
+psql -d career_copilot -f sql/004_jobs_embedding_queue.sql
 
-# Index jobs into Chroma for RAG recommendations
-python scripts/run_rag_index.py
+# Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
+python scripts/ingestion/run.py
+
+# Compute embeddings (two options):
+# 1) One-shot backfill: Postgres jobs → embeddings in jobs_embeddings (requires OPENAI_API_KEY)
+python scripts/job_embeddings_backfill/run.py
+#
+# 2) Incremental mode (recommended for online): DB trigger enqueues changes; run worker as a job
+python scripts/job_embeddings_worker/run.py
+```
+
+#### Smoke test the incremental embedding queue (optional)
+
+After applying `sql/004_jobs_embedding_queue.sql`, any new job insert or job `description` update will enqueue work:
+
+```sql
+-- Insert a dummy job
+INSERT INTO jobs (source, source_id, title, description)
+VALUES ('manual', 'smoke-1', 'Smoke test', 'First description');
+
+-- Queue should have 1 row
+SELECT * FROM jobs_embedding_queue ORDER BY requested_at DESC LIMIT 5;
+
+-- Update description (queues again via UPSERT; row stays one-per-job)
+UPDATE jobs SET description = 'Updated description' WHERE source='manual' AND source_id='smoke-1';
+SELECT * FROM jobs_embedding_queue ORDER BY requested_at DESC LIMIT 5;
+```
+
+Then run the worker (needs `OPENAI_API_KEY`) and confirm the embedding upsert:
+
+```bash
+python scripts/job_embeddings_worker/run.py
+psql -d career_copilot -c "SELECT count(*) FROM jobs_embeddings;"
 ```
 
 ### 4. Run the web app
@@ -173,7 +204,7 @@ Then open `http://127.0.0.1:5000` and look for:
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
-To refresh jobs on a schedule, run `python scripts/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/run_rag_index.py` after ingestion to update Chroma.
+To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/job_embeddings_backfill/run.py` after ingestion to refresh **job embeddings** in Postgres (pgvector).
 
 ## Project structure
 
@@ -186,7 +217,7 @@ career_copilot/
 │   ├── utils.py            # Shared helpers
 │   ├── routers/            # home, profile, jobs, recommendations, add_job, my_jobs, resume_improvement, interview_preparation, track_applications
 │   ├── database/           # db, schema, profiles, jobs, applications, deps
-│   ├── rag/                # Chroma store, embedding, user_embedding
+│   ├── rag/                # pgvector RAG (pgvector_rag, embedding, job_document)
 │   ├── ml/                 # Ranking datasets (ranking_dataset, dataset_store), create_ranking_dataset, train_logreg_mlflow
 │   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
 │   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
@@ -197,13 +228,23 @@ career_copilot/
 │   └── config.example.env  # Example .env (use project root .env)
 ├── tests/                  # Pytest unit tests
 ├── scripts/
+│   ├── ingestion/
+│   │   ├── Dockerfile      # Scheduled ingestion image (build from repo root; see file header)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   ├── run.py          # Fetch jobs → Postgres
+│   │   └── scheduler.py    # Optional: run ingestion on a schedule (e.g. every 6 hours)
+│   ├── job_embeddings_backfill/
+│   │   ├── Dockerfile      # One-shot backfill image (build from repo root; see file header)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   └── run.py          # Postgres jobs → embeddings in jobs_embeddings
+│   ├── job_embeddings_worker/
+│   │   ├── Dockerfile      # Incremental worker image (drains queue → upserts embeddings)
+│   │   ├── requirements.txt # Pip deps for that image only
+│   │   └── run.py          # Drain jobs_embedding_queue → upsert jobs_embeddings
 │   ├── run_web.py          # Start uvicorn
-│   ├── run_ingestion.py    # Fetch jobs → Postgres
-│   ├── run_rag_index.py    # Postgres jobs → Chroma
-│   ├── scheduler.py        # Optional: run ingestion on a schedule (e.g. every 6 hours)
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
-├── sql/                    # 001_create_jobs.sql, 002_create_user_jobs.sql (user_jobs also created by init_schema)
+├── sql/                    # 001_create_jobs.sql, 002_create_user_jobs.sql, 003_pgvector.sql (vectors also in init_schema)
 ├── docker-compose.yml      # Postgres 16 for local dev
 ├── pyproject.toml          # Ruff, pytest config
 ├── requirements.txt
@@ -221,6 +262,8 @@ pytest tests/ -v
 # Or with PYTHONPATH
 PYTHONPATH=src pytest tests/ -v
 ```
+
+There are unit tests for RAG job-document helpers (`tests/test_job_document.py`) and a small contract test that pgvector DDL in `init_schema` still interpolates `EMBEDDING_VECTOR_DIMENSIONS` (`tests/test_embedding_schema_contract.py`), so schema and embedding config stay aligned.
 
 ### Linting and formatting
 

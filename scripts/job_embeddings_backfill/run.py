@@ -1,29 +1,31 @@
 """
-Index job listings from the database into Chroma for RAG (local run).
+Index job listings into Postgres pgvector (jobs_embeddings) for RAG.
 
-Uses OpenAI embeddings (career_copilot.rag.embedding). Set OPENAI_API_KEY in .env.
+Requires: POSTGRES_* or POSTGRES_DSN, OPENAI_API_KEY (see configs/config.example.env).
+Job embeddings are stored in Postgres (pgvector in ``jobs_embeddings``).
 
-Run after ingestion so that the RAG store is populated from the jobs table.
-Does not modify the existing ingestion or DB schema.
+Run after ingestion so the search index matches the jobs table.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.database.db import connect, load_env  # noqa: E402
+from career_copilot.database.schema import init_schema  # noqa: E402
 from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
-from career_copilot.rag.chroma_store import index_jobs_into_chroma  # noqa: E402
+from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E402
 
 LOAD_JOBS_SQL = """
-SELECT source, source_id, title, company, location,
+SELECT id, source, source_id, title, company, location,
        salary_min, salary_max, description, skills,
        posted_at, url, raw
 FROM jobs
@@ -33,6 +35,7 @@ ORDER BY id;
 
 def _row_to_normalized_job(row: tuple) -> NormalizedJob:
     (
+        db_id,
         source,
         source_id,
         title,
@@ -60,25 +63,25 @@ def _row_to_normalized_job(row: tuple) -> NormalizedJob:
         posted_at=posted_at,
         url=url,
         raw=raw_dict,
+        db_id=int(db_id),
     )
 
 
 def main() -> None:
     load_env()
-    persist_path = ROOT / "data" / "chroma"
-
-    with connect(dbname="career_copilot") as conn:
+    target_db = os.environ.get("POSTGRES_DB") or "career_copilot"
+    with connect(dbname=target_db) as conn:
+        init_schema(conn)
         with conn.cursor() as cur:
             cur.execute(LOAD_JOBS_SQL)
             rows = cur.fetchall()
 
-    jobs = [_row_to_normalized_job(r) for r in rows]
-    count = index_jobs_into_chroma(
-        jobs,
-        persist_path=persist_path,
-        collection_name="jobs",
-    )
-    print(f"RAG index: {count} job(s) indexed into Chroma at {persist_path}")
+        jobs = [_row_to_normalized_job(r) for r in rows]
+        count = index_jobs_into_pgvector(conn, jobs)
+        print(
+            f"Job embeddings backfill: {count} job(s) upserted into jobs_embeddings "
+            f"(db={target_db}, total_jobs={len(jobs)})"
+        )
 
 
 if __name__ == "__main__":

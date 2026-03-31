@@ -17,7 +17,7 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from career_copilot.database.db import load_env, connect  # noqa: E402
+from career_copilot.database.db import connect, load_env  # noqa: E402
 from career_copilot.ingestion.common import html_to_plain_text  # noqa: E402
 
 LOAD_SQL = """

@@ -1,8 +1,8 @@
 """
-Explore the Chroma RAG store: list collections, count, sample documents, and similarity search.
+Explore pgvector embeddings: jobs and user profiles in PostgreSQL.
 
-Uses OpenAI embeddings for both jobs and user_profiles (career_copilot.rag.embedding).
-Set OPENAI_API_KEY in .env.
+Requires: OPENAI_API_KEY, Postgres (see configs/config.example.env), and
+``CREATE EXTENSION vector`` + schema from career_copilot.database.schema.init_schema.
 
 Usage:
   python scripts/explore_embeddings.py
@@ -16,126 +16,163 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT / "src"
-CHROMA_PATH = ROOT / "data" / "chroma"
-JOBS_COLLECTION = "jobs"
-USER_PROFILES_COLLECTION = "user_profiles"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import chromadb
+import psycopg  # noqa: E402
 
-from career_copilot.database.db import connect
-from career_copilot.rag.embedding import get_embedding_function
-from career_copilot.resume_io import extract_resume_text
+from career_copilot.database.db import connect, load_env  # noqa: E402
+from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS, embed_texts  # noqa: E402
+from career_copilot.rag.pgvector_rag import (  # noqa: E402
+    vector_search_jobs,
+    vector_search_user_profiles,
+)
+from career_copilot.resume_io import extract_resume_text  # noqa: E402
 
 RESUME_SNIPPET_CHARS = 800
 
 
+def _explore_jobs(conn: psycopg.Connection, query_text: str) -> int:
+    from pgvector.psycopg import register_vector
+
+    register_vector(conn)
+    print("=== Jobs (pgvector on jobs_embeddings.embedding) ===\n")
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT count(*) FROM jobs_embeddings
+            """
+        )
+        n = int(cur.fetchone()[0])
+    print(f"  Rows with embeddings: {n}\n")
+    if n <= 0:
+        print("  Run: python scripts/job_embeddings_backfill/run.py after ingesting jobs.\n")
+        return 0
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT j.id, left(
+                coalesce(title, '') || ' @ ' || coalesce(company, ''),
+                80
+            )
+            FROM jobs_embeddings e
+            JOIN jobs j ON j.id = e.job_id
+            ORDER BY j.id
+            LIMIT 5
+            """
+        )
+        for i, row in enumerate(cur.fetchall(), 1):
+            print(f"  [{i}] job id={row[0]} | {row[1]}")
+
+    print(f"\n  Vector dimensions: {EMBEDDING_VECTOR_DIMENSIONS}\n")
+
+    print(f'--- Vector query (jobs): "{query_text}" (top 5) ---')
+    try:
+        vec = embed_texts([query_text])[0]
+        hits = vector_search_jobs(conn, vec, top_k=min(5, max(1, n)))
+        for h in hits:
+            meta = h.get("metadata") or {}
+            dist = h.get("distance")
+            doc = (h.get("document") or "")[:180]
+            dist_s = f"{dist:.6f}" if dist is not None else "n/a"
+            print(f"  distance~={dist_s} | {meta.get('title', '')} @ {meta.get('company', '')}")
+            print(f"  {doc}{'...' if len(h.get('document') or '') > 180 else ''}\n")
+    except Exception as e:
+        print(f"  Vector query failed: {e}\n")
+
+    return n
+
+
+def _explore_user_profiles(conn: psycopg.Connection, query_text: str) -> int:
+    from pgvector.psycopg import register_vector
+
+    register_vector(conn)
+    print("=== User profiles (pgvector on user_embeddings.embedding) ===\n")
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM user_embeddings")
+        n = int(cur.fetchone()[0])
+    print(f"  Rows: {n}\n")
+    if n <= 0:
+        print("  Save a profile in the web app (with OPENAI_API_KEY set) to index.\n")
+        return 0
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT user_id, left(coalesce(content, ''), 200)
+            FROM user_embeddings
+            ORDER BY user_id
+            LIMIT 5
+            """
+        )
+        for i, row in enumerate(cur.fetchall(), 1):
+            print(f"  [{i}] user_id={row[0]}")
+            print(f"      {row[1]}{'...' if len(row[1] or '') >= 200 else ''}\n")
+
+    print(f'--- Vector query (user profiles): "{query_text}" (top 5) ---')
+    try:
+        vec = embed_texts([query_text])[0]
+        hits = vector_search_user_profiles(
+            conn, vec, top_k=min(5, max(1, n))
+        )
+        for h in hits:
+            meta = h.get("metadata") or {}
+            dist = h.get("distance")
+            doc = (h.get("document") or "")[:180]
+            dist_s = f"{dist:.6f}" if dist is not None else "n/a"
+            print(f"  distance~={dist_s} | user_id={meta.get('user_id', '')}")
+            print(f"  {doc}{'...' if len(h.get('document') or '') > 180 else ''}\n")
+    except Exception as e:
+        print(f"  Vector query failed: {e}\n")
+
+    return n
+
+
 def _fetch_stored_resumes() -> list[tuple[int, str | None, str]]:
-    """Fetch (user_id, filename, extracted_text) for all profiles that have a resume file."""
     out: list[tuple[int, str | None, str]] = []
     try:
         conn = connect()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT user_id, resume_filename, resume_file FROM profiles WHERE resume_file IS NOT NULL AND resume_file != ''"
-            )
-            for row in cur.fetchall():
-                user_id, filename, content_bytes = row[0], row[1], bytes(row[2]) if row[2] else b""
-                text = extract_resume_text(content_bytes, filename)
-                out.append((user_id, filename, text))
-        conn.close()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT user_id, resume_filename, resume_file FROM profiles WHERE resume_file IS NOT NULL AND resume_file != ''"
+                )
+                for row in cur.fetchall():
+                    user_id, filename, content_bytes = row[0], row[1], bytes(row[2]) if row[2] else b""
+                    text = extract_resume_text(content_bytes, filename)
+                    out.append((user_id, filename, text))
+        finally:
+            conn.close()
     except Exception as e:
         print(f"  (Could not load resumes from DB: {e})\n")
     return out
 
 
-def _get_collection(client: chromadb.PersistentClient, name: str):
-    ef = get_embedding_function()
-    try:
-        return client.get_or_create_collection(name, embedding_function=ef)
-    except ValueError as e:
-        if "embedding function" in str(e).lower() and "conflict" in str(e).lower():
-            client.delete_collection(name=name)
-            return client.get_or_create_collection(name, embedding_function=ef)
-        raise
-
-
-def _show_collection(
-    coll,
-    name: str,
-    id_key: str = "title",
-    meta_company: str = "company",
-    *,
-    snippet_chars: int = 200,
-    doc_label: str | None = None,
-) -> int:
-    n = coll.count()
-    print(f"=== {name} (count: {n}) ===\n")
-    if n == 0:
-        print("  (empty)\n")
-        return 0
-
-    sample = coll.get(limit=min(5, n), include=["documents", "metadatas"])
-    ids = sample.get("ids") or [f"#{j}" for j in range(len(sample["documents"]))]
-    for i, (doc_id, doc, meta) in enumerate(zip(ids, sample["documents"], sample["metadatas"]), 1):
-        title = meta.get(id_key, doc_id)
-        extra = f" | {meta.get(meta_company, '')}" if meta_company else ""
-        print(f"  [{i}] id={doc_id} | {title}{extra}")
-        if doc_label:
-            print(f"      {doc_label}")
-        snippet = (doc[:snippet_chars] + "...") if len(doc) > snippet_chars else doc
-        print(f"      {snippet}")
-        print()
-    one = coll.get(limit=1, include=["embeddings"])
-    embs = one.get("embeddings")
-    if embs is not None and len(embs) > 0:
-        print(f"  Embedding dimension: {len(embs[0])}\n")
-    return n
-
-
 def main() -> None:
-    if not CHROMA_PATH.exists():
-        print(f"Chroma path not found: {CHROMA_PATH}")
-        print(
-            "Run: python scripts/run_rag_index.py (jobs) or save a profile in the web app (user_profiles)."
-        )
+    load_env()
+    query_text = (
+        " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "remote Python backend developer"
+    )
+
+    n_jobs = 0
+    n_users = 0
+    try:
+        with connect(dbname="career_copilot") as conn:
+            n_jobs = _explore_jobs(conn, query_text)
+            n_users = _explore_user_profiles(conn, query_text)
+    except Exception as e:
+        print(f"Database error: {e}\n")
         sys.exit(1)
 
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-
-    # List what collections exist
-    try:
-        existing = client.list_collections()
-        print("Collections in Chroma:", [c.name for c in existing], "\n")
-    except Exception:
-        existing = []
-
-    # Show jobs collection
-    coll_jobs = _get_collection(client, JOBS_COLLECTION)
-    n_jobs = _show_collection(coll_jobs, JOBS_COLLECTION)
-
-    # Show user_profiles collection (resume + skills + preferences; resume is first in embedded text)
-    coll_users = _get_collection(client, USER_PROFILES_COLLECTION)
-    n_users = _show_collection(
-        coll_users,
-        USER_PROFILES_COLLECTION,
-        id_key="user_id",
-        meta_company="",
-        snippet_chars=600,
-        doc_label="Embedded text (resume first, then skills/preferences):",
-    )
-    # Show stored resume file content from DB (what was uploaded; used for embedding when present)
     if n_users > 0:
         print(
-            "--- Stored resumes (from DB; this text is included in the embedding when present) ---\n"
+            "--- Stored resumes (from DB; included in profile embedding when present) ---\n"
         )
         stored = _fetch_stored_resumes()
         if not stored:
-            print(
-                "  No resume files stored in DB. Upload a resume in the profile page and save to include it in the embedding.\n"
-            )
+            print("  No resume files in DB.\n")
         for user_id, filename, text in stored:
             print(f"  user_id={user_id}  file={filename or '(unknown)'}")
             if text.strip():
@@ -149,37 +186,11 @@ def main() -> None:
                 print("  (no text extracted)")
             print()
 
-    # Similarity search on jobs (only if non-empty)
-    query_text = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "remote Python backend developer"
-    if n_jobs > 0:
-        print(f'--- Query (jobs): "{query_text}" (top 5) ---')
-        results = coll_jobs.query(
-            query_texts=[query_text],
-            n_results=min(5, n_jobs),
-            include=["documents", "metadatas", "distances"],
-        )
-        for doc, meta, dist in zip(
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0],
-        ):
-            print(f"  distance={dist:.4f} | {meta.get('title', '')} @ {meta.get('company', '')}")
-            print(f"  {doc[:180]}{'...' if len(doc) > 180 else ''}")
-            print()
-    else:
-        print(
-            f"--- Query skipped (jobs collection is empty). Run: python scripts/run_rag_index.py ---"
-        )
+    if n_jobs == 0 and n_users == 0:
+        sys.exit(1)
 
     print("Done.")
 
-
-# # Default query: "remote Python backend developer"
-# python scripts/explore_embeddings.py
-
-# # Custom query
-# python scripts/explore_embeddings.py "remote Python backend"
-# python scripts/explore_embeddings.py "data engineer"
 
 if __name__ == "__main__":
     main()

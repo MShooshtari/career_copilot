@@ -16,7 +16,7 @@ RECOMMENDATIONS_DEFAULT_PAGE_SIZE = 5
 RECOMMENDATIONS_MAX_PAGE_SIZE = 50
 RECOMMENDATIONS_PAGE_SIZE_OPTIONS: tuple[int, ...] = (5, 10, 15)
 
-# RAG / Chroma indexing + retrieval
+# RAG / pgvector job indexing + retrieval (batch size, doc limits)
 RAG_JOB_DOC_MAX_CHARS = 6_000
 RAG_JOB_UPSERT_BATCH_SIZE = 50
 RAG_DEFAULT_RECOMMENDATION_N_RESULTS = 100
