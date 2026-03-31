@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 from typing import Annotated
 
@@ -184,7 +185,7 @@ def _get_improved_text(job_id: int, user_id: int, body_history: list | None) -> 
     """Resolve the latest improved resume text from DB or regenerate from history."""
     conn = get_db()
     try:
-        app_row = get_application_by_key(conn, USER_ID, job_id, "ingested", "resume_improvement")
+        app_row = get_application_by_key(conn, user_id, job_id, "ingested", "resume_improvement")
         last_resume_text = app_row[8] if app_row else None
         if last_resume_text:
             return last_resume_text
@@ -235,8 +236,8 @@ async def post_resume_improve_download(
     user_id: CurrentUserId,
 ) -> StreamingResponse:
     """Generate a formatted PDF of the improved resume, cloning the original's style."""
-    text = _get_improved_text(job_id, user_id, body.history)
-    profile = _get_style_profile(user_id)
+    text = await asyncio.to_thread(_get_improved_text, job_id, user_id, body.history)
+    profile = await asyncio.to_thread(_get_style_profile, user_id)
     text = apply_original_bold(text, profile.bold_phrases)
     mcp_url = _get_mcp_server_url()
     if mcp_url:
@@ -244,13 +245,15 @@ async def post_resume_improve_download(
             import dataclasses
 
             profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
-            pdf_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "pdf", mcp_url)
+            pdf_bytes = await asyncio.to_thread(
+                format_resume_via_mcp, text, profile_for_mcp.to_json(), "pdf", mcp_url
+            )
         except Exception as _mcp_err:
             print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
             mcp_url = None
     if not mcp_url:
         try:
-            pdf_bytes = generate_formatted_pdf(text, profile)
+            pdf_bytes = await asyncio.to_thread(generate_formatted_pdf, text, profile)
         except Exception as _pdf_err:
             print(f"[PDF] generate_formatted_pdf failed: {_pdf_err!r}")
             pdf_bytes = build_resume_pdf(text)
@@ -270,8 +273,8 @@ async def post_resume_improve_download_docx(
     user_id: CurrentUserId,
 ) -> StreamingResponse:
     """Generate a formatted Word document of the improved resume, cloning the original's style."""
-    text = _get_improved_text(job_id, user_id, body.history)
-    profile = _get_style_profile(user_id)
+    text = await asyncio.to_thread(_get_improved_text, job_id, user_id, body.history)
+    profile = await asyncio.to_thread(_get_style_profile, user_id)
     text = apply_original_bold(text, profile.bold_phrases)
     mcp_url = _get_mcp_server_url()
     if mcp_url:
@@ -279,12 +282,14 @@ async def post_resume_improve_download_docx(
             import dataclasses
 
             profile_for_mcp = dataclasses.replace(profile, bold_phrases=[])
-            docx_bytes = format_resume_via_mcp(text, profile_for_mcp.to_json(), "docx", mcp_url)
+            docx_bytes = await asyncio.to_thread(
+                format_resume_via_mcp, text, profile_for_mcp.to_json(), "docx", mcp_url
+            )
         except Exception as _mcp_err:
             print(f"[MCP] format failed: {_mcp_err!r}, falling back to direct")
             mcp_url = None
     if not mcp_url:
-        docx_bytes = generate_formatted_docx(text, profile)
+        docx_bytes = await asyncio.to_thread(generate_formatted_docx, text, profile)
 
     filename = f"improved_resume_job_{job_id}.docx"
     return StreamingResponse(
