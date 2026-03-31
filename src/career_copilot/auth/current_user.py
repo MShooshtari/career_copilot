@@ -23,12 +23,14 @@ async def get_current_user_id(
     conn = get_db()
     try:
         if not auth_enabled():
-            return get_or_create_user(
+            user_id = get_or_create_user(
                 conn,
                 external_provider="local",
                 external_subject="demo",
                 email="demo@example.com",
             )
+            conn.commit()
+            return user_id
         if ext is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
         user_id = get_or_create_user(
