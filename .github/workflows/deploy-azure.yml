@@ -1,10 +1,21 @@
-# Deploy the FastAPI API image to Azure Container Registry and roll the Container App.
-# Prereqs: ACR + Container App already exist (see docs/azure/CONTAINER_APPS_QUICKSTART.md).
-# Configure repository Variables (Settings → Secrets and variables → Actions → Variables):
-#   AZURE_RESOURCE_GROUP, AZURE_CONTAINER_REGISTRY (short name, e.g. careercopilotacr),
-#   AZURE_CONTAINER_APP_NAME
-# Optional variable: AZURE_CONTAINER_IMAGE_NAME (default: career-copilot-api)
-# Configure Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC federated credential for GitHub).
+# Deploy container images to Azure Container Registry and roll matching Container Apps.
+# Prereqs: ACR(s) + Container App(s) already exist (see docs/azure/CONTAINER_APPS_QUICKSTART.md).
+#
+# API (web app — repo-root Dockerfile):
+#   Variables: AZURE_RESOURCE_GROUP, AZURE_CONTAINER_REGISTRY, AZURE_CONTAINER_APP_NAME
+#   Optional: AZURE_CONTAINER_IMAGE_NAME (default: career-copilot-api)
+#
+# MCP server (mcp_server/Dockerfile) — optional second registry + app:
+#   Variables: AZURE_MCP_CONTAINER_REGISTRY, AZURE_MCP_CONTAINER_APP_NAME
+#   Optional: AZURE_MCP_RESOURCE_GROUP — resource group of the MCP Container App
+#     (defaults to AZURE_RESOURCE_GROUP if unset)
+#   Optional: AZURE_MCP_ACR_RESOURCE_GROUP — resource group that contains the MCP ACR
+#     (defaults to the MCP app RG above if unset)
+#   Optional: AZURE_MCP_CONTAINER_IMAGE_NAME (default: career-copilot-mcp)
+#   The MCP job is skipped unless both AZURE_MCP_CONTAINER_REGISTRY and
+#   AZURE_MCP_CONTAINER_APP_NAME are set.
+#
+# Secrets (OIDC): AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 
 name: deploy-azure
 
@@ -25,8 +36,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  deploy:
-    name: Build image and update Container App
+  deploy_api:
+    name: API — build and update Container App
     runs-on: ubuntu-latest
     env:
       AZURE_CONTAINER_IMAGE_NAME: ${{ vars.AZURE_CONTAINER_IMAGE_NAME }}
@@ -84,4 +95,74 @@ jobs:
           az containerapp update \
             -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
             -n "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
+            --image "$FULL_IMAGE"
+
+  deploy_mcp:
+    name: MCP — build and update Container App
+    if: ${{ vars.AZURE_MCP_CONTAINER_REGISTRY != '' && vars.AZURE_MCP_CONTAINER_APP_NAME != '' }}
+    runs-on: ubuntu-latest
+    env:
+      AZURE_MCP_CONTAINER_IMAGE_NAME: ${{ vars.AZURE_MCP_CONTAINER_IMAGE_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image variables
+        id: cfg
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_NAME="${AZURE_MCP_CONTAINER_IMAGE_NAME:-career-copilot-mcp}"
+          REGISTRY="${{ vars.AZURE_MCP_CONTAINER_REGISTRY }}"
+          API_RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          MCP_APP_RG="${{ vars.AZURE_MCP_RESOURCE_GROUP }}"
+          APP_RG="${MCP_APP_RG:-$API_RG}"
+          MCP_ACR_RG_INPUT="${{ vars.AZURE_MCP_ACR_RESOURCE_GROUP }}"
+          ACR_RG="${MCP_ACR_RG_INPUT:-$APP_RG}"
+          APP="${{ vars.AZURE_MCP_CONTAINER_APP_NAME }}"
+          if [[ -z "$REGISTRY" || -z "$APP_RG" || -z "$APP" || -z "$ACR_RG" ]]; then
+            echo "::error::MCP deploy: set AZURE_MCP_CONTAINER_REGISTRY and AZURE_MCP_CONTAINER_APP_NAME; set AZURE_RESOURCE_GROUP (or AZURE_MCP_RESOURCE_GROUP) so the MCP app resource group is known."
+            exit 1
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          echo "image_name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "registry_login_server=${REGISTRY}.azurecr.io" >> "$GITHUB_OUTPUT"
+          echo "app_resource_group=$APP_RG" >> "$GITHUB_OUTPUT"
+          echo "acr_resource_group=$ACR_RG" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Build and push MCP image (ACR Tasks)
+        run: |
+          set -euo pipefail
+          REGISTRY="${{ vars.AZURE_MCP_CONTAINER_REGISTRY }}"
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          SHA_TAG="${{ steps.cfg.outputs.short_sha }}"
+          ACR_RG="${{ steps.cfg.outputs.acr_resource_group }}"
+          az acr build \
+            -g "$ACR_RG" \
+            -r "$REGISTRY" \
+            -f mcp_server/Dockerfile \
+            -t "${IMAGE}:${SHA_TAG}" \
+            -t "${IMAGE}:latest" \
+            .
+
+      - name: Update MCP Container App revision
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          TAG="${{ steps.cfg.outputs.short_sha }}"
+          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:${TAG}"
+          az containerapp update \
+            -g "${{ steps.cfg.outputs.app_resource_group }}" \
+            -n "${{ vars.AZURE_MCP_CONTAINER_APP_NAME }}" \
             --image "$FULL_IMAGE"
