@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 
 from career_copilot.database.db import connect
 from career_copilot.database.schema import init_schema
 from career_copilot.routers import (
     add_job,
+    auth,
     home,
     interview_preparation,
     jobs,
@@ -19,10 +21,22 @@ from career_copilot.routers import (
     resume_improvement,
     track_applications,
 )
+from career_copilot.auth.config import auth_enabled, session_secret_key
 
 app = FastAPI(title="Career Copilot - User Profile")
 
+if auth_enabled():
+    secret = session_secret_key()
+    if not secret:
+        raise RuntimeError("AUTH_ENABLED=1 requires SESSION_SECRET_KEY")
+    app.add_middleware(SessionMiddleware, secret_key=secret)
+
+@app.get("/healthz")
+async def healthz() -> dict:
+    return {"ok": True}
+
 app.include_router(home.router)
+app.include_router(auth.router)
 app.include_router(recommendations.router)
 app.include_router(add_job.router)
 app.include_router(my_jobs.router)

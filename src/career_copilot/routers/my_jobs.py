@@ -20,11 +20,11 @@ from career_copilot.agents.resume_improvement import (
     generate_full_resume,
     get_initial_resume_analysis,
 )
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
 from career_copilot.constants import (
     APPLICATION_CHAT_MAX_STORED_MESSAGES,
     APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
-    DEFAULT_USER_ID,
     JOB_DESCRIPTION_SNIPPET_MAX_CHARS,
 )
 from career_copilot.database.applications import add_application as add_tracked_application
@@ -41,13 +41,11 @@ from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, ResumePdfRequest
 
 router = APIRouter(prefix="/my-jobs", tags=["my_jobs"])
-
-USER_ID = DEFAULT_USER_ID
 MAX_STORED_MESSAGES = APPLICATION_CHAT_MAX_STORED_MESSAGES
 
 
-def _get_user_job_dict(conn: psycopg.Connection, job_id: int) -> dict | None:
-    row = get_user_job_by_id(conn, USER_ID, job_id)
+def _get_user_job_dict(conn: psycopg.Connection, user_id: int, job_id: int) -> dict | None:
+    row = get_user_job_by_id(conn, user_id, job_id)
     if not row:
         return None
     return user_job_row_to_dict(row)
@@ -57,9 +55,10 @@ def _get_user_job_dict(conn: psycopg.Connection, job_id: int) -> dict | None:
 async def post_my_job_delete(
     job_id: int,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> RedirectResponse:
     """Delete a user-added job and redirect to recommendations."""
-    delete_user_job(conn, USER_ID, job_id)
+    delete_user_job(conn, user_id, job_id)
     conn.commit()
     conn.close()
     return RedirectResponse(url="/recommendations", status_code=303)
@@ -70,9 +69,10 @@ async def get_my_job_detail(
     request: Request,
     job_id: int,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> HTMLResponse | RedirectResponse:
     """Full job details for a user-added job."""
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
@@ -81,7 +81,7 @@ async def get_my_job_detail(
     return templates.TemplateResponse(
         request,
         "job_detail.html",
-        {"job": job, "user_id": USER_ID, "is_user_job": True},
+        {"job": job, "user_id": user_id, "is_user_job": True},
     )
 
 
@@ -90,8 +90,9 @@ async def get_my_job_improve_resume(
     request: Request,
     job_id: int,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> HTMLResponse | RedirectResponse:
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
@@ -104,7 +105,7 @@ async def get_my_job_improve_resume(
         {
             "job": job,
             "job_id": job_id,
-            "user_id": USER_ID,
+            "user_id": user_id,
             "is_user_job": True,
         },
     )
@@ -115,8 +116,9 @@ async def get_my_job_prepare_interview(
     request: Request,
     job_id: int,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> HTMLResponse | RedirectResponse:
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     conn.close()
     if not job:
         return RedirectResponse(url="/recommendations", status_code=303)
@@ -129,7 +131,7 @@ async def get_my_job_prepare_interview(
         {
             "job": job,
             "job_id": job_id,
-            "user_id": USER_ID,
+            "user_id": user_id,
             "is_user_job": True,
         },
     )
@@ -140,8 +142,9 @@ async def post_my_job_improve_resume_chat(
     job_id: int,
     body: ResumeChatRequest,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     if not job:
         conn.close()
         return JSONResponse(
@@ -152,7 +155,7 @@ async def post_my_job_improve_resume_chat(
     # Ensure this stage shows up in Track applications
     add_tracked_application(
         conn,
-        USER_ID,
+        user_id,
         job_id,
         "user",
         "resume_improvement",
@@ -160,11 +163,11 @@ async def post_my_job_improve_resume_chat(
     )
     conn.commit()
 
-    app_row = get_application_by_key(conn, USER_ID, job_id, "user", "resume_improvement")
+    app_row = get_application_by_key(conn, user_id, job_id, "user", "resume_improvement")
     stored_history = (app_row[6] if app_row else None) or []
     last_resume_text = app_row[8] if app_row else None
 
-    ctx = build_resume_improvement_context_from_job_dict(job, USER_ID, conn)
+    ctx = build_resume_improvement_context_from_job_dict(job, user_id, conn)
     conn.close()
     resume_text = (last_resume_text or "") or ctx["resume_text"]
     similar_jobs = ctx["similar_jobs"]
@@ -204,7 +207,7 @@ async def post_my_job_improve_resume_chat(
     try:
         conn2 = get_db()
         try:
-            row2 = get_application_by_key(conn2, USER_ID, job_id, "user", "resume_improvement")
+            row2 = get_application_by_key(conn2, user_id, job_id, "user", "resume_improvement")
             if row2:
                 app_id2 = int(row2[0])
                 if is_initial and not stored_history:
@@ -216,18 +219,18 @@ async def post_my_job_improve_resume_chat(
                         {"role": "user", "content": (body.message or "").strip()},
                         {"role": "assistant", "content": reply},
                     ]
-                set_application_history(conn2, USER_ID, app_id2, history_now)
+                set_application_history(conn2, user_id, app_id2, history_now)
                 try:
                     updated_resume = generate_full_resume(
                         history_now, resume_text, job, similar_jobs, similar_resumes
                     )
                 except Exception:
                     updated_resume = None
-                set_application_last_resume_text(conn2, USER_ID, app_id2, updated_resume)
+                set_application_last_resume_text(conn2, user_id, app_id2, updated_resume)
 
                 if len(history_now) > MAX_STORED_MESSAGES:
                     history_now = history_now[-MAX_STORED_MESSAGES:]
-                    set_application_history(conn2, USER_ID, app_id2, history_now)
+                    set_application_history(conn2, user_id, app_id2, history_now)
 
                 mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
                 mem = {**mem}
@@ -247,7 +250,7 @@ async def post_my_job_improve_resume_chat(
                         )
                     except Exception:
                         pass
-                set_application_memory(conn2, USER_ID, app_id2, mem)
+                set_application_memory(conn2, user_id, app_id2, mem)
                 conn2.commit()
         finally:
             conn2.close()
@@ -260,9 +263,10 @@ async def post_my_job_improve_resume_chat(
 async def post_my_job_improve_resume_download(
     job_id: int,
     body: ResumePdfRequest,
+    user_id: CurrentUserId,
 ) -> StreamingResponse:
     conn = get_db()
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     if not job:
         conn.close()
         return StreamingResponse(
@@ -271,7 +275,7 @@ async def post_my_job_improve_resume_download(
             media_type="application/pdf",
         )
     try:
-        ctx = build_resume_improvement_context_from_job_dict(job, USER_ID, conn)
+        ctx = build_resume_improvement_context_from_job_dict(job, user_id, conn)
     finally:
         conn.close()
     resume_text = ctx["resume_text"]
@@ -286,7 +290,7 @@ async def post_my_job_improve_resume_download(
     try:
         conn2 = get_db()
         try:
-            row = get_application_by_key(conn2, USER_ID, job_id, "user", "resume_improvement")
+            row = get_application_by_key(conn2, user_id, job_id, "user", "resume_improvement")
             if row and row[8]:
                 text = row[8]
         finally:
@@ -307,8 +311,9 @@ async def post_my_job_prepare_interview_chat(
     job_id: int,
     body: InterviewChatRequest,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
-    job = _get_user_job_dict(conn, job_id)
+    job = _get_user_job_dict(conn, user_id, job_id)
     if not job:
         conn.close()
         return JSONResponse(
@@ -319,7 +324,7 @@ async def post_my_job_prepare_interview_chat(
     # Ensure this stage shows up in Track applications
     add_tracked_application(
         conn,
-        USER_ID,
+        user_id,
         job_id,
         "user",
         "interview_preparation",
@@ -327,10 +332,10 @@ async def post_my_job_prepare_interview_chat(
     )
     conn.commit()
 
-    app_row = get_application_by_key(conn, USER_ID, job_id, "user", "interview_preparation")
+    app_row = get_application_by_key(conn, user_id, job_id, "user", "interview_preparation")
     stored_history = (app_row[6] if app_row else None) or []
 
-    ctx = build_interview_prep_context_from_job_dict(job, USER_ID, conn)
+    ctx = build_interview_prep_context_from_job_dict(job, user_id, conn)
     conn.close()
     resume_text = ctx["resume_text"]
 
@@ -366,7 +371,7 @@ async def post_my_job_prepare_interview_chat(
     try:
         conn2 = get_db()
         try:
-            row2 = get_application_by_key(conn2, USER_ID, job_id, "user", "interview_preparation")
+            row2 = get_application_by_key(conn2, user_id, job_id, "user", "interview_preparation")
             if row2:
                 app_id2 = int(row2[0])
                 if is_initial and not stored_history:
@@ -378,11 +383,11 @@ async def post_my_job_prepare_interview_chat(
                         {"role": "user", "content": (body.message or "").strip()},
                         {"role": "assistant", "content": reply},
                     ]
-                set_application_history(conn2, USER_ID, app_id2, history_now)
+                set_application_history(conn2, user_id, app_id2, history_now)
 
                 if len(history_now) > MAX_STORED_MESSAGES:
                     history_now = history_now[-MAX_STORED_MESSAGES:]
-                    set_application_history(conn2, USER_ID, app_id2, history_now)
+                    set_application_history(conn2, user_id, app_id2, history_now)
 
                 mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
                 mem = {**mem}
@@ -411,7 +416,7 @@ async def post_my_job_prepare_interview_chat(
                         )
                     except Exception:
                         pass
-                set_application_memory(conn2, USER_ID, app_id2, mem)
+                set_application_memory(conn2, user_id, app_id2, mem)
                 conn2.commit()
         finally:
             conn2.close()

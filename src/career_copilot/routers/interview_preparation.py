@@ -13,8 +13,8 @@ from career_copilot.agents.interview_preparation import (
     chat_interview_preparation,
     get_initial_interview_message,
 )
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
-    DEFAULT_USER_ID,
     INTERVIEW_PREP_MAX_STORED_MESSAGES,
     INTERVIEW_PREP_SUMMARY_UPDATE_EVERY_N_MESSAGES,
 )
@@ -28,8 +28,6 @@ from career_copilot.database.deps import get_db
 from career_copilot.schemas import InterviewChatRequest
 
 router = APIRouter(tags=["interview_preparation"])
-
-USER_ID = DEFAULT_USER_ID
 MAX_STORED_MESSAGES = INTERVIEW_PREP_MAX_STORED_MESSAGES
 
 
@@ -38,6 +36,7 @@ async def post_prepare_interview_chat(
     job_id: int,
     body: InterviewChatRequest,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
     """
     Chat endpoint for interview preparation. Send message and optional history.
@@ -48,7 +47,7 @@ async def post_prepare_interview_chat(
     # Ensure this stage shows up in Track applications
     add_tracked_application(
         conn,
-        USER_ID,
+        user_id,
         job_id,
         "ingested",
         "interview_preparation",
@@ -56,10 +55,10 @@ async def post_prepare_interview_chat(
     )
     conn.commit()
 
-    app_row = get_application_by_key(conn, USER_ID, job_id, "ingested", "interview_preparation")
+    app_row = get_application_by_key(conn, user_id, job_id, "ingested", "interview_preparation")
     stored_history = (app_row[6] if app_row else None) or []
 
-    ctx = build_interview_prep_context(job_id, USER_ID, conn)
+    ctx = build_interview_prep_context(job_id, user_id, conn)
     conn.close()
     resume_text = ctx["resume_text"]
     job = ctx["job"]
@@ -103,7 +102,7 @@ async def post_prepare_interview_chat(
         conn2 = get_db()
         try:
             row2 = get_application_by_key(
-                conn2, USER_ID, job_id, "ingested", "interview_preparation"
+                conn2, user_id, job_id, "ingested", "interview_preparation"
             )
             if row2:
                 app_id2 = int(row2[0])
@@ -116,12 +115,12 @@ async def post_prepare_interview_chat(
                         {"role": "user", "content": (body.message or "").strip()},
                         {"role": "assistant", "content": reply},
                     ]
-                set_application_history(conn2, USER_ID, app_id2, history_now)
+                set_application_history(conn2, user_id, app_id2, history_now)
 
                 # Keep history lightweight
                 if len(history_now) > MAX_STORED_MESSAGES:
                     history_now = history_now[-MAX_STORED_MESSAGES:]
-                    set_application_history(conn2, USER_ID, app_id2, history_now)
+                    set_application_history(conn2, user_id, app_id2, history_now)
 
                 # Update compact memory (interview_type + summary)
                 mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
@@ -151,7 +150,7 @@ async def post_prepare_interview_chat(
                         )
                     except Exception:
                         pass
-                set_application_memory(conn2, USER_ID, app_id2, mem)
+                set_application_memory(conn2, user_id, app_id2, mem)
                 conn2.commit()
         finally:
             conn2.close()

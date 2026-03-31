@@ -16,10 +16,10 @@ from career_copilot.agents.resume_improvement import (
     generate_full_resume,
     get_initial_resume_analysis,
 )
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
     APPLICATION_CHAT_MAX_STORED_MESSAGES,
     APPLICATION_MEMORY_SUMMARY_UPDATE_EVERY_N_MESSAGES,
-    DEFAULT_USER_ID,
 )
 from career_copilot.database.applications import add_application as add_tracked_application
 from career_copilot.database.applications import (
@@ -42,8 +42,6 @@ from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import ResumeChatRequest, ResumePdfRequest
 
 router = APIRouter(tags=["resume_improvement"])
-
-USER_ID = DEFAULT_USER_ID
 MAX_STORED_MESSAGES = APPLICATION_CHAT_MAX_STORED_MESSAGES
 
 
@@ -52,6 +50,7 @@ async def post_resume_improve_chat(
     job_id: int,
     body: ResumeChatRequest,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
     """
     Chat endpoint for resume improvement. Send message and optional history.
@@ -60,7 +59,7 @@ async def post_resume_improve_chat(
     # Ensure this stage shows up in Track applications
     add_tracked_application(
         conn,
-        USER_ID,
+        user_id,
         job_id,
         "ingested",
         "resume_improvement",
@@ -68,11 +67,11 @@ async def post_resume_improve_chat(
     )
     conn.commit()
 
-    app_row = get_application_by_key(conn, USER_ID, job_id, "ingested", "resume_improvement")
+    app_row = get_application_by_key(conn, user_id, job_id, "ingested", "resume_improvement")
     stored_history = (app_row[6] if app_row else None) or []
     last_resume_text = app_row[8] if app_row else None
 
-    ctx = build_resume_improvement_context(job_id, USER_ID, conn)
+    ctx = build_resume_improvement_context(job_id, user_id, conn)
     conn.close()
     # Use the last saved resume version as context (this is the "memory" that matters most)
     resume_text = (last_resume_text or "") or ctx["resume_text"]
@@ -122,7 +121,7 @@ async def post_resume_improve_chat(
         conn2 = get_db()
         try:
             # Re-read app row (it should exist) and update
-            row2 = get_application_by_key(conn2, USER_ID, job_id, "ingested", "resume_improvement")
+            row2 = get_application_by_key(conn2, user_id, job_id, "ingested", "resume_improvement")
             if row2:
                 app_id2 = int(row2[0])
                 history_now = (
@@ -135,7 +134,7 @@ async def post_resume_improve_chat(
                         {"role": "user", "content": (body.message or "").strip()},
                         {"role": "assistant", "content": reply},
                     ]
-                set_application_history(conn2, USER_ID, app_id2, history_now)
+                set_application_history(conn2, user_id, app_id2, history_now)
 
                 # Only update last_resume_text after non-initial turns (or if we just created history)
                 try:
@@ -144,12 +143,12 @@ async def post_resume_improve_chat(
                     )
                 except Exception:
                     updated_resume = None
-                set_application_last_resume_text(conn2, USER_ID, app_id2, updated_resume)
+                set_application_last_resume_text(conn2, user_id, app_id2, updated_resume)
 
                 # Keep history lightweight: store only last N messages
                 if len(history_now) > MAX_STORED_MESSAGES:
                     history_now = history_now[-MAX_STORED_MESSAGES:]
-                    set_application_history(conn2, USER_ID, app_id2, history_now)
+                    set_application_history(conn2, user_id, app_id2, history_now)
 
                 # Update compact memory (no full history)
                 mem = (row2[7] or {}) if isinstance(row2[7], dict) else {}
@@ -171,7 +170,7 @@ async def post_resume_improve_chat(
                         )
                     except Exception:
                         pass
-                set_application_memory(conn2, USER_ID, app_id2, mem)
+                set_application_memory(conn2, user_id, app_id2, mem)
                 conn2.commit()
         finally:
             conn2.close()
@@ -181,11 +180,11 @@ async def post_resume_improve_chat(
     return JSONResponse(content={"reply": reply})
 
 
-def _get_improved_text(job_id: int, body_history: list | None) -> str:
+def _get_improved_text(job_id: int, user_id: int, body_history: list | None) -> str:
     """Resolve the latest improved resume text from DB or regenerate from history."""
     conn = get_db()
     try:
-        ctx = build_resume_improvement_context(job_id, USER_ID, conn)
+        ctx = build_resume_improvement_context(job_id, user_id, conn)
     finally:
         conn.close()
 
@@ -209,11 +208,11 @@ def _get_mcp_server_url() -> str | None:
     return os.environ.get("MCP_SERVER_URL") or None
 
 
-def _get_style_profile() -> StyleProfile:
+def _get_style_profile(user_id: int) -> StyleProfile:
     """Load the user's original resume and extract its StyleProfile."""
     conn = get_db()
     try:
-        resume_bytes, filename = get_resume_file_by_user_id(conn, USER_ID)
+        resume_bytes, filename = get_resume_file_by_user_id(conn, user_id)
     finally:
         conn.close()
 
@@ -228,10 +227,11 @@ def _get_style_profile() -> StyleProfile:
 async def post_resume_improve_download(
     job_id: int,
     body: ResumePdfRequest,
+    user_id: CurrentUserId,
 ) -> StreamingResponse:
     """Generate a formatted PDF of the improved resume, cloning the original's style."""
-    text = _get_improved_text(job_id, body.history)
-    profile = _get_style_profile()
+    text = _get_improved_text(job_id, user_id, body.history)
+    profile = _get_style_profile(user_id)
     text = apply_original_bold(text, profile.bold_phrases)
     mcp_url = _get_mcp_server_url()
     if mcp_url:
@@ -262,10 +262,11 @@ async def post_resume_improve_download(
 async def post_resume_improve_download_docx(
     job_id: int,
     body: ResumePdfRequest,
+    user_id: CurrentUserId,
 ) -> StreamingResponse:
     """Generate a formatted Word document of the improved resume, cloning the original's style."""
-    text = _get_improved_text(job_id, body.history)
-    profile = _get_style_profile()
+    text = _get_improved_text(job_id, user_id, body.history)
+    profile = _get_style_profile(user_id)
     text = apply_original_bold(text, profile.bold_phrases)
     mcp_url = _get_mcp_server_url()
     if mcp_url:

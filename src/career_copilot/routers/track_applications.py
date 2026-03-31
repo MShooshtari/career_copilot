@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from career_copilot.agents.track_applications import chat_track_applications
+from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.app_config import templates
-from career_copilot.constants import DEFAULT_USER_ID
 from career_copilot.database.applications import (
     enrich_applications_with_job_info,
     get_application_by_key,
@@ -22,16 +22,15 @@ from career_copilot.schemas import TrackApplicationsChatRequest
 
 router = APIRouter(prefix="/applications", tags=["track_applications"])
 
-USER_ID = DEFAULT_USER_ID
-
 
 @router.get("", response_class=HTMLResponse)
 async def get_applications_page(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> HTMLResponse:
     """Track applications page: list of applications + agent chat."""
-    rows = list_applications(conn, USER_ID)
+    rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
     conn.close()
     return templates.TemplateResponse(
@@ -39,7 +38,7 @@ async def get_applications_page(
         "track_applications.html",
         {
             "applications": applications,
-            "user_id": USER_ID,
+            "user_id": user_id,
         },
     )
 
@@ -50,6 +49,7 @@ async def get_application_context(
     job_source: str,
     stage: str,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
     """
     Return persisted per-application context (chat history + last resume text)
@@ -61,7 +61,7 @@ async def get_application_context(
     ):
         conn.close()
         return JSONResponse(status_code=400, content={"found": False, "history": []})
-    row = get_application_by_key(conn, USER_ID, job_id, job_source, stage)
+    row = get_application_by_key(conn, user_id, job_id, job_source, stage)
     conn.close()
     if not row:
         return JSONResponse(content={"found": False, "history": [], "last_resume_text": None})
@@ -83,6 +83,7 @@ async def get_application_context(
 async def post_applications_chat(
     body: TrackApplicationsChatRequest,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
     """
     Chat with the track-applications agent (tool calling). Returns reply and
@@ -93,7 +94,7 @@ async def post_applications_chat(
             body.message or "",
             body.history or [],
             conn,
-            USER_ID,
+            user_id,
         )
     except Exception as e:
         conn.close()
@@ -101,7 +102,7 @@ async def post_applications_chat(
             status_code=500,
             content={"reply": f"Sorry, something went wrong. ({e!s})", "applications": []},
         )
-    rows = list_applications(conn, USER_ID)
+    rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
     conn.close()
     return JSONResponse(
@@ -116,12 +117,13 @@ async def post_applications_chat(
 async def post_delete_application(
     application_id: int,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
 ) -> JSONResponse:
     """Delete a tracked application by id and return refreshed list."""
-    removed = remove_application(conn, USER_ID, application_id)
+    removed = remove_application(conn, user_id, application_id)
     if removed:
         conn.commit()
-    rows = list_applications(conn, USER_ID)
+    rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
     conn.close()
     return JSONResponse(content={"removed": bool(removed), "applications": applications})

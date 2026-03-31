@@ -14,7 +14,6 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 from career_copilot.constants import (
-    DEFAULT_USER_ID,
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RAG_JOB_DOC_MAX_CHARS,
     RAG_JOB_UPSERT_BATCH_SIZE,
@@ -235,7 +234,7 @@ def fetch_user_profile_embedding(conn: psycopg.Connection, user_id: int) -> list
 def get_recommended_job_results(
     conn: psycopg.Connection,
     *,
-    user_id: int = DEFAULT_USER_ID,
+    user_id: int,
     n_results: int = RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     jobs_collection_name: str = "jobs",
 ) -> list[dict[str, Any]]:

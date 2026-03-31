@@ -21,6 +21,8 @@ def upsert_user_profile(
     salary_max: int | None,
     resume_file: bytes | None,
     resume_filename: str | None,
+    resume_blob_container: str | None = None,
+    resume_blob_name: str | None = None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute("DELETE FROM user_skills WHERE user_id = %s", (user_id,))
@@ -48,11 +50,14 @@ def upsert_user_profile(
                 salary_min,
                 salary_max,
                 resume_file,
-                resume_filename
+                resume_filename,
+                resume_blob_container,
+                resume_blob_name
             )
             VALUES (%(user_id)s, %(skill_tags)s, %(years_experience)s, %(current_location)s,
                     %(preferred_roles)s, %(industries)s, %(work_mode)s, %(employment_type)s,
-                    %(preferred_locations)s, %(salary_min)s, %(salary_max)s, %(resume_file)s, %(resume_filename)s)
+                    %(preferred_locations)s, %(salary_min)s, %(salary_max)s, %(resume_file)s, %(resume_filename)s,
+                    %(resume_blob_container)s, %(resume_blob_name)s)
             ON CONFLICT (user_id) DO UPDATE
             SET
                 skill_tags = EXCLUDED.skill_tags,
@@ -66,7 +71,9 @@ def upsert_user_profile(
                 salary_min = EXCLUDED.salary_min,
                 salary_max = EXCLUDED.salary_max,
                 resume_file = EXCLUDED.resume_file,
-                resume_filename = EXCLUDED.resume_filename;
+                resume_filename = EXCLUDED.resume_filename,
+                resume_blob_container = EXCLUDED.resume_blob_container,
+                resume_blob_name = EXCLUDED.resume_blob_name;
             """,
             {
                 "user_id": user_id,
@@ -82,6 +89,8 @@ def upsert_user_profile(
                 "salary_max": salary_max,
                 "resume_file": resume_file,
                 "resume_filename": resume_filename or None,
+                "resume_blob_container": resume_blob_container or None,
+                "resume_blob_name": resume_blob_name or None,
             },
         )
     conn.commit()
@@ -118,10 +127,23 @@ def get_resume_file_by_user_id(
     """Return (resume_file_bytes, resume_filename) for the user. (None, None) if not found."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT resume_file, resume_filename FROM profiles WHERE user_id = %s",
+            "SELECT resume_file, resume_filename, resume_blob_container, resume_blob_name FROM profiles WHERE user_id = %s",
             (user_id,),
         )
         row = cur.fetchone()
-    if not row or row[0] is None:
+    if not row:
         return (None, None)
-    return (bytes(row[0]), (row[1] or "resume").replace('"', ""))
+    resume_file, resume_filename, blob_container, blob_name = row
+    if blob_container and blob_name:
+        try:
+            from career_copilot.storage.resumes import get_resume, resume_storage_mode
+
+            if resume_storage_mode() == "blob":
+                data = get_resume(container=str(blob_container), blob_name=str(blob_name))
+                return (data, (resume_filename or "resume").replace('"', ""))
+        except Exception:
+            # Fall back to DB bytes if present; otherwise treat as missing.
+            pass
+    if resume_file is None:
+        return (None, None)
+    return (bytes(resume_file), (resume_filename or "resume").replace('"', ""))

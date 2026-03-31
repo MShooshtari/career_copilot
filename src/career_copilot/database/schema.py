@@ -9,13 +9,37 @@ from career_copilot.rag.embedding import EMBEDDING_VECTOR_DIMENSIONS
 
 def init_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
-        # Basic users table (demo-only; assume user_id=1 is logged in)
+        # Users table: maps external identities (Entra External ID, etc.) to an internal user id.
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
-                email TEXT UNIQUE
+                email TEXT,
+                external_provider TEXT,
+                external_subject TEXT
             );
+            """
+        )
+        # Migrate older schemas (safe if constraints/columns already match).
+        for sql in (
+            "ALTER TABLE users ADD COLUMN email TEXT",
+            "ALTER TABLE users ADD COLUMN external_provider TEXT",
+            "ALTER TABLE users ADD COLUMN external_subject TEXT",
+            "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
+        ):
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except psycopg.ProgrammingError as e:
+                conn.rollback()
+                if e.sqlstate != "42701":  # duplicate_column
+                    raise
+
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_external_identity_uniq
+              ON users (external_provider, external_subject)
+              WHERE external_provider IS NOT NULL AND external_subject IS NOT NULL;
             """
         )
         # One profile per user (resume stored as file bytes + filename)
@@ -35,7 +59,9 @@ def init_schema(conn: psycopg.Connection) -> None:
                 salary_min INTEGER,
                 salary_max INTEGER,
                 resume_file BYTEA,
-                resume_filename TEXT
+                resume_filename TEXT,
+                resume_blob_container TEXT,
+                resume_blob_name TEXT
             );
             """
         )
@@ -44,6 +70,8 @@ def init_schema(conn: psycopg.Connection) -> None:
         for sql in (
             "ALTER TABLE profiles ADD COLUMN resume_file BYTEA",
             "ALTER TABLE profiles ADD COLUMN resume_filename TEXT",
+            "ALTER TABLE profiles ADD COLUMN resume_blob_container TEXT",
+            "ALTER TABLE profiles ADD COLUMN resume_blob_name TEXT",
             "ALTER TABLE profiles DROP COLUMN IF EXISTS resume_text",
         ):
             try:
@@ -282,9 +310,4 @@ def init_schema(conn: psycopg.Connection) -> None:
                 if e.sqlstate != "42701":  # duplicate_column
                     raise
 
-        # Ensure demo user exists
-        cur.execute(
-            "INSERT INTO users (email) VALUES (%s) ON CONFLICT (email) DO NOTHING",
-            ("demo@example.com",),
-        )
     conn.commit()
