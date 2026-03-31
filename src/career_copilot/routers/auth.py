@@ -101,7 +101,12 @@ async def callback(request: Request) -> RedirectResponse:
             email = v
             break
 
-    ext = ExternalIdentity(provider="entra_external_id", subject=subject, email=email, claims=claims)
+    ext = ExternalIdentity(
+        provider="entra_external_id",
+        subject=subject,
+        email=email,
+        claims=claims,
+    )
     request.session["ext_identity"] = {
         "provider": ext.provider,
         "subject": ext.subject,

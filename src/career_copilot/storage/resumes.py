@@ -27,7 +27,9 @@ def _conn_str() -> str | None:
 def _blob_service() -> BlobServiceClient:
     cs = _conn_str()
     if not cs:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING is required for RESUME_STORAGE_MODE=blob")
+        raise RuntimeError(
+            "AZURE_STORAGE_CONNECTION_STRING is required for RESUME_STORAGE_MODE=blob"
+        )
     return BlobServiceClient.from_connection_string(cs)
 
 
@@ -53,7 +55,9 @@ def put_resume(*, user_id: int, filename: str | None, content: bytes) -> tuple[s
     if filename and filename.lower().endswith(".pdf"):
         content_type = "application/pdf"
     elif filename and filename.lower().endswith(".docx"):
-        content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        content_type = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
     client.upload_blob(
         content,

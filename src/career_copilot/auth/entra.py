@@ -9,7 +9,11 @@ import httpx
 from jose import jwk, jwt
 from jose.constants import Algorithms
 
-from career_copilot.auth.config import entra_client_id, entra_metadata_url, entra_provider_name
+from career_copilot.auth.config import (
+    entra_client_id,
+    entra_metadata_url,
+    entra_provider_name,
+)
 
 
 @dataclass(frozen=True)
@@ -107,7 +111,10 @@ def validate_bearer_jwt(token: str) -> ExternalIdentity:
     keys = jwks.get("keys", [])
     if not isinstance(keys, list):
         raise RuntimeError("Invalid JWKS keys")
-    key_dict = next((k for k in keys if isinstance(k, dict) and k.get("kid") == kid), None)
+    key_dict = next(
+        (k for k in keys if isinstance(k, dict) and k.get("kid") == kid),
+        None,
+    )
     if key_dict is None:
         raise RuntimeError("No matching JWKS key for kid")
 

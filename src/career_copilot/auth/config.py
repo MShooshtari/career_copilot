@@ -9,7 +9,13 @@ def _env(name: str, default: str | None = None) -> str | None:
 
 
 def auth_enabled() -> bool:
-    return (_env("AUTH_ENABLED", "0") or "0").strip() in ("1", "true", "True", "yes", "YES")
+    return (_env("AUTH_ENABLED", "0") or "0").strip() in (
+        "1",
+        "true",
+        "True",
+        "yes",
+        "YES",
+    )
 
 
 def session_secret_key() -> str:

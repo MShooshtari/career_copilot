@@ -48,7 +48,10 @@ app.include_router(track_applications.router)
 
 
 def get_db():
-    """Return a DB connection (caller should close). Used by startup; routers use database.deps.get_db."""
+    """Return a DB connection (caller should close).
+
+    Used by startup; routers use `career_copilot.database.deps.get_db`.
+    """
     return connect()
 
 
