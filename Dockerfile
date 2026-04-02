@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
 # but keep image slim; add OS deps later only if your build/runtime needs them.
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN pip install --no-cache-dir --progress-bar off -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY src/ src/
 COPY templates/ templates/
