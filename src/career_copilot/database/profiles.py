@@ -121,6 +121,21 @@ def get_profile_by_user_id(conn: psycopg.Connection, user_id: int) -> tuple | No
         return cur.fetchone()
 
 
+def list_user_skills_lower(conn: psycopg.Connection, user_id: int) -> list[str]:
+    """Return normalized (lowercased, trimmed) skills for the user."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT lower(trim(skill))
+            FROM user_skills
+            WHERE user_id = %s AND skill IS NOT NULL AND trim(skill) <> ''
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+    return [str(r[0]) for r in rows if r and r[0]]
+
+
 def get_resume_file_by_user_id(
     conn: psycopg.Connection, user_id: int
 ) -> tuple[bytes | None, str | None]:

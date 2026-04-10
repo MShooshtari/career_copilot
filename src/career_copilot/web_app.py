@@ -16,6 +16,7 @@ from career_copilot.routers import (
     home,
     interview_preparation,
     jobs,
+    market_analysis,
     my_jobs,
     profile,
     recommendations,
@@ -40,6 +41,7 @@ async def healthz() -> dict:
 app.include_router(home.router)
 app.include_router(auth.router)
 app.include_router(recommendations.router)
+app.include_router(market_analysis.router)
 app.include_router(add_job.router)
 app.include_router(my_jobs.router)
 app.include_router(jobs.router)
