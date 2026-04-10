@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from career_copilot.database import deps as db_deps
 from career_copilot.web_app import app
 
 
@@ -17,9 +18,11 @@ def client() -> TestClient:
 
 def test_market_analysis_page_returns_html(client: TestClient) -> None:
     mock_conn = MagicMock()
-    mock_get_db = MagicMock(return_value=mock_conn)
-    with patch("career_copilot.routers.market_analysis.get_db", mock_get_db):
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
         response = client.get("/market-analysis")
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")
     mock_conn.close.assert_called_once()
@@ -37,14 +40,15 @@ def test_api_market_analysis_returns_json(client: TestClient) -> None:
         "fit": {},
         "rag": {"available": False, "narrative": "", "error": "x"},
     }
-    with (
-        patch("career_copilot.routers.market_analysis.get_db", return_value=mock_conn),
-        patch(
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with patch(
             "career_copilot.routers.market_analysis.build_market_analysis_report",
             return_value=sample,
-        ),
-    ):
-        response = client.get("/api/market-analysis")
+        ):
+            response = client.get("/api/market-analysis")
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
     assert response.status_code == 200
     assert response.json()["cohort"]["size"] == 0
     mock_conn.close.assert_called_once()
