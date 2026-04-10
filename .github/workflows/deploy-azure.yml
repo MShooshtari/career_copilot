@@ -15,6 +15,24 @@
 #   The MCP job is skipped unless both AZURE_MCP_CONTAINER_REGISTRY and
 #   AZURE_MCP_CONTAINER_APP_NAME are set.
 #
+# Ingestion (scripts/ingestion/Dockerfile) — optional scheduled Container App / Job:
+#   Variable: AZURE_INGESTION_CONTAINER_APP_NAME (name of the Container App or Container Apps Job)
+#   Optional: AZURE_INGESTION_CONTAINER_REGISTRY (defaults to AZURE_CONTAINER_REGISTRY)
+#   Optional: AZURE_INGESTION_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
+#   Optional: AZURE_INGESTION_ACR_RESOURCE_GROUP (resource group that holds the ACR; defaults to AZURE_RESOURCE_GROUP)
+#   Optional: AZURE_INGESTION_CONTAINER_IMAGE_NAME (default: career-copilot-ingestion)
+#   Optional: AZURE_INGESTION_CONTAINER_TYPE — "app" (default) or "job" for az containerapp vs containerapp job
+#   Skipped if AZURE_INGESTION_CONTAINER_APP_NAME is unset.
+#
+# Embedding worker (scripts/job_embeddings_worker/Dockerfile) — optional scheduled App / Job:
+#   Variable: AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME
+#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY (defaults to AZURE_CONTAINER_REGISTRY)
+#   Optional: AZURE_EMBEDDING_WORKER_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
+#   Optional: AZURE_EMBEDDING_WORKER_ACR_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
+#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME (default: career-copilot-job-embeddings-worker)
+#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_TYPE — "app" or "job" (default: app)
+#   Skipped if AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME is unset.
+#
 # Secrets (OIDC): AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 
 name: deploy-azure
@@ -96,6 +114,176 @@ jobs:
             -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
             -n "${{ vars.AZURE_CONTAINER_APP_NAME }}" \
             --image "$FULL_IMAGE"
+
+  deploy_ingestion:
+    name: Ingestion — build and update Container App / Job
+    if: ${{ vars.AZURE_INGESTION_CONTAINER_APP_NAME != '' }}
+    runs-on: ubuntu-latest
+    env:
+      AZURE_INGESTION_CONTAINER_IMAGE_NAME: ${{ vars.AZURE_INGESTION_CONTAINER_IMAGE_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image variables
+        id: cfg
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_NAME="${AZURE_INGESTION_CONTAINER_IMAGE_NAME:-career-copilot-ingestion}"
+          REGISTRY_ING="${{ vars.AZURE_INGESTION_CONTAINER_REGISTRY }}"
+          REGISTRY_API="${{ vars.AZURE_CONTAINER_REGISTRY }}"
+          REGISTRY="${REGISTRY_ING:-$REGISTRY_API}"
+          API_RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          APP_RG_INPUT="${{ vars.AZURE_INGESTION_RESOURCE_GROUP }}"
+          APP_RG="${APP_RG_INPUT:-$API_RG}"
+          ACR_RG_INPUT="${{ vars.AZURE_INGESTION_ACR_RESOURCE_GROUP }}"
+          ACR_RG="${ACR_RG_INPUT:-$API_RG}"
+          APP="${{ vars.AZURE_INGESTION_CONTAINER_APP_NAME }}"
+          KIND_RAW="${{ vars.AZURE_INGESTION_CONTAINER_TYPE }}"
+          KIND="${KIND_RAW:-app}"
+          KIND="${KIND,,}"
+          if [[ -z "$REGISTRY" || -z "$ACR_RG" || -z "$APP_RG" || -z "$APP" ]]; then
+            echo "::error::Ingestion deploy: set AZURE_INGESTION_CONTAINER_APP_NAME and ensure AZURE_CONTAINER_REGISTRY (or AZURE_INGESTION_CONTAINER_REGISTRY) and AZURE_RESOURCE_GROUP are set."
+            exit 1
+          fi
+          if [[ "$KIND" != "app" && "$KIND" != "job" ]]; then
+            echo "::error::AZURE_INGESTION_CONTAINER_TYPE must be 'app' or 'job' (got: $KIND_RAW)"
+            exit 1
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          echo "image_name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "registry_login_server=${REGISTRY}.azurecr.io" >> "$GITHUB_OUTPUT"
+          echo "app_resource_group=$APP_RG" >> "$GITHUB_OUTPUT"
+          echo "acr_resource_group=$ACR_RG" >> "$GITHUB_OUTPUT"
+          echo "deploy_kind=$KIND" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Build and push ingestion image (ACR Tasks)
+        run: |
+          set -euo pipefail
+          REGISTRY="${{ vars.AZURE_INGESTION_CONTAINER_REGISTRY }}"
+          REGISTRY="${REGISTRY:-${{ vars.AZURE_CONTAINER_REGISTRY }}}"
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          SHA_TAG="${{ steps.cfg.outputs.short_sha }}"
+          ACR_RG="${{ steps.cfg.outputs.acr_resource_group }}"
+          az acr build \
+            -g "$ACR_RG" \
+            -r "$REGISTRY" \
+            -f scripts/ingestion/Dockerfile \
+            -t "${IMAGE}:${SHA_TAG}" \
+            -t "${IMAGE}:latest" \
+            .
+
+      - name: Update ingestion Container App or Job
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          TAG="${{ steps.cfg.outputs.short_sha }}"
+          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:${TAG}"
+          KIND="${{ steps.cfg.outputs.deploy_kind }}"
+          APP_RG="${{ steps.cfg.outputs.app_resource_group }}"
+          APP="${{ vars.AZURE_INGESTION_CONTAINER_APP_NAME }}"
+          if [[ "$KIND" == "job" ]]; then
+            az containerapp job update -g "$APP_RG" -n "$APP" --image "$FULL_IMAGE"
+          else
+            az containerapp update -g "$APP_RG" -n "$APP" --image "$FULL_IMAGE"
+          fi
+
+  deploy_embedding_worker:
+    name: Embedding worker — build and update Container App / Job
+    if: ${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME != '' }}
+    runs-on: ubuntu-latest
+    env:
+      AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME: ${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image variables
+        id: cfg
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_NAME="${AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME:-career-copilot-job-embeddings-worker}"
+          REGISTRY_W="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY }}"
+          REGISTRY_API="${{ vars.AZURE_CONTAINER_REGISTRY }}"
+          REGISTRY="${REGISTRY_W:-$REGISTRY_API}"
+          API_RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          APP_RG_INPUT="${{ vars.AZURE_EMBEDDING_WORKER_RESOURCE_GROUP }}"
+          APP_RG="${APP_RG_INPUT:-$API_RG}"
+          ACR_RG_INPUT="${{ vars.AZURE_EMBEDDING_WORKER_ACR_RESOURCE_GROUP }}"
+          ACR_RG="${ACR_RG_INPUT:-$API_RG}"
+          APP="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME }}"
+          KIND_RAW="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_TYPE }}"
+          KIND="${KIND_RAW:-app}"
+          KIND="${KIND,,}"
+          if [[ -z "$REGISTRY" || -z "$ACR_RG" || -z "$APP_RG" || -z "$APP" ]]; then
+            echo "::error::Embedding worker deploy: set AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME and ensure AZURE_CONTAINER_REGISTRY (or AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY) and AZURE_RESOURCE_GROUP are set."
+            exit 1
+          fi
+          if [[ "$KIND" != "app" && "$KIND" != "job" ]]; then
+            echo "::error::AZURE_EMBEDDING_WORKER_CONTAINER_TYPE must be 'app' or 'job' (got: $KIND_RAW)"
+            exit 1
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          echo "image_name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "registry_login_server=${REGISTRY}.azurecr.io" >> "$GITHUB_OUTPUT"
+          echo "app_resource_group=$APP_RG" >> "$GITHUB_OUTPUT"
+          echo "acr_resource_group=$ACR_RG" >> "$GITHUB_OUTPUT"
+          echo "deploy_kind=$KIND" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Build and push embedding worker image (ACR Tasks)
+        run: |
+          set -euo pipefail
+          REGISTRY="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY }}"
+          REGISTRY="${REGISTRY:-${{ vars.AZURE_CONTAINER_REGISTRY }}}"
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          SHA_TAG="${{ steps.cfg.outputs.short_sha }}"
+          ACR_RG="${{ steps.cfg.outputs.acr_resource_group }}"
+          az acr build \
+            -g "$ACR_RG" \
+            -r "$REGISTRY" \
+            -f scripts/job_embeddings_worker/Dockerfile \
+            -t "${IMAGE}:${SHA_TAG}" \
+            -t "${IMAGE}:latest" \
+            .
+
+      - name: Update embedding worker Container App or Job
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.cfg.outputs.image_name }}"
+          TAG="${{ steps.cfg.outputs.short_sha }}"
+          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:${TAG}"
+          KIND="${{ steps.cfg.outputs.deploy_kind }}"
+          APP_RG="${{ steps.cfg.outputs.app_resource_group }}"
+          APP="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME }}"
+          if [[ "$KIND" == "job" ]]; then
+            az containerapp job update -g "$APP_RG" -n "$APP" --image "$FULL_IMAGE"
+          else
+            az containerapp update -g "$APP_RG" -n "$APP" --image "$FULL_IMAGE"
+          fi
 
   deploy_mcp:
     name: MCP — build and update Container App
