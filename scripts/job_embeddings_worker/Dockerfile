@@ -5,10 +5,10 @@
 # Embeddings: OPENAI_API_KEY
 #
 # Build from repository root:
-#   docker build -f scripts/job_embeddings_worker/Dockerfile -t career-copilot-job-embeddings-worker:local .
+#   docker build -f scripts/job_embeddings_worker/Dockerfile -t career-copilot-embeddings-worker:local .
 #
 # Run once (process a batch and exit):
-#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_PASSWORD=... -e OPENAI_API_KEY=... career-copilot-job-embeddings-worker:local
+#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_PASSWORD=... -e OPENAI_API_KEY=... career-copilot-embeddings-worker:local
 
 FROM python:3.11-slim
 

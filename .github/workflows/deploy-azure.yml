@@ -20,7 +20,7 @@
 #   Optional: AZURE_INGESTION_CONTAINER_REGISTRY (defaults to AZURE_CONTAINER_REGISTRY)
 #   Optional: AZURE_INGESTION_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
 #   Optional: AZURE_INGESTION_ACR_RESOURCE_GROUP (resource group that holds the ACR; defaults to AZURE_RESOURCE_GROUP)
-#   Optional: AZURE_INGESTION_CONTAINER_IMAGE_NAME (default: career-copilot-ingestion)
+#   Optional: AZURE_INGESTION_CONTAINER_IMAGE_NAME (default: career-copilot-ingestion-job)
 #   Optional: AZURE_INGESTION_CONTAINER_TYPE — "app" (default) or "job" for az containerapp vs containerapp job
 #   Skipped if AZURE_INGESTION_CONTAINER_APP_NAME is unset.
 #
@@ -29,9 +29,18 @@
 #   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY (defaults to AZURE_CONTAINER_REGISTRY)
 #   Optional: AZURE_EMBEDDING_WORKER_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
 #   Optional: AZURE_EMBEDDING_WORKER_ACR_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
-#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME (default: career-copilot-job-embeddings-worker)
+#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME (default: career-copilot-embeddings-worker)
 #   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_TYPE — "app" or "job" (default: app)
 #   Skipped if AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME is unset.
+#
+# Example (dev — both targets are Container Apps *Jobs* in rg-careercopilot-dev):
+#   AZURE_INGESTION_CONTAINER_APP_NAME=career-copilot-ingestion-job
+#   AZURE_INGESTION_CONTAINER_TYPE=job
+#   AZURE_INGESTION_RESOURCE_GROUP=rg-careercopilot-dev
+#   AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME=career-copilot-embedding-worker
+#   AZURE_EMBEDDING_WORKER_CONTAINER_TYPE=job
+#   AZURE_EMBEDDING_WORKER_RESOURCE_GROUP=rg-careercopilot-dev
+#   (If the ACR lives in the same RG as the API, leave ACR_* overrides unset.)
 #
 # Secrets (OIDC): AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 
@@ -137,7 +146,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IMAGE_NAME="${AZURE_INGESTION_CONTAINER_IMAGE_NAME:-career-copilot-ingestion}"
+          IMAGE_NAME="${AZURE_INGESTION_CONTAINER_IMAGE_NAME:-career-copilot-ingestion-job}"
           REGISTRY_ING="${{ vars.AZURE_INGESTION_CONTAINER_REGISTRY }}"
           REGISTRY_API="${{ vars.AZURE_CONTAINER_REGISTRY }}"
           REGISTRY="${REGISTRY_ING:-$REGISTRY_API}"
@@ -222,7 +231,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IMAGE_NAME="${AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME:-career-copilot-job-embeddings-worker}"
+          IMAGE_NAME="${AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME:-career-copilot-embeddings-worker}"
           REGISTRY_W="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY }}"
           REGISTRY_API="${{ vars.AZURE_CONTAINER_REGISTRY }}"
           REGISTRY="${REGISTRY_W:-$REGISTRY_API}"
