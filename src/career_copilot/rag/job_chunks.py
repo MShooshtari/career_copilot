@@ -7,6 +7,7 @@ import psycopg
 try:
     from pgvector.psycopg import register_vector
 except ModuleNotFoundError:  # pragma: no cover
+
     def register_vector(*_args, **_kwargs):  # type: ignore[no-redef]
         raise RuntimeError("pgvector is required (pip install pgvector)")
 

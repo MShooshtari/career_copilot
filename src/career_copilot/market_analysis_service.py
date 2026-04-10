@@ -14,6 +14,7 @@ import psycopg
 try:
     from pgvector.psycopg import register_vector
 except ModuleNotFoundError:  # pragma: no cover
+
     def register_vector(*_args, **_kwargs):  # type: ignore[no-redef]
         raise RuntimeError("pgvector is required (pip install pgvector)")
 
@@ -70,9 +71,7 @@ def count_filtered_jobs(
         conds.append("j.source = %s")
         params.append(filters.source_equals.strip())
     if filters.remote_only:
-        conds.append(
-            "(j.location ILIKE %s OR j.description ILIKE %s)"
-        )
+        conds.append("(j.location ILIKE %s OR j.description ILIKE %s)")
         params.extend(["%remote%", "%remote%"])
     if filters.salary_at_least is not None:
         conds.append(
@@ -117,9 +116,7 @@ def cohort_job_ids(
         conds.append("j.source = %s")
         params.append(filters.source_equals.strip())
     if filters.remote_only:
-        conds.append(
-            "(j.location ILIKE %s OR j.description ILIKE %s)"
-        )
+        conds.append("(j.location ILIKE %s OR j.description ILIKE %s)")
         params.extend(["%remote%", "%remote%"])
     if filters.salary_at_least is not None:
         conds.append(
@@ -177,9 +174,7 @@ def cohort_job_ids(
     return ids, meta
 
 
-def _aggregates_for_cohort(
-    conn: psycopg.Connection, job_ids: list[int]
-) -> dict[str, Any]:
+def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict[str, Any]:
     if not job_ids:
         return {
             "weekly_posted": [],
@@ -364,8 +359,7 @@ def retrieve_rag_chunks(
 def _rag_query_embedding(profile_blurb: str) -> list[float]:
     q = (
         "Job requirements, responsibilities, tech stack, seniority, and qualifications "
-        "relevant to this candidate profile:\n\n"
-        + profile_blurb[:6_000]
+        "relevant to this candidate profile:\n\n" + profile_blurb[:6_000]
     )
     return embed_texts([q.strip()])[0]
 
@@ -467,9 +461,7 @@ def build_market_analysis_report(
     profile_blurb = _profile_blurb(profile_row, user_skills_list)
 
     sal = aggregates.get("salary") or {}
-    top_skill_bits = [
-        f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]
-    ]
+    top_skill_bits = [f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]]
     aggregates_summary = (
         f"Cohort size: {len(job_ids)} jobs. "
         f"Top skills: {', '.join(top_skill_bits)}. "

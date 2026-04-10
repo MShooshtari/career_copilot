@@ -41,9 +41,7 @@ async def market_analysis_page(
 async def api_market_analysis(
     conn: Annotated[psycopg.Connection, Depends(get_db)],
     user_id: CurrentUserId,
-    posted_within_days: int = Query(
-        MARKET_ANALYSIS_DEFAULT_POSTED_WITHIN_DAYS, ge=1, le=730
-    ),
+    posted_within_days: int = Query(MARKET_ANALYSIS_DEFAULT_POSTED_WITHIN_DAYS, ge=1, le=730),
     location_contains: str | None = Query(None, max_length=200),
     title_contains: str | None = Query(None, max_length=200),
     source_equals: str | None = Query(None, max_length=80),
