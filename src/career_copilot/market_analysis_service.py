@@ -19,7 +19,6 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 from career_copilot.constants import (
-    MARKET_ANALYSIS_DEFAULT_COHORT_LIMIT,
     MARKET_ANALYSIS_DEFAULT_POSTED_WITHIN_DAYS,
     MARKET_ANALYSIS_FALLBACK_COHORT_LIMIT,
     MARKET_ANALYSIS_RAG_TOP_CHUNKS,
@@ -207,7 +206,7 @@ def _aggregates_for_cohort(
 
     with conn.cursor() as cur:
         cur.execute(
-            f"""
+            """
             SELECT lower(trim(u.skill)) AS sk, count(*)::int AS cnt
             FROM jobs j
             CROSS JOIN LATERAL unnest(COALESCE(j.skills, ARRAY[]::text[])) AS u(skill)
@@ -254,7 +253,7 @@ def _aggregates_for_cohort(
 
     with conn.cursor() as cur:
         cur.execute(
-            f"""
+            """
             SELECT
               COALESCE(NULLIF(trim(j.location), ''), '(unspecified)') AS loc,
               count(*)::int AS cnt
@@ -475,7 +474,7 @@ def build_market_analysis_report(
         f"Cohort size: {len(job_ids)} jobs. "
         f"Top skills: {', '.join(top_skill_bits)}. "
         f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
-        f"Locations: {', '.join(l['location'] for l in aggregates['top_locations'][:5])}."
+        f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
     )
 
     rag: dict[str, Any] = {
