@@ -24,6 +24,19 @@ EMBEDDING_VECTOR_DIMENSIONS = 1536
 _EMBED_BATCH = 100
 
 
+def sanitize_embedding_input(text: str) -> str:
+    """
+    Remove NUL bytes and replace lone UTF-16 surrogates so request JSON is well-formed.
+
+    Job descriptions from the wild sometimes include characters that break JSON
+    serialization or API parsing (OpenAI may return 400 "could not parse the JSON body").
+    """
+    if not text:
+        return ""
+    out = text.replace("\x00", "")
+    return out.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """
     Embed each non-empty string with text-embedding-3-small.
@@ -41,9 +54,11 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     from openai import OpenAI
 
     client = OpenAI()
+    cleaned = [sanitize_embedding_input(t) for t in texts]
+    cleaned = [t if t.strip() else " " for t in cleaned]
     out: list[list[float]] = []
-    for i in range(0, len(texts), _EMBED_BATCH):
-        chunk = texts[i : i + _EMBED_BATCH]
+    for i in range(0, len(cleaned), _EMBED_BATCH):
+        chunk = cleaned[i : i + _EMBED_BATCH]
         resp = client.embeddings.create(model=OPENAI_EMBEDDING_MODEL, input=chunk)
         ordered = sorted(resp.data, key=lambda d: d.index)
         out.extend(item.embedding for item in ordered)
