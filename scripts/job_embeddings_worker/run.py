@@ -32,6 +32,7 @@ if str(SRC_DIR) not in sys.path:
 from career_copilot.database.db import connect, load_env  # noqa: E402
 from career_copilot.database.schema import init_schema  # noqa: E402
 from career_copilot.ingestion.common import NormalizedJob  # noqa: E402
+from career_copilot.rag.job_chunks import rebuild_job_chunks_for_job  # noqa: E402
 from career_copilot.rag.job_document import job_to_document  # noqa: E402
 from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E402
 
@@ -250,9 +251,12 @@ def main() -> None:
                 job = _row_to_job(row)
                 doc = job_to_document(job)
                 if not doc.strip():
-                    # No content => delete embedding row (if any) and clear queue.
+                    # No content => delete embedding row (if any), chunks, and clear queue.
                     with conn.cursor() as cur:
                         cur.execute("DELETE FROM jobs_embeddings WHERE job_id = %s", (jid,))
+                        cur.execute(
+                            "DELETE FROM job_description_chunks WHERE job_id = %s", (jid,)
+                        )
                     conn.commit()
                     total_deleted += 1
                     processed.append((jid, h))
@@ -262,6 +266,14 @@ def main() -> None:
 
             try:
                 total_upserts += index_jobs_into_pgvector(conn, to_index)
+                for job in to_index:
+                    try:
+                        rebuild_job_chunks_for_job(conn, job)
+                    except Exception as chunk_err:
+                        print(
+                            f"[job-embeddings-worker] chunk rebuild failed job_id={job.db_id}: "
+                            f"{chunk_err}"
+                        )
                 _finalize_success(conn, processed=processed, worker_id=worker_id)
             except Exception as e:
                 total_errors += 1

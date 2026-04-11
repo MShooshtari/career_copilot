@@ -5,9 +5,9 @@
 # Optional: ADZUNA_APP_ID, ADZUNA_APP_KEY
 #
 # Build from repository root (uses /.dockerignore; no --ignorefile needed):
-#   docker build -f scripts/ingestion/Dockerfile -t career-copilot-ingestion:local .
+#   docker build -f scripts/ingestion/Dockerfile -t career-copilot-ingestion-job:local .
 # Run:
-#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_USER=... ... career-copilot-ingestion
+#   docker run --rm -e POSTGRES_HOST=... -e POSTGRES_USER=... ... career-copilot-ingestion-job
 
 FROM python:3.11-slim
 
