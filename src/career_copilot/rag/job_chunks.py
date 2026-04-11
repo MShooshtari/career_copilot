@@ -14,7 +14,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from career_copilot.ingestion.common import NormalizedJob
 from career_copilot.rag.chunk_text import chunk_description
-from career_copilot.rag.embedding import embed_texts
+from career_copilot.rag.embedding import embed_texts, sanitize_embedding_input
 
 
 def delete_job_chunks(conn: psycopg.Connection, job_id: int) -> None:
@@ -42,7 +42,8 @@ def rebuild_job_chunks_for_job(conn: psycopg.Connection, job: NormalizedJob) -> 
             conn.commit()
             return 0
 
-        parts = chunk_description(desc)
+        parts = [sanitize_embedding_input(p) for p in chunk_description(desc)]
+        parts = [p for p in parts if p.strip()]
         if not parts:
             conn.commit()
             return 0
