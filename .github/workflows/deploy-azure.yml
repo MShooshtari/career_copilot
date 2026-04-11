@@ -29,7 +29,7 @@
 #   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY (defaults to AZURE_CONTAINER_REGISTRY)
 #   Optional: AZURE_EMBEDDING_WORKER_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
 #   Optional: AZURE_EMBEDDING_WORKER_ACR_RESOURCE_GROUP (defaults to AZURE_RESOURCE_GROUP)
-#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME (default: career-copilot-embeddings-worker)
+#   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME (default: career-copilot-embedding-worker)
 #   Optional: AZURE_EMBEDDING_WORKER_CONTAINER_TYPE — "app" or "job" (default: app)
 #   Skipped if AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME is unset.
 #
@@ -231,7 +231,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IMAGE_NAME="${AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME:-career-copilot-embeddings-worker}"
+          IMAGE_NAME="${AZURE_EMBEDDING_WORKER_CONTAINER_IMAGE_NAME:-career-copilot-embedding-worker}"
           REGISTRY_W="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_REGISTRY }}"
           REGISTRY_API="${{ vars.AZURE_CONTAINER_REGISTRY }}"
           REGISTRY="${REGISTRY_W:-$REGISTRY_API}"
@@ -283,8 +283,7 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${{ steps.cfg.outputs.image_name }}"
-          TAG="${{ steps.cfg.outputs.short_sha }}"
-          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:${TAG}"
+          FULL_IMAGE="${{ steps.cfg.outputs.registry_login_server }}/${IMAGE}:latest"
           KIND="${{ steps.cfg.outputs.deploy_kind }}"
           APP_RG="${{ steps.cfg.outputs.app_resource_group }}"
           APP="${{ vars.AZURE_EMBEDDING_WORKER_CONTAINER_APP_NAME }}"
