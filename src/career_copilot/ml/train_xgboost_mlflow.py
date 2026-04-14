@@ -27,6 +27,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from career_copilot.ml.dataset_store import get_data_dir, get_meta, get_path, load
+from career_copilot.ml.mlflow_tracking import ensure_experiment_for_training, get_mlflow_tracking_uri
 from career_copilot.ml.ranking_dataset import (
     FEATURE_COLUMNS,
     NUMERIC_FEATURE_NAMES,
@@ -54,18 +55,11 @@ def train_and_log(
     colsample_bytree: float,
 ) -> None:
     data_dir = get_data_dir()
-
-    db_path = (data_dir / "mlflow.db").resolve()
-    tracking_uri = f"sqlite:///{db_path.as_posix()}"
-    mlflow.set_tracking_uri(tracking_uri)
-
-    artifacts_dir = (data_dir / "mlflow_artifacts").resolve()
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
+    mlflow.set_tracking_uri(get_mlflow_tracking_uri())
     client = MlflowClient()
-    exp = mlflow.get_experiment_by_name(experiment_name)
-    if exp is None:
-        client.create_experiment(name=experiment_name, artifact_location=artifacts_dir.as_uri())
+    ensure_experiment_for_training(
+        client, experiment_name=experiment_name, data_dir=data_dir
+    )
     mlflow.set_experiment(experiment_name)
 
     df, resolved_version = load(dataset_version, kind="similarity")
