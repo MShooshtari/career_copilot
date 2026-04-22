@@ -287,6 +287,22 @@ def test_get_mlflow_tracking_uri_prefers_env(monkeypatch) -> None:
     assert mlflow_tracking.get_mlflow_tracking_uri() == "https://mlflow.example/api"
 
 
+def test_get_mlflow_tracking_uri_postgresql_uses_psycopg3_driver(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "MLFLOW_TRACKING_URI",
+        "postgresql://user:pass@host:5432/mlflow?sslmode=require",
+    )
+    assert mlflow_tracking.get_mlflow_tracking_uri() == (
+        "postgresql+psycopg://user:pass@host:5432/mlflow?sslmode=require"
+    )
+
+
+def test_get_mlflow_tracking_uri_postgresql_explicit_driver_unchanged(monkeypatch) -> None:
+    uri = "postgresql+psycopg2://user:pass@host:5432/mlflow"
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+    assert mlflow_tracking.get_mlflow_tracking_uri() == uri
+
+
 def test_get_mlflow_tracking_uri_default_sqlite(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
