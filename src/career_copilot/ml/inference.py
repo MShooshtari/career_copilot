@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from career_copilot.database.db import load_env
-from career_copilot.ml.dataset_store import get_data_dir
+from career_copilot.ml.mlflow_tracking import get_mlflow_tracking_uri
 from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
 
 
@@ -20,17 +20,15 @@ def get_ranking_model() -> Any | None:
     """
     Load the MLflow ranking model configured by MLFLOW_RANKING_RUN_ID.
 
-    Returns the deserialized sklearn Pipeline (or None if no run id is set).
+    Uses MLFLOW_TRACKING_URI when set (remote server or database store); otherwise
+    local SQLite at data/mlflow.db. Returns None if no run id is set.
     """
     load_env()
     run_id = (os.environ.get("MLFLOW_RANKING_RUN_ID") or "").strip()
     if not run_id:
         return None
 
-    data_dir = get_data_dir()
-    db_path = (data_dir / "mlflow.db").resolve()
-    tracking_uri = f"sqlite:///{db_path.as_posix()}"
-    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_tracking_uri(get_mlflow_tracking_uri())
 
     model_uri = f"runs:/{run_id}/model"
     return mlflow.sklearn.load_model(model_uri)

@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from career_copilot.ml import train_logreg_mlflow, train_xgboost_mlflow
+from career_copilot.ml import mlflow_tracking, train_logreg_mlflow, train_xgboost_mlflow
 from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
 
 
@@ -56,6 +56,13 @@ def _make_small_similarity_df() -> pd.DataFrame:
 def _patch_dataset_store(monkeypatch, module, df: pd.DataFrame, tmp_path: Path) -> None:
     """Patch dataset_store helpers inside a training module to use an in-memory dataframe."""
 
+    def _fake_get_data_dir() -> Path:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return data_dir
+
+    monkeypatch.setattr(mlflow_tracking, "get_data_dir", _fake_get_data_dir)
+
     def _fake_load(version: str, kind: str = "similarity") -> tuple[pd.DataFrame, str]:
         assert kind == "similarity"
         # Return a copy so tests cannot mutate shared state accidentally.
@@ -67,11 +74,6 @@ def _patch_dataset_store(monkeypatch, module, df: pd.DataFrame, tmp_path: Path) 
     def _fake_get_path(version: str, kind: str = "similarity") -> Path:
         assert kind == "similarity"
         return tmp_path / "datasets" / "ranking" / "mock_similarity_mock_v1.csv"
-
-    def _fake_get_data_dir() -> Path:
-        data_dir = tmp_path / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        return data_dir
 
     monkeypatch.setattr(module, "load", _fake_load)
     monkeypatch.setattr(module, "get_meta", _fake_get_meta)
@@ -87,8 +89,11 @@ def _patch_mlflow(monkeypatch, module) -> _MlflowRecorder:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def create_experiment(self, name: str, artifact_location: str) -> None:
+        def create_experiment(
+            self, name: str, artifact_location: str | None = None, tags: Any = None
+        ) -> str:
             rec.experiments.append(name)
+            return "1"
 
     class _RunContext:
         def __enter__(self) -> None:
@@ -115,6 +120,9 @@ def _patch_mlflow(monkeypatch, module) -> _MlflowRecorder:
 
     def _set_experiment(name: str) -> None:
         rec.experiments.append(name)
+
+    def _get_tracking_uri() -> str:
+        return rec.tracking_uris[-1] if rec.tracking_uris else ""
 
     def _get_experiment_by_name(name: str) -> Any:
         # Returning None forces the codepath that creates the experiment.
@@ -145,12 +153,15 @@ def _patch_mlflow(monkeypatch, module) -> _MlflowRecorder:
         log_artifact=_log_artifact,
         set_tracking_uri=_set_tracking_uri,
         set_experiment=_set_experiment,
+        get_tracking_uri=_get_tracking_uri,
         get_experiment_by_name=_get_experiment_by_name,
         sklearn=types.SimpleNamespace(log_model=_log_model_sklearn),
     )
 
     monkeypatch.setattr(module, "mlflow", mlflow_stub)
     monkeypatch.setattr(module, "MlflowClient", _DummyClient)
+    monkeypatch.setattr(mlflow_tracking, "mlflow", mlflow_stub)
+    monkeypatch.setattr(mlflow_tracking, "MlflowClient", _DummyClient)
     return rec
 
 
@@ -269,3 +280,22 @@ def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypat
     msg = str(excinfo.value)
     assert "single class after thresholding" in msg
     assert "positive-threshold" in msg
+
+
+def test_get_mlflow_tracking_uri_prefers_env(monkeypatch) -> None:
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "https://mlflow.example/api")
+    assert mlflow_tracking.get_mlflow_tracking_uri() == "https://mlflow.example/api"
+
+
+def test_get_mlflow_tracking_uri_default_sqlite(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+
+    def _fake_data_dir() -> Path:
+        d = tmp_path / "data"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    monkeypatch.setattr(mlflow_tracking, "get_data_dir", _fake_data_dir)
+    uri = mlflow_tracking.get_mlflow_tracking_uri()
+    assert uri.startswith("sqlite:///")
+    assert uri.endswith("mlflow.db")
