@@ -60,9 +60,7 @@ def train_and_log(
     data_dir = get_data_dir()
     mlflow.set_tracking_uri(get_mlflow_tracking_uri())
     client = MlflowClient()
-    ensure_experiment_for_training(
-        client, experiment_name=experiment_name, data_dir=data_dir
-    )
+    ensure_experiment_for_training(client, experiment_name=experiment_name, data_dir=data_dir)
     mlflow.set_experiment(experiment_name)
 
     df, resolved_version = load(dataset_version, kind="similarity")
