@@ -11,6 +11,21 @@ from mlflow.tracking import MlflowClient
 from career_copilot.ml.dataset_store import get_data_dir
 
 
+def _normalize_postgresql_tracking_uri(uri: str) -> str:
+    """
+    MLflow's SQL store passes the URI to SQLAlchemy. A plain ``postgresql://`` URL
+    selects the ``psycopg2`` dialect, which this image does not install; we ship
+    ``psycopg`` (v3) only. Rewrite to ``postgresql+psycopg://`` so the v3 driver is used.
+    """
+    if uri.startswith("postgresql+") or uri.startswith("postgres+"):
+        return uri
+    if uri.startswith("postgresql://"):
+        return "postgresql+psycopg://" + uri[len("postgresql://") :]
+    if uri.startswith("postgres://"):
+        return "postgresql+psycopg://" + uri[len("postgres://") :]
+    return uri
+
+
 def get_mlflow_tracking_uri() -> str:
     """
     Tracking backend for ranking models.
@@ -20,7 +35,7 @@ def get_mlflow_tracking_uri() -> str:
     """
     env = (os.environ.get("MLFLOW_TRACKING_URI") or "").strip()
     if env:
-        return env
+        return _normalize_postgresql_tracking_uri(env)
     data_dir = get_data_dir()
     db_path = (data_dir / "mlflow.db").resolve()
     return f"sqlite:///{db_path.as_posix()}"
