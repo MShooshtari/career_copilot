@@ -27,7 +27,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from career_copilot.ml.dataset_store import get_data_dir, get_meta, get_path, load
-from career_copilot.ml.mlflow_tracking import ensure_experiment_for_training, get_mlflow_tracking_uri
+from career_copilot.ml.mlflow_tracking import (
+    ensure_experiment_for_training,
+    get_mlflow_tracking_uri,
+)
 from career_copilot.ml.ranking_dataset import (
     FEATURE_COLUMNS,
     NUMERIC_FEATURE_NAMES,
