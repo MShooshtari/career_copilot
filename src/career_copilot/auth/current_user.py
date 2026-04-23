@@ -4,7 +4,6 @@ import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
 
 from career_copilot.app_config import templates
 from career_copilot.auth.config import auth_enabled
