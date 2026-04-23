@@ -49,5 +49,15 @@ def entra_tenant_domain() -> str:
     return (_env("ENTRA_TENANT_DOMAIN", "") or "").strip()
 
 
+def entra_tenant_id() -> str:
+    """
+    External ID (CIAM) tenant GUID.
+
+    Many CIAM OIDC endpoints are of the form:
+    https://<tenant>.ciamlogin.com/<tenant_id>/v2.0/.well-known/openid-configuration
+    """
+    return (_env("ENTRA_TENANT_ID", "") or "").strip()
+
+
 def entra_provider_name() -> str:
     return "entra_external_id"

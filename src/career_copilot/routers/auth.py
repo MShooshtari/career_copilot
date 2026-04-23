@@ -14,6 +14,7 @@ from career_copilot.auth.config import (
     entra_metadata_url,
     entra_redirect_uri,
     entra_tenant_domain,
+    entra_tenant_id,
 )
 from career_copilot.auth.entra import ExternalIdentity
 
@@ -29,13 +30,23 @@ def _build_default_metadata_url() -> str:
 
     authority = entra_authority()
     if authority:
-        base = authority.rstrip("/")
+        base = authority.strip().rstrip("/")
+        if ".well-known/openid-configuration" in base:
+            return base
     else:
-        # Common authority for External ID: ciamlogin.com (domain varies per tenant).
-        # This is intentionally conservative; production deployments should set ENTRA_METADATA_URL explicitly.
-        base = f"https://{tenant}"
+        # For CIAM, tenant domains are often provided as either:
+        # - <tenant>.ciamlogin.com
+        # - <tenant>.onmicrosoft.com (directory domain; not the login host)
+        #
+        # We don't try to infer the correct host from onmicrosoft.com because it's ambiguous.
+        # Prefer setting ENTRA_METADATA_URL explicitly, or set ENTRA_TENANT_DOMAIN to <tenant>.ciamlogin.com.
+        base = tenant.strip().rstrip("/")
         if "://" not in base:
-            base = f"https://{tenant}"
+            base = f"https://{base}"
+
+    tid = entra_tenant_id()
+    if tid and ".well-known/openid-configuration" not in base:
+        base = f"{base}/{tid}".rstrip("/")
 
     return f"{base}/v2.0/.well-known/openid-configuration"
 
