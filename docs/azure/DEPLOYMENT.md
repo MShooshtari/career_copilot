@@ -46,13 +46,18 @@ OIDC client settings:
 
 - `ENTRA_CLIENT_ID`
 - `ENTRA_CLIENT_SECRET`
-- `ENTRA_TENANT_DOMAIN`: your External ID domain (e.g. `contoso.onmicrosoft.com` or `contoso.ciamlogin.com` tenant domain depending on your setup)
+- `ENTRA_REDIRECT_URI`: e.g. `https://<your-app-domain>/auth/callback`
+
+Recommended (most reliable) OIDC endpoints:
+
+- `ENTRA_METADATA_URL`: paste the **OpenID Connect metadata document** URL from your External ID app registration (looks like `https://<tenant>.ciamlogin.com/<tenant-guid>/v2.0/.well-known/openid-configuration`)
 - `ENTRA_REDIRECT_URI`: e.g. `https://<your-app-domain>/auth/callback`
 
 Optional overrides (if your tenant uses non-default endpoints):
 
-- `ENTRA_AUTHORITY`: base authority URL (otherwise constructed from tenant domain)
-- `ENTRA_METADATA_URL`: full OpenID configuration URL
+- `ENTRA_AUTHORITY`: authority base URL (alternative to `ENTRA_METADATA_URL`; if used, include the tenant path, e.g. `https://<tenant>.ciamlogin.com/<tenant-guid>`)
+- `ENTRA_TENANT_DOMAIN`: used only when `ENTRA_METADATA_URL` is not set; set to `https://<tenant>.ciamlogin.com` (or `<tenant>.ciamlogin.com`)
+- `ENTRA_TENANT_ID`: used only when `ENTRA_METADATA_URL` is not set; the tenant GUID
 
 ## Azure resource checklist (MVP)
 
