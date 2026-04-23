@@ -54,6 +54,16 @@
         }
         .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
         .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.logout {
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.6);
+            background: rgba(248, 113, 113, 0.12);
+        }
+        .header-nav a.logout:hover {
+            color: #fee2e2;
+            border-color: rgba(248, 113, 113, 0.9);
+            background: rgba(248, 113, 113, 0.18);
+        }
 
         .page-intro {
             margin-bottom: 24px;
@@ -138,6 +148,7 @@
                     <a href="/market-analysis">Market Analysis</a>
                     <a href="/add-job" class="active">Add Job</a>
                     <a href="/applications">Track applications</a>
+                    <a href="/auth/logout" class="logout">Logout</a>
                 </nav>
             </header>
         </div>
