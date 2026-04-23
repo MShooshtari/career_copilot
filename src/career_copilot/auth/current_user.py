@@ -5,11 +5,21 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 
+from career_copilot.app_config import templates
 from career_copilot.auth.config import auth_enabled
 from career_copilot.auth.deps import get_external_identity
 from career_copilot.constants import DEFAULT_USER_ID
 from career_copilot.database.deps import get_db
 from career_copilot.database.users import get_or_create_user
+
+
+def _wants_html_response(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    parts = [p.strip() for p in accept.split(",") if p.strip()]
+    if not parts:
+        return False
+    # Browsers typically send text/html early in Accept; fetch() often sends */*.
+    return parts[0].startswith("text/html")
 
 
 async def get_current_user_id(
@@ -38,6 +48,16 @@ async def get_current_user_id(
             conn.commit()
             return user_id
         if ext is None:
+            if _wants_html_response(request):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=templates.TemplateResponse(
+                        request,
+                        "sign_in_required.html",
+                        {},
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
             )

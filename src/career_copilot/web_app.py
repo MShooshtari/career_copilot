@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import HTTPException
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import Response
 
 from career_copilot.auth.config import auth_enabled, session_secret_key
 from career_copilot.database.db import connect
@@ -31,6 +33,22 @@ if auth_enabled():
     if not secret:
         raise RuntimeError("AUTH_ENABLED=1 requires SESSION_SECRET_KEY")
     app.add_middleware(SessionMiddleware, secret_key=secret)
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException) -> Response:
+    """
+    Allow dependencies to return HTML pages for browser flows by setting
+    `HTTPException(detail=<starlette Response>)`.
+
+    FastAPI's default handler always JSON-encodes `detail`, which breaks for Response objects.
+    """
+    if isinstance(exc.detail, Response):
+        return exc.detail
+    # Defer to FastAPI defaults for normal string/dict details.
+    from fastapi.exception_handlers import http_exception_handler
+
+    return await http_exception_handler(request, exc)
 
 
 @app.get("/healthz")

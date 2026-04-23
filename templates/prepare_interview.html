@@ -61,6 +61,16 @@
         }
         .header-nav a:hover { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
         .header-nav a.active { color: #e5e7eb; border-color: var(--accent); background: var(--accent-soft); }
+        .header-nav a.logout {
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.6);
+            background: rgba(248, 113, 113, 0.12);
+        }
+        .header-nav a.logout:hover {
+            color: #fee2e2;
+            border-color: rgba(248, 113, 113, 0.9);
+            background: rgba(248, 113, 113, 0.18);
+        }
         .back-link {
             display: inline-block; margin-bottom: 16px;
             color: var(--text-muted); font-size: 14px; text-decoration: none;
@@ -167,6 +177,7 @@
                     <a href="/add-job">Add Job</a>
                     <a href="/applications">Track applications</a>
                     <a href="{% if is_user_job %}/my-jobs/{{ job_id }}{% else %}/jobs/{{ job_id }}{% endif %}">Job details</a>
+                    <a href="/auth/logout" class="logout">Logout</a>
                 </nav>
             </header>
         </div>
