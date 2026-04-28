@@ -337,8 +337,7 @@ def init_schema(conn: psycopg.Connection) -> None:
                 job_source TEXT NOT NULL CHECK (job_source IN ('ingested', 'user')),
                 feedback TEXT NOT NULL CHECK (feedback IN ('like', 'dislike', 'applied')),
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                UNIQUE (user_id, job_id, job_source)
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """
         )
@@ -349,6 +348,22 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS user_job_interaction_user_job_idx "
             "ON user_job_interaction (user_id, job_source, job_id)"
+        )
+        cur.execute(
+            """
+            ALTER TABLE user_job_interaction
+            DROP CONSTRAINT IF EXISTS job_feedback_user_id_job_id_job_source_key
+            """
+        )
+        cur.execute(
+            """
+            ALTER TABLE user_job_interaction
+            DROP CONSTRAINT IF EXISTS user_job_interaction_user_id_job_id_job_source_key
+            """
+        )
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS user_job_interaction_unique_feedback_idx "
+            "ON user_job_interaction (user_id, job_id, job_source, feedback)"
         )
         cur.execute(
             """

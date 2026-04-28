@@ -385,7 +385,7 @@
                                 </form>
                             </div>
                             <form action="/recommendations/user/{{ job.job_id }}/feedback/applied?page={{ page }}&page_size={{ page_size }}" method="post" class="already-applied-form">
-                                <button type="submit" class="card-btn already-applied-btn {% if job.feedback == 'applied' %}selected{% endif %}" aria-label="Mark {{ job.title }} as already applied">Already applied</button>
+                                <button type="submit" class="card-btn already-applied-btn {% if job.applied %}selected{% endif %}" aria-label="Mark {{ job.title }} as already applied">Already applied</button>
                             </form>
                         </div>
                     </div>
@@ -467,7 +467,7 @@
                                 </form>
                             </div>
                             <form action="/recommendations/ingested/{{ job.job_id }}/feedback/applied?page={{ page }}&page_size={{ page_size }}" method="post" class="already-applied-form">
-                                <button type="submit" class="card-btn already-applied-btn {% if job.feedback == 'applied' %}selected{% endif %}" aria-label="Mark {{ job.title }} as already applied">Already applied</button>
+                                <button type="submit" class="card-btn already-applied-btn {% if job.applied %}selected{% endif %}" aria-label="Mark {{ job.title }} as already applied">Already applied</button>
                             </form>
                             {% endif %}
                         </div>
@@ -514,7 +514,11 @@
                     });
                     if (!response.ok) throw new Error("Unable to save feedback");
 
-                    buttons.forEach(function (item) { item.classList.remove("selected"); });
+                    if (button.classList.contains("feedback-icon-btn")) {
+                        actions.querySelectorAll(".feedback-icon-btn").forEach(function (item) {
+                            item.classList.remove("selected");
+                        });
+                    }
                     button.classList.add("selected");
                 } catch (error) {
                     console.error(error);

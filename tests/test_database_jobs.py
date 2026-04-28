@@ -11,6 +11,7 @@ from career_copilot.database.jobs import (
     delete_user_job,
     format_recommendation_jobs,
     get_job_feedback_map,
+    get_job_interactions_map,
     insert_user_job,
     resolve_job_ids,
     row_to_job_dict,
@@ -283,10 +284,30 @@ def test_set_job_feedback_upserts_valid_feedback() -> None:
 
     set_job_feedback(conn, 1, 42, "ingested", "dislike")
 
+    assert cur.execute.call_count == 2
+    delete_query = cur.execute.call_args_list[0][0][0]
+    assert "DELETE FROM user_job_interaction" in (
+        delete_query if isinstance(delete_query, str) else delete_query.decode()
+    )
+    assert cur.execute.call_args_list[0][0][1] == (1, 42, "ingested", "like")
+    query = cur.execute.call_args_list[1][0][0]
+    assert "user_job_interaction" in (query if isinstance(query, str) else query.decode())
+    assert cur.execute.call_args_list[1][0][1] == (1, 42, "ingested", "dislike")
+
+
+def test_set_job_feedback_does_not_clear_like_for_applied() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", "applied")
+
     cur.execute.assert_called_once()
     query = cur.execute.call_args[0][0]
-    assert "user_job_interaction" in (query if isinstance(query, str) else query.decode())
-    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "dislike")
+    assert "ON CONFLICT (user_id, job_id, job_source, feedback)" in (
+        query if isinstance(query, str) else query.decode()
+    )
 
 
 def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
@@ -299,6 +320,20 @@ def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
     out = get_job_feedback_map(conn, 1, "ingested", [42, 99, 42])
 
     assert out == {42: "like", 99: "dislike"}
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
+
+
+def test_get_job_interactions_map_returns_multiple_interactions() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchall.return_value = [(42, "like"), (42, "applied"), (99, "dislike")]
+
+    out = get_job_interactions_map(conn, 1, "ingested", [42, 99, 42])
+
+    assert out == {42: {"like", "applied"}, 99: {"dislike"}}
     cur.execute.assert_called_once()
     assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
 

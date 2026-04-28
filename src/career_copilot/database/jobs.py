@@ -232,25 +232,36 @@ def set_job_feedback(
         raise ValueError(f"Unsupported feedback: {feedback}")
 
     with conn.cursor() as cur:
+        if feedback in {"like", "dislike"}:
+            opposite_feedback = "dislike" if feedback == "like" else "like"
+            cur.execute(
+                """
+                DELETE FROM user_job_interaction
+                WHERE user_id = %s
+                  AND job_id = %s
+                  AND job_source = %s
+                  AND feedback = %s
+                """,
+                (user_id, job_id, job_source, opposite_feedback),
+            )
         cur.execute(
             """
             INSERT INTO user_job_interaction (user_id, job_id, job_source, feedback)
             VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_id, job_id, job_source) DO UPDATE SET
-                feedback = EXCLUDED.feedback,
+            ON CONFLICT (user_id, job_id, job_source, feedback) DO UPDATE SET
                 updated_at = now()
             """,
             (user_id, job_id, job_source, feedback),
         )
 
 
-def get_job_feedback_map(
+def get_job_interactions_map(
     conn: psycopg.Connection,
     user_id: int,
     job_source: str,
     job_ids: list[int],
-) -> dict[int, str]:
-    """Return {job_id: feedback} for the provided jobs."""
+) -> dict[int, set[str]]:
+    """Return {job_id: {interactions}} for the provided jobs."""
     if job_source not in VALID_JOB_SOURCES:
         raise ValueError(f"Unsupported job_source: {job_source}")
     if not job_ids:
@@ -268,7 +279,27 @@ def get_job_feedback_map(
             """,
             (user_id, job_source, unique_ids),
         )
-        return {int(row[0]): str(row[1]) for row in cur.fetchall()}
+        out: dict[int, set[str]] = {}
+        for row in cur.fetchall():
+            out.setdefault(int(row[0]), set()).add(str(row[1]))
+        return out
+
+
+def get_job_feedback_map(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_source: str,
+    job_ids: list[int],
+) -> dict[int, str]:
+    """Return {job_id: like_or_dislike} for compatibility with older callers."""
+    interactions = get_job_interactions_map(conn, user_id, job_source, job_ids)
+    out: dict[int, str] = {}
+    for job_id, values in interactions.items():
+        if "dislike" in values:
+            out[job_id] = "dislike"
+        elif "like" in values:
+            out[job_id] = "like"
+    return out
 
 
 def user_job_row_to_dict(row: tuple) -> dict:

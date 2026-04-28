@@ -25,7 +25,7 @@ from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import (
     format_recommendation_jobs,
     format_user_jobs_for_recommendations,
-    get_job_feedback_map,
+    get_job_interactions_map,
     list_user_jobs,
     resolve_job_ids,
     set_job_feedback,
@@ -39,18 +39,22 @@ router = APIRouter(tags=["recommendations"])
 
 def _attach_feedback(
     jobs: list[dict],
-    feedback_by_job_id: dict[int, str],
+    interactions_by_job_id: dict[int, set[str]],
 ) -> list[dict]:
     for job in jobs:
         job_id = job.get("job_id")
         if job_id is not None:
-            job["feedback"] = feedback_by_job_id.get(int(job_id))
+            interactions = interactions_by_job_id.get(int(job_id), set())
+            job["feedback"] = "dislike" if "dislike" in interactions else None
+            if "like" in interactions:
+                job["feedback"] = "like"
+            job["applied"] = "applied" in interactions
     return jobs
 
 
 def _drop_hidden_interactions(jobs: list[dict]) -> list[dict]:
     """Hide jobs after refresh once the user has dismissed or applied to them."""
-    return [job for job in jobs if job.get("feedback") not in {"dislike", "applied"}]
+    return [job for job in jobs if job.get("feedback") != "dislike" and not job.get("applied")]
 
 
 @router.get("/recommendations", response_class=HTMLResponse)
@@ -66,13 +70,13 @@ async def get_recommendations(
     """Candidate retrieval: user-added jobs plus top 100 jobs by similarity to profile."""
     user_rows = list_user_jobs(conn, user_id)
     jobs_added = format_user_jobs_for_recommendations(user_rows)
-    user_feedback = get_job_feedback_map(
+    user_interactions = get_job_interactions_map(
         conn,
         user_id,
         "user",
         [int(job["job_id"]) for job in jobs_added if job.get("job_id") is not None],
     )
-    _attach_feedback(jobs_added, user_feedback)
+    _attach_feedback(jobs_added, user_interactions)
     jobs_added = _drop_hidden_interactions(jobs_added)
 
     raw = get_recommended_job_results(
@@ -91,13 +95,13 @@ async def get_recommendations(
     )
     id_map = resolve_job_ids(conn, raw)
     jobs_online = format_recommendation_jobs(raw, id_map)
-    online_feedback = get_job_feedback_map(
+    online_interactions = get_job_interactions_map(
         conn,
         user_id,
         "ingested",
         [int(job["job_id"]) for job in jobs_online if job.get("job_id") is not None],
     )
-    _attach_feedback(jobs_online, online_feedback)
+    _attach_feedback(jobs_online, online_interactions)
     jobs_online = _drop_hidden_interactions(jobs_online)
     conn.close()
     total_online = len(jobs_online)

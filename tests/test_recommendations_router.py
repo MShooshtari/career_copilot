@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from career_copilot.database import deps as db_deps
-from career_copilot.routers.recommendations import _drop_hidden_interactions
+from career_copilot.routers.recommendations import _attach_feedback, _drop_hidden_interactions
 from career_copilot.web_app import app
 
 
@@ -77,13 +77,25 @@ def test_drop_hidden_interactions_keeps_likes_and_unseen_jobs() -> None:
     jobs = [
         {"job_id": 1, "feedback": "like"},
         {"job_id": 2, "feedback": "dislike"},
-        {"job_id": 3, "feedback": "applied"},
+        {"job_id": 3, "feedback": "like", "applied": True},
         {"job_id": 4},
     ]
 
     assert _drop_hidden_interactions(jobs) == [
         {"job_id": 1, "feedback": "like"},
         {"job_id": 4},
+    ]
+
+
+def test_attach_feedback_keeps_applied_independent_from_like() -> None:
+    jobs = [{"job_id": 1}, {"job_id": 2}, {"job_id": 3}]
+
+    _attach_feedback(jobs, {1: {"like", "applied"}, 2: {"dislike"}})
+
+    assert jobs == [
+        {"job_id": 1, "feedback": "like", "applied": True},
+        {"job_id": 2, "feedback": "dislike", "applied": False},
+        {"job_id": 3, "feedback": None, "applied": False},
     ]
 
 
