@@ -20,10 +20,11 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from career_copilot.database.db import load_env
 from career_copilot.ml.dataset_store import get_blob_uris, get_data_dir, get_meta, get_path, load
 from career_copilot.ml.mlflow_tracking import (
     ensure_experiment_for_training,
@@ -61,6 +62,7 @@ def train_and_log(
     undersample: bool,
     ranking_k: int,
 ) -> None:
+    load_env()
     data_dir = get_data_dir()
     mlflow.set_tracking_uri(get_mlflow_tracking_uri())
     client = MlflowClient()
@@ -88,16 +90,26 @@ def train_and_log(
     if not feature_cols:
         raise RuntimeError(f"Dataset has none of the expected features: {FEATURE_COLUMNS}")
     X = df[feature_cols]
-    group_col = next((c for c in ("user_id", "query_id", "request_id") if c in df.columns), None)
+    group_col = next((c for c in ("request_id", "user_id", "query_id") if c in df.columns), None)
     group_ids = df[group_col].astype(str).to_numpy() if group_col is not None else None
-    split_inputs = [X, y, pd.Series(y_weak, index=df.index)]
     if group_ids is not None:
-        split_inputs.append(group_ids)
-    splits = train_test_split(*split_inputs, test_size=test_size, random_state=seed, stratify=y)
-    if group_ids is not None:
-        X_train, X_test, y_train, y_test, _y_weak_train, y_weak_test, _group_train, group_test = splits
+        splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
+        train_idx, test_idx = next(splitter.split(X, y, groups=group_ids))
+        X_train = X.iloc[train_idx]
+        X_test = X.iloc[test_idx]
+        y_train = y[train_idx]
+        y_test = y[test_idx]
+        y_weak_test = y_weak[test_idx]
+        group_test = group_ids[test_idx]
     else:
-        X_train, X_test, y_train, y_test, _y_weak_train, y_weak_test = splits
+        X_train, X_test, y_train, y_test, _y_weak_train, y_weak_test = train_test_split(
+            X,
+            y,
+            pd.Series(y_weak, index=df.index),
+            test_size=test_size,
+            random_state=seed,
+            stratify=y,
+        )
         group_test = None
     train_class_counts_before = class_counts(y_train)
     if undersample:

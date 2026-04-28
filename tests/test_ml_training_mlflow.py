@@ -13,7 +13,7 @@ from career_copilot.ml import (
     train_logreg_mlflow,
     train_xgboost_mlflow,
 )
-from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
+from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS, make_mock_ranking_dataset
 
 
 class _MlflowRecorder:
@@ -107,6 +107,9 @@ def _patch_dataset_store(
 def _patch_mlflow(monkeypatch, module) -> _MlflowRecorder:
     """Patch mlflow usage in a training module to a lightweight in-memory recorder."""
     rec = _MlflowRecorder()
+    monkeypatch.setattr(module, "load_env", lambda: None)
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    monkeypatch.delenv("MLFLOW_EXPERIMENT_ARTIFACT_LOCATION", raising=False)
 
     class _DummyClient:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -270,6 +273,28 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
     assert model_info["name"] == "model"
     assert model_info["serialization_format"] == "skops"
     assert "scikit-learn>=1.5.0" in model_info["pip_requirements"]
+
+
+def test_train_logreg_uses_request_groups_for_ranking_metrics(tmp_path, monkeypatch) -> None:
+    df = make_mock_ranking_dataset(n_rows=100, seed=7, candidates_per_user=10).similarity_df
+    _patch_dataset_store(monkeypatch, train_logreg_mlflow, df, tmp_path=Path(tmp_path))
+    rec = _patch_mlflow(monkeypatch, train_logreg_mlflow)
+
+    train_logreg_mlflow.train_and_log(
+        dataset_version="latest",
+        seed=7,
+        test_size=0.2,
+        positive_threshold=1.0,
+        experiment_name="career-copilot-ranking",
+        run_name="logreg-grouped",
+        max_iter=100,
+        c=1.0,
+        undersample=False,
+        ranking_k=15,
+    )
+
+    assert rec.params["ranking_group_column"] == "request_id"
+    assert rec.metrics["ranking_eval_groups"] > 1.0
 
 
 def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeypatch) -> None:
