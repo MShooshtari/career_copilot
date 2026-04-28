@@ -36,6 +36,7 @@ from career_copilot.ml.ranking_dataset import (
     NUMERIC_FEATURE_NAMES,
     PASSTHROUGH_FEATURE_NAMES,
 )
+from career_copilot.ml.ranking_metrics import ranking_metrics_at_k
 from career_copilot.ml.training_utils import (
     class_counts,
     make_balanced_sample_weight,
@@ -63,6 +64,7 @@ def train_and_log(
     subsample: float,
     colsample_bytree: float,
     undersample: bool,
+    ranking_k: int,
 ) -> None:
     data_dir = get_data_dir()
     mlflow.set_tracking_uri(get_mlflow_tracking_uri())
@@ -89,9 +91,17 @@ def train_and_log(
     if not feature_cols:
         raise RuntimeError(f"Dataset has none of the expected features: {FEATURE_COLUMNS}")
     X = df[feature_cols]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=seed, stratify=y
-    )
+    group_col = next((c for c in ("user_id", "query_id", "request_id") if c in df.columns), None)
+    group_ids = df[group_col].astype(str).to_numpy() if group_col is not None else None
+    split_inputs = [X, y, pd.Series(y_weak, index=df.index)]
+    if group_ids is not None:
+        split_inputs.append(group_ids)
+    splits = train_test_split(*split_inputs, test_size=test_size, random_state=seed, stratify=y)
+    if group_ids is not None:
+        X_train, X_test, y_train, y_test, _y_weak_train, y_weak_test, _group_train, group_test = splits
+    else:
+        X_train, X_test, y_train, y_test, _y_weak_train, y_weak_test = splits
+        group_test = None
     train_class_counts_before = class_counts(y_train)
     if undersample:
         X_train, y_train = undersample_majority_class(X_train, y_train, seed=seed)
@@ -136,6 +146,8 @@ def train_and_log(
         "train_class_counts_before_undersampling": json.dumps(train_class_counts_before),
         "train_class_counts_after_undersampling": json.dumps(train_class_counts_after),
         "sample_weighting": "balanced_binary_cross_entropy",
+        "ranking_k": ranking_k,
+        "ranking_group_column": group_col or "none",
         "n_estimators": n_estimators,
         "max_depth": max_depth,
         "learning_rate": learning_rate,
@@ -166,6 +178,14 @@ def train_and_log(
         mlflow.log_metric("precision", float(prec))
         mlflow.log_metric("recall", float(rec))
         mlflow.log_metric("f1", float(f1))
+        for name, value in ranking_metrics_at_k(
+            y_weak_test,
+            proba,
+            k=ranking_k,
+            positive_threshold=positive_threshold,
+            group_ids=group_test,
+        ).items():
+            mlflow.log_metric(name, value)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cm_path = Path(tmpdir) / "confusion_matrix.csv"
@@ -210,6 +230,7 @@ def main() -> None:
     p.add_argument("--learning-rate", type=float, default=0.1)
     p.add_argument("--subsample", type=float, default=0.8)
     p.add_argument("--colsample-bytree", type=float, default=0.8)
+    p.add_argument("--ranking-k", type=int, default=15)
     args = p.parse_args()
 
     train_and_log(
@@ -225,6 +246,7 @@ def main() -> None:
         subsample=args.subsample,
         colsample_bytree=args.colsample_bytree,
         undersample=args.undersample,
+        ranking_k=args.ranking_k,
     )
 
 

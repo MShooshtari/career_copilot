@@ -214,6 +214,7 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
         max_iter=100,
         c=1.0,
         undersample=False,
+        ranking_k=15,
     )
 
     # Tracking URI should point at a local SQLite DB under the test data dir.
@@ -232,6 +233,8 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
     assert rec.params["positive_threshold"] == 1.0
     assert rec.params["undersampling_applied"] is False
     assert rec.params["sample_weighting"] == "balanced_binary_cross_entropy"
+    assert rec.params["ranking_k"] == 15
+    assert rec.params["ranking_group_column"] == "none"
     assert json.loads(rec.params["train_class_counts_before_undersampling"]) == {
         "class_0": 4,
         "class_1": 2,
@@ -242,7 +245,17 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
     }
 
     # Core evaluation metrics are logged.
-    for key in ["auc", "accuracy", "precision", "recall", "f1"]:
+    for key in [
+        "auc",
+        "accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "precision_at_15",
+        "recall_at_15",
+        "ndcg_at_15",
+        "ranking_eval_groups",
+    ]:
         assert key in rec.metrics
 
     # Confusion matrix is logged as an artifact under the eval/ directory.
@@ -277,6 +290,7 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
         subsample=0.8,
         colsample_bytree=0.8,
         undersample=True,
+        ranking_k=15,
     )
 
     assert rec.tracking_uris
@@ -290,6 +304,8 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
     assert rec.params["positive_threshold"] == 1.0
     assert rec.params["undersampling_applied"] is True
     assert rec.params["sample_weighting"] == "balanced_binary_cross_entropy"
+    assert rec.params["ranking_k"] == 15
+    assert rec.params["ranking_group_column"] == "none"
     assert json.loads(rec.params["train_class_counts_before_undersampling"]) == {
         "class_0": 4,
         "class_1": 2,
@@ -299,7 +315,17 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
         "class_1": 2,
     }
 
-    for key in ["auc", "accuracy", "precision", "recall", "f1"]:
+    for key in [
+        "auc",
+        "accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "precision_at_15",
+        "recall_at_15",
+        "ndcg_at_15",
+        "ranking_eval_groups",
+    ]:
         assert key in rec.metrics
 
     assert any(
@@ -336,6 +362,7 @@ def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypat
             max_iter=50,
             c=1.0,
             undersample=False,
+            ranking_k=15,
         )
 
     msg = str(excinfo.value)
