@@ -13,6 +13,7 @@ from career_copilot.database.jobs import (
     get_job_feedback_map,
     get_job_interactions_map,
     insert_user_job,
+    list_jobs_with_feedback,
     resolve_job_ids,
     row_to_job_dict,
     row_to_job_dict_snippet,
@@ -343,3 +344,45 @@ def test_get_job_feedback_map_empty_ids_skips_db() -> None:
 
     assert get_job_feedback_map(conn, 1, "ingested", []) == {}
     conn.cursor.assert_not_called()
+
+
+def test_list_jobs_with_feedback_returns_action_urls() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchall.return_value = [
+        (42, "ingested", "ML Engineer", "Acme", "Remote", "https://example.com/job", None),
+        (7, "user", "Data Scientist", "Personal Co", "", "", None),
+    ]
+
+    out = list_jobs_with_feedback(conn, 1, "applied")
+
+    assert out == [
+        {
+            "job_id": 42,
+            "job_source": "ingested",
+            "title": "ML Engineer",
+            "company": "Acme",
+            "location": "Remote",
+            "url": "https://example.com/job",
+            "detail_url": "/jobs/42",
+            "resume_url": "/jobs/42/improve-resume",
+            "interview_url": "/jobs/42/prepare-interview",
+            "updated_at": None,
+        },
+        {
+            "job_id": 7,
+            "job_source": "user",
+            "title": "Data Scientist",
+            "company": "Personal Co",
+            "location": "",
+            "url": "",
+            "detail_url": "/my-jobs/7",
+            "resume_url": "/my-jobs/7/improve-resume",
+            "interview_url": "/my-jobs/7/prepare-interview",
+            "updated_at": None,
+        },
+    ]
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, "applied", 1, "applied")

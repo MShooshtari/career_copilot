@@ -120,6 +120,7 @@
             color: #e5e7eb; background: linear-gradient(135deg, #4f46e5, #8b5cf6);
         }
         .app-card a.card-btn.interview { background: linear-gradient(135deg, #0d9488, #10b981); color: #e5e7eb; }
+        .app-card a.card-btn.secondary { color: #c7d2fe; }
         .app-card button.delete-btn {
             font-size: 13px;
             font-weight: 500;
@@ -132,6 +133,36 @@
         }
         .app-card button.delete-btn:hover { background: rgba(248, 113, 113, 0.25); }
         .empty-apps { color: var(--text-muted); padding: 24px; text-align: center; }
+        .feedback-sections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 4px 0 28px;
+        }
+        .feedback-section {
+            min-width: 0;
+        }
+        .feedback-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .feedback-card {
+            align-items: flex-start;
+        }
+        .feedback-card .app-card-actions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .feedback-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .feedback-badge.applied { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+        .feedback-badge.disliked { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
 
         .chat-card {
             background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%), var(--card-bg);
@@ -253,6 +284,64 @@
             <p class="empty-apps" id="emptyApps">No applications yet. Ask the assistant to add one (e.g. &ldquo;Add resume improvement for the Stripe job&rdquo;).</p>
             {% endif %}
         </div>
+
+        {% if applied_jobs or disliked_jobs %}
+        <div class="feedback-sections">
+            {% if applied_jobs %}
+            <section class="feedback-section">
+                <h2 class="section-title">Already applied <span>{{ applied_jobs|length }}</span> job(s)</h2>
+                <div class="feedback-list">
+                    {% for job in applied_jobs %}
+                    <article class="app-card feedback-card">
+                        <div class="app-card-info">
+                            <strong>{{ job.title }}</strong> · {{ job.company }}
+                            <div class="app-card-meta">
+                                {% if job.location %}{{ job.location }} · {% endif %}
+                                <span class="feedback-badge applied">Already applied</span>
+                            </div>
+                        </div>
+                        <div class="app-card-actions">
+                            <a href="{{ job.detail_url }}" class="card-btn secondary">View details</a>
+                            <a href="{{ job.resume_url }}" class="card-btn primary">Open resume</a>
+                            <a href="{{ job.interview_url }}" class="card-btn interview">Interview prep</a>
+                            {% if job.url %}
+                            <a href="{{ job.url }}" class="card-btn secondary" target="_blank" rel="noopener">Source</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if disliked_jobs %}
+            <section class="feedback-section">
+                <h2 class="section-title">Disliked <span>{{ disliked_jobs|length }}</span> job(s)</h2>
+                <div class="feedback-list">
+                    {% for job in disliked_jobs %}
+                    <article class="app-card feedback-card">
+                        <div class="app-card-info">
+                            <strong>{{ job.title }}</strong> · {{ job.company }}
+                            <div class="app-card-meta">
+                                {% if job.location %}{{ job.location }} · {% endif %}
+                                <span class="feedback-badge disliked">Disliked</span>
+                            </div>
+                        </div>
+                        <div class="app-card-actions">
+                            <a href="{{ job.detail_url }}" class="card-btn secondary">View details</a>
+                            <a href="{{ job.resume_url }}" class="card-btn primary">Open resume</a>
+                            <a href="{{ job.interview_url }}" class="card-btn interview">Interview prep</a>
+                            {% if job.url %}
+                            <a href="{{ job.url }}" class="card-btn secondary" target="_blank" rel="noopener">Source</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+        </div>
+        {% endif %}
 
         <article class="chat-card">
             <h3>Assistant</h3>

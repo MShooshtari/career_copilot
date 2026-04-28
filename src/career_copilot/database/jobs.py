@@ -302,6 +302,74 @@ def get_job_feedback_map(
     return out
 
 
+def list_jobs_with_feedback(
+    conn: psycopg.Connection,
+    user_id: int,
+    feedback: str,
+) -> list[dict]:
+    """List jobs a user marked with a specific feedback value."""
+    if feedback not in VALID_JOB_FEEDBACK:
+        raise ValueError(f"Unsupported feedback: {feedback}")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            (
+                SELECT uji.job_id, uji.job_source,
+                       COALESCE(j.title, 'Job') AS title,
+                       COALESCE(j.company, '') AS company,
+                       COALESCE(j.location, '') AS location,
+                       COALESCE(j.url, '') AS url,
+                       uji.updated_at
+                FROM user_job_interaction uji
+                JOIN jobs j
+                  ON uji.job_source = 'ingested'
+                 AND j.id = uji.job_id
+                WHERE uji.user_id = %s
+                  AND uji.feedback = %s
+            )
+            UNION ALL
+            (
+                SELECT uji.job_id, uji.job_source,
+                       COALESCE(uj.title, 'Job') AS title,
+                       COALESCE(uj.company, '') AS company,
+                       COALESCE(uj.location, '') AS location,
+                       COALESCE(uj.url, '') AS url,
+                       uji.updated_at
+                FROM user_job_interaction uji
+                JOIN user_jobs uj
+                  ON uji.job_source = 'user'
+                 AND uj.id = uji.job_id
+                 AND uj.user_id = uji.user_id
+                WHERE uji.user_id = %s
+                  AND uji.feedback = %s
+            )
+            ORDER BY updated_at DESC
+            """,
+            (user_id, feedback, user_id, feedback),
+        )
+        rows = cur.fetchall()
+
+    jobs: list[dict] = []
+    for job_id, job_source, title, company, location, url, updated_at in rows:
+        base = "/my-jobs" if job_source == "user" else "/jobs"
+        jobs.append(
+            {
+                "job_id": int(job_id),
+                "job_source": job_source,
+                "title": title or "Job",
+                "company": company or "",
+                "location": location or "",
+                "url": url or "",
+                "detail_url": f"{base}/{int(job_id)}",
+                "resume_url": f"{base}/{int(job_id)}/improve-resume",
+                "interview_url": f"{base}/{int(job_id)}/prepare-interview",
+                "updated_at": updated_at,
+            }
+        )
+    return jobs
+
+
 def user_job_row_to_dict(row: tuple) -> dict:
     """Convert a user_jobs row to the same dict shape as row_to_job_dict (for templates/agents)."""
     (

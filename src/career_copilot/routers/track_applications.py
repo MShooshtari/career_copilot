@@ -18,6 +18,7 @@ from career_copilot.database.applications import (
     remove_application,
 )
 from career_copilot.database.deps import get_db
+from career_copilot.database.jobs import list_jobs_with_feedback
 from career_copilot.schemas import TrackApplicationsChatRequest
 
 router = APIRouter(prefix="/applications", tags=["track_applications"])
@@ -32,12 +33,16 @@ async def get_applications_page(
     """Track applications page: list of applications + agent chat."""
     rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
+    applied_jobs = list_jobs_with_feedback(conn, user_id, "applied")
+    disliked_jobs = list_jobs_with_feedback(conn, user_id, "dislike")
     conn.close()
     return templates.TemplateResponse(
         request,
         "track_applications.html",
         {
             "applications": applications,
+            "applied_jobs": applied_jobs,
+            "disliked_jobs": disliked_jobs,
             "user_id": user_id,
         },
     )
