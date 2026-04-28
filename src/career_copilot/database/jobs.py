@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import psycopg
 
+VALID_JOB_FEEDBACK = {"like", "dislike"}
+VALID_JOB_SOURCES = {"ingested", "user"}
+
 
 def _norm_sid(sid: str | int | float | None) -> str | None:
     """Normalize source_id to str for consistent map keys."""
@@ -213,6 +216,59 @@ def delete_user_job(conn: psycopg.Connection, user_id: int, job_id: int) -> bool
             (job_id, user_id),
         )
         return cur.rowcount > 0
+
+
+def set_job_feedback(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_id: int,
+    job_source: str,
+    feedback: str,
+) -> None:
+    """Upsert a user's like/dislike for a shown job."""
+    if job_source not in VALID_JOB_SOURCES:
+        raise ValueError(f"Unsupported job_source: {job_source}")
+    if feedback not in VALID_JOB_FEEDBACK:
+        raise ValueError(f"Unsupported feedback: {feedback}")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO job_feedback (user_id, job_id, job_source, feedback)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, job_id, job_source) DO UPDATE SET
+                feedback = EXCLUDED.feedback,
+                updated_at = now()
+            """,
+            (user_id, job_id, job_source, feedback),
+        )
+
+
+def get_job_feedback_map(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_source: str,
+    job_ids: list[int],
+) -> dict[int, str]:
+    """Return {job_id: feedback} for the provided jobs."""
+    if job_source not in VALID_JOB_SOURCES:
+        raise ValueError(f"Unsupported job_source: {job_source}")
+    if not job_ids:
+        return {}
+
+    unique_ids = list(dict.fromkeys(int(job_id) for job_id in job_ids))
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT job_id, feedback
+            FROM job_feedback
+            WHERE user_id = %s
+              AND job_source = %s
+              AND job_id = ANY(%s::bigint[])
+            """,
+            (user_id, job_source, unique_ids),
+        )
+        return {int(row[0]): str(row[1]) for row in cur.fetchall()}
 
 
 def user_job_row_to_dict(row: tuple) -> dict:
