@@ -5,9 +5,10 @@
 ## Features
 
 - **User profile** — Skills, experience, location, preferred roles, industries, work mode, salary range, and resume upload
-- **Job recommendations (two-stage)** — Candidate retrieval + ranking:
+- **Job recommendations (multi-stage)** — Candidate retrieval + model ranking + policy reranking:
   - **Candidate retrieval**: fetch a larger candidate pool using **pgvector** in PostgreSQL (e.g. top 100 by cosine distance to your profile embedding).
-  - **Ranking**: re-rank those candidates (optionally via an MLflow-configured model) and **only show the top X** results (default **15**, paginated within that window).
+  - **Ranking**: score candidates with an optional MLflow-configured model using relevance, similarity, and freshness features.
+  - **Policy reranking**: diversify the final window by penalizing jobs that look too similar to already selected jobs and reserve a small exploration slice for semi-random candidates.
   - **Tuning**: adjust recommendation knobs (candidate pool size, top-X window, default page sizes) in `src/career_copilot/constants.py`.
 - **Job detail** — View full job description, skills, and salary
 - **Add job agent** — Paste a job URL or raw text; the agent extracts title, company, location, salary, description, and skills. Optional web search (Tavily or SerpAPI) fills in missing fields. Save the result to **My jobs**.
@@ -124,21 +125,33 @@ Then open **http://127.0.0.1:8000**. You’re redirected to `/profile`; fill in 
 
 You can also use **Track applications** (`/applications`) to see (and jump back into) your resume-improvement and interview-prep sessions. Sessions are stored per job/stage with a compact memory object and only the last N chat turns.
 
-## ML experiments (local MLflow)
+## ML experiments (MLflow)
 
 This repo includes a **ranking baseline** with:
 
-- **Label**: weak supervision from cosine similarity between *job-summary* and *resume-summary* embeddings (binned to 0, 0.5, 1). The label is not derived from any single feature, so tree/linear models do not see the raw embedding.
+- **Label**: weak supervision from a latent ranking utility that combines *job-summary* / *resume-summary* similarity with freshness signals, then bins to `0`, `0.5`, or `1`.
 - **Two dataset formats** per version (so you can use the right one per model):
   - **Similarity dataset** (`mock_similarity_vN.csv`): scalar features only — for **Logistic Regression, XGBoost**, etc.
   - **Embeddings dataset** (`mock_embeddings_vN.csv`): raw job and resume embedding dimensions + label — for **neural networks**.
 - **Naming**: files are prefixed with `mock_` so that later you can add real user data under different names (e.g. `real_similarity_v1.csv`) and choose by name.
+- **Class target**: training converts the weak labels to binary classes with `positive_threshold=1.0` by default, so only `1.0` is class `1`; `0.0` and `0.5` are class `0`.
+- **Imbalance handling**: trainers use balanced sample weights and can optionally apply majority-class undersampling with `--undersample`. Each MLflow run logs whether undersampling was applied.
 
 ### Features (similarity dataset)
 
-- `title_similarity`, `skill_overlap_count`, `location_match` (0/1), `experience_gap` (years)
-- `salary_match`, `location_km` (distance in km)
+- `embedding_similarity`, `title_similarity`, `skill_overlap_count`, `location_match` (0/1), `experience_gap` (years)
+- `salary_match`, `location_km` (distance in km), `days_since_posted`, `is_new` (posted within 3 days), `decay_score`
 - `skill_similarity`, `role_similarity`, `work_mode_similarity`, `employment_type_similarity`, `preferred_locations_similarity` (intended to be computed from LLM-extracted tags in production; mock data simulates these)
+
+At serving time, `embedding_similarity` is derived from pgvector distance and freshness features are computed from each job's `posted_at` metadata. Other scalar similarity fields are available for richer production feature engineering as those signals are added.
+
+### Recommendation reranking
+
+After model scoring, recommendations are reranked before pagination:
+
+- Diversity: greedily selects jobs while penalizing candidates that overlap too much with already selected jobs by skills/title/category.
+- Exploration: reserves `RECOMMENDATIONS_EXPLORATION_RATE` (default `0.20`) of the recommendation window for deterministic semi-random candidates from the retrieved pool.
+- Tuning knobs live in `src/career_copilot/constants.py`: candidate pool size, rerank window size, diversity penalties, and exploration rate.
 
 ### Versioned dataset (single source of truth)
 
@@ -156,7 +169,10 @@ PYTHONPATH=src python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 
 ```bash
 PYTHONPATH=src python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
 # or --dataset-version v1, v2, etc.
+PYTHONPATH=src python -m career_copilot.ml.train_xgboost_mlflow --dataset-version latest --run-name xgboost-baseline
 ```
+
+To compare imbalance strategies, run each trainer with and without `--undersample`.
 
 For **neural networks**, load the **embeddings** dataset (e.g. `mock_embeddings_v1.csv`) in your training script; the current CLI trains only on the similarity dataset.
 
@@ -166,12 +182,16 @@ On Windows PowerShell (set `PYTHONPATH` once per terminal session, then run any 
 $env:PYTHONPATH="src"
 python -m career_copilot.ml.create_ranking_dataset --n-rows 2000 --seed 7
 python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest
+python -m career_copilot.ml.train_logreg_mlflow --dataset-version latest --run-name logreg-undersampled --undersample
 python -m career_copilot.ml.train_xgboost_mlflow --dataset-version latest --run-name xgboost-baseline
+python -m career_copilot.ml.train_xgboost_mlflow --dataset-version latest --run-name xgboost-undersampled --undersample
 ```
 
 If you see `ModuleNotFoundError: No module named 'career_copilot'`, run `$env:PYTHONPATH="src"` in the same terminal first, or install the package in editable mode from the repo root: `pip install -e .`
 
-Runs are stored in `data/mlflow.db` and artifacts in `data/mlflow_artifacts`. Datasets live in `data/datasets/ranking/` (`mock_similarity_vN.csv`, `mock_embeddings_vN.csv`, `manifest.json`).
+By default, runs are stored locally in `data/mlflow.db` and artifacts in `data/mlflow_artifacts`. To log to a remote MLflow server, set `MLFLOW_TRACKING_URI=https://<your-mlflow-server-url>` in `.env`. When using a remote MLflow server, artifact storage should be configured on that server; the local training client usually does not need `MLFLOW_EXPERIMENT_ARTIFACT_LOCATION`.
+
+Datasets live in `data/datasets/ranking/` (`mock_similarity_vN.csv`, `mock_embeddings_vN.csv`, `manifest.json`). Create a new dataset version and retrain models whenever the feature contract changes.
 
 ### Run MLflow UI (view experiments)
 

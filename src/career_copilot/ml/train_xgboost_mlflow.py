@@ -36,6 +36,12 @@ from career_copilot.ml.ranking_dataset import (
     NUMERIC_FEATURE_NAMES,
     PASSTHROUGH_FEATURE_NAMES,
 )
+from career_copilot.ml.training_utils import (
+    class_counts,
+    make_balanced_sample_weight,
+    make_binary_target,
+    undersample_majority_class,
+)
 
 
 def _save_confusion_matrix(cm: np.ndarray, path: Path) -> None:
@@ -56,6 +62,7 @@ def train_and_log(
     learning_rate: float,
     subsample: float,
     colsample_bytree: float,
+    undersample: bool,
 ) -> None:
     data_dir = get_data_dir()
     mlflow.set_tracking_uri(get_mlflow_tracking_uri())
@@ -69,8 +76,7 @@ def train_and_log(
     label_scheme = meta.get("label_scheme", "weak_supervision_v1")
 
     y_weak = df["label"].astype(float).to_numpy()
-    y = (y_weak >= positive_threshold).astype(int)
-    sample_weight = np.clip(y_weak, 0.0, 1.0)
+    y = make_binary_target(y_weak, positive_threshold=positive_threshold)
 
     if np.unique(y).size < 2:
         raise RuntimeError(
@@ -82,9 +88,14 @@ def train_and_log(
     if not feature_cols:
         raise RuntimeError(f"Dataset has none of the expected features: {FEATURE_COLUMNS}")
     X = df[feature_cols]
-    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
-        X, y, sample_weight, test_size=test_size, random_state=seed, stratify=y
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=seed, stratify=y
     )
+    train_class_counts_before = class_counts(y_train)
+    if undersample:
+        X_train, y_train = undersample_majority_class(X_train, y_train, seed=seed)
+    train_class_counts_after = class_counts(y_train)
+    w_train = make_balanced_sample_weight(y_train)
 
     numeric_features = [f for f in NUMERIC_FEATURE_NAMES if f in feature_cols]
     passthrough_features = [f for f in PASSTHROUGH_FEATURE_NAMES if f in feature_cols]
@@ -120,6 +131,10 @@ def train_and_log(
         "seed": seed,
         "test_size": test_size,
         "positive_threshold": positive_threshold,
+        "undersampling_applied": undersample,
+        "train_class_counts_before_undersampling": json.dumps(train_class_counts_before),
+        "train_class_counts_after_undersampling": json.dumps(train_class_counts_after),
+        "sample_weighting": "balanced_binary_cross_entropy",
         "n_estimators": n_estimators,
         "max_depth": max_depth,
         "learning_rate": learning_rate,
@@ -177,8 +192,13 @@ def main() -> None:
     p.add_argument(
         "--positive-threshold",
         type=float,
-        default=0.5,
-        help="Binary target: weak_label >= threshold is class 1.",
+        default=1.0,
+        help="Binary target: weak_label >= threshold is class 1. Default 1.0 treats only 1.0 as positive.",
+    )
+    p.add_argument(
+        "--undersample",
+        action="store_true",
+        help="Downsample the majority class in the training split before fitting.",
     )
     p.add_argument("--experiment", type=str, default="career-copilot-ranking")
     p.add_argument("--run-name", type=str, default=None)
@@ -201,6 +221,7 @@ def main() -> None:
         learning_rate=args.learning_rate,
         subsample=args.subsample,
         colsample_bytree=args.colsample_bytree,
+        undersample=args.undersample,
     )
 
 

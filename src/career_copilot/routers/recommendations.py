@@ -14,6 +14,9 @@ from career_copilot.constants import (
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
     RECOMMENDATIONS_CANDIDATE_POOL_SIZE,
     RECOMMENDATIONS_DEFAULT_PAGE_SIZE,
+    RECOMMENDATIONS_DIVERSITY_CATEGORY_PENALTY,
+    RECOMMENDATIONS_DIVERSITY_SIMILARITY_PENALTY,
+    RECOMMENDATIONS_EXPLORATION_RATE,
     RECOMMENDATIONS_MAX_PAGE_SIZE,
     RECOMMENDATIONS_PAGE_SIZE_OPTIONS,
     RECOMMENDATIONS_RERANK_WINDOW_SIZE,
@@ -26,6 +29,7 @@ from career_copilot.database.jobs import (
     resolve_job_ids,
 )
 from career_copilot.ml.inference import score_candidates_by_distance
+from career_copilot.ml.reranking import rerank_with_diversity_and_exploration
 from career_copilot.rag.pgvector_rag import get_recommended_job_results
 
 router = APIRouter(tags=["recommendations"])
@@ -50,9 +54,15 @@ async def get_recommendations(
         n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
     )
     raw = score_candidates_by_distance(raw)
+    raw = rerank_with_diversity_and_exploration(
+        raw,
+        window_size=RECOMMENDATIONS_RERANK_WINDOW_SIZE,
+        user_id=user_id,
+        diversity_penalty=RECOMMENDATIONS_DIVERSITY_SIMILARITY_PENALTY,
+        category_penalty=RECOMMENDATIONS_DIVERSITY_CATEGORY_PENALTY,
+        exploration_rate=RECOMMENDATIONS_EXPLORATION_RATE,
+    )
     id_map = resolve_job_ids(conn, raw)
-    # Only keep the top window after ranking (pagination is within this window).
-    raw = raw[:RECOMMENDATIONS_RERANK_WINDOW_SIZE]
     jobs_online = format_recommendation_jobs(raw, id_map)
     conn.close()
     total_online = len(jobs_online)
