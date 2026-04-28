@@ -8,12 +8,18 @@ from career_copilot.ml.reranking import rerank_with_diversity_and_exploration
 
 
 def test_mock_ranking_dataset_includes_freshness_features() -> None:
-    ds = make_mock_ranking_dataset(n_rows=100, seed=7)
+    ds = make_mock_ranking_dataset(n_rows=100, seed=7, candidates_per_user=25)
 
+    for column in ["user_id", "request_id", "job_id"]:
+        assert column in ds.similarity_df.columns
+        assert column in ds.embeddings_df.columns
     for column in ["days_since_posted", "is_new", "decay_score"]:
         assert column in ds.similarity_df.columns
         assert column in FEATURE_COLUMNS
 
+    assert ds.similarity_df["user_id"].nunique() == 4
+    assert ds.similarity_df.groupby("request_id").size().tolist() == [25, 25, 25, 25]
+    assert ds.similarity_df["job_id"].is_unique
     assert ds.similarity_df["days_since_posted"].min() >= 0
     assert set(ds.similarity_df["is_new"].unique()).issubset({0, 1})
     assert ds.similarity_df["decay_score"].between(0.0, 1.0).all()

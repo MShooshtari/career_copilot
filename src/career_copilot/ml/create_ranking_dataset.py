@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from career_copilot.database.db import load_env
 from career_copilot.ml.dataset_store import get_path, get_store_dir, save_version
 from career_copilot.ml.ranking_dataset import make_mock_ranking_dataset
 
@@ -16,6 +17,7 @@ def _log(msg: str) -> None:
 
 
 def main() -> None:
+    load_env()
     _log("create_ranking_dataset: starting")
     p = argparse.ArgumentParser(
         description="Create a versioned mock ranking dataset (similarity + embeddings) in data/datasets/ranking/."
@@ -25,6 +27,12 @@ def main() -> None:
     )
     p.add_argument("--n-rows", type=int, default=2000)
     p.add_argument("--seed", type=int, default=7)
+    p.add_argument(
+        "--candidates-per-user",
+        type=int,
+        default=100,
+        help="Number of candidate jobs per mock user/request group.",
+    )
     p.add_argument(
         "--output-dir",
         type=str,
@@ -41,8 +49,16 @@ def main() -> None:
     store_dir = get_store_dir().resolve()
     _log(f"Store directory: {store_dir}")
 
-    _log(f"Creating dataset (n_rows={args.n_rows}, seed={args.seed}) ...")
-    ds = make_mock_ranking_dataset(n_rows=args.n_rows, seed=args.seed)
+    _log(
+        "Creating dataset "
+        f"(n_rows={args.n_rows}, seed={args.seed}, "
+        f"candidates_per_user={args.candidates_per_user}) ..."
+    )
+    ds = make_mock_ranking_dataset(
+        n_rows=args.n_rows,
+        seed=args.seed,
+        candidates_per_user=args.candidates_per_user,
+    )
     version = save_version(
         ds.similarity_df,
         ds.embeddings_df,

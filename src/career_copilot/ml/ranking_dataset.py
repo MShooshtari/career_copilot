@@ -115,6 +115,7 @@ def make_mock_ranking_dataset(
     seed: int = 7,
     label_scheme: LabelScheme = "weak_supervision_v2",
     embedding_dim: int = MOCK_EMBEDDING_DIM,
+    candidates_per_user: int = 100,
 ) -> MockRankingDatasets:
     """
     Generate mock data with label = binned latent utility. Utility combines
@@ -123,21 +124,34 @@ def make_mock_ranking_dataset(
 
     Returns similarity DataFrame and embeddings DataFrame.
     """
+    if candidates_per_user <= 0:
+        raise ValueError("candidates_per_user must be positive")
+
     rng = np.random.default_rng(seed)
     d = embedding_dim
+    n_users = max(1, int(np.ceil(n_rows / candidates_per_user)))
+    user_ids = np.repeat(np.arange(1, n_users + 1), candidates_per_user)[:n_rows]
+    request_ids = np.array([f"user-{user_id}-request-1" for user_id in user_ids], dtype=object)
+    job_ids = np.arange(1, n_rows + 1)
 
-    # Relevance signal: similarity between job-summary and resume-summary embeddings (mock).
-    job_emb = _random_unit_vector(rng, d, n_rows)
-    resume_emb = _random_unit_vector(rng, d, n_rows)
-    mix = rng.uniform(0.3, 0.95, (n_rows, 1))
-    resume_emb = resume_emb * (1 - mix) + job_emb * mix
-    resume_emb = resume_emb / np.linalg.norm(resume_emb, axis=1, keepdims=True)
+    # Relevance signal: each user gets one resume/profile embedding and a candidate
+    # set of jobs. Validation can then measure top-k quality per recommendation request.
+    user_resume_emb = _random_unit_vector(rng, d, n_users)
+    resume_emb = user_resume_emb[user_ids - 1]
+    mix = rng.uniform(0.25, 0.98, (n_rows, 1))
+    job_noise = _random_unit_vector(rng, d, n_rows)
+    job_emb = resume_emb * mix + job_noise * (1 - mix)
+    job_emb = job_emb / np.linalg.norm(job_emb, axis=1, keepdims=True)
     label_sim = np.clip(_cosine_similarity(job_emb, resume_emb), 0.0, 1.0)
 
     # All embedding pairs (job/resume or company/user side). First pair = summary; rest correlated with mix.
     pair_arrays: list[tuple[np.ndarray, np.ndarray]] = [(job_emb, resume_emb)]
     for _ in range(len(EMBEDDING_GROUPS) - 1):
-        job_side, resume_side = _correlated_pair(rng, d, n_rows, mix)
+        user_side = _random_unit_vector(rng, d, n_users)[user_ids - 1]
+        job_noise = _random_unit_vector(rng, d, n_rows)
+        job_side = user_side * mix + job_noise * (1 - mix)
+        job_side = job_side / np.linalg.norm(job_side, axis=1, keepdims=True)
+        resume_side = user_side
         pair_arrays.append((job_side, resume_side))
 
     # Features: embedding_similarity (job–resume summary cosine sim) + others correlated with it.
@@ -173,6 +187,9 @@ def make_mock_ranking_dataset(
 
     similarity_df = pd.DataFrame(
         {
+            "user_id": user_ids.astype(int),
+            "request_id": request_ids,
+            "job_id": job_ids.astype(int),
             "embedding_similarity": label_sim.astype(float),
             "title_similarity": title_similarity.astype(float),
             "skill_overlap_count": skill_overlap_count.astype(int),
@@ -206,6 +223,9 @@ def make_mock_ranking_dataset(
         emb_blocks.append(resume_arr)
     emb_data = np.hstack(emb_blocks)
     embeddings_df = pd.DataFrame({c: emb_data[:, i].astype(float) for i, c in enumerate(emb_cols)})
+    embeddings_df.insert(0, "job_id", job_ids.astype(int))
+    embeddings_df.insert(0, "request_id", request_ids)
+    embeddings_df.insert(0, "user_id", user_ids.astype(int))
     embeddings_df["label"] = labels.astype(float)
 
     hasher = hashlib.sha256()
