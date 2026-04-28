@@ -53,9 +53,7 @@ def _skills(candidate: dict[str, Any]) -> set[str]:
 
 def _tokens(candidate: dict[str, Any]) -> set[str]:
     meta = _metadata(candidate)
-    text = " ".join(
-        str(meta.get(key) or "") for key in ("title", "company", "location", "source")
-    )
+    text = " ".join(str(meta.get(key) or "") for key in ("title", "company", "location", "source"))
     tokens = {t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS}
     return tokens | _skills(candidate)
 
@@ -82,7 +80,9 @@ def _stable_seed(user_id: int | None, candidates: list[dict[str, Any]], today: d
     hasher.update(str(user_id or 0).encode("utf-8"))
     hasher.update(str(today or datetime.now(tz=UTC).date()).encode("utf-8"))
     for candidate in candidates[:50]:
-        hasher.update(str(candidate.get("postgres_job_id") or candidate.get("id") or "").encode("utf-8"))
+        hasher.update(
+            str(candidate.get("postgres_job_id") or candidate.get("id") or "").encode("utf-8")
+        )
     return int(hasher.hexdigest()[:16], 16)
 
 

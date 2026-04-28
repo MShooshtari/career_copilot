@@ -165,10 +165,7 @@ def make_mock_ranking_dataset(
     decay_score = np.exp(-freshness_decay_lambda * days_since_posted)
 
     latent_utility = np.clip(
-        0.72 * label_sim
-        + 0.20 * decay_score
-        + 0.08 * is_new
-        + rng.normal(0, 0.06, n_rows),
+        0.72 * label_sim + 0.20 * decay_score + 0.08 * is_new + rng.normal(0, 0.06, n_rows),
         0.0,
         1.0,
     )
