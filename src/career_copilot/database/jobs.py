@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import psycopg
 
-VALID_JOB_FEEDBACK = {"liked", "disliked", "applied", "deleted"}
+VALID_JOB_FEEDBACK = {
+    "liked",
+    "disliked",
+    "applied",
+    "deleted",
+    "details_viewed",
+    "resume_improvement_opened",
+    "interview_preparation_opened",
+}
 VALID_JOB_SOURCES = {"ingested", "user"}
 
 

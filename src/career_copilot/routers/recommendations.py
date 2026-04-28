@@ -25,10 +25,14 @@ from career_copilot.database.deps import get_db
 from career_copilot.database.jobs import (
     format_recommendation_jobs,
     format_user_jobs_for_recommendations,
+    get_job_by_id,
     get_job_interactions_map,
+    get_user_job_by_id,
     list_user_jobs,
     resolve_job_ids,
+    row_to_job_dict,
     set_job_feedback,
+    user_job_row_to_dict,
 )
 from career_copilot.ml.inference import score_candidates_by_distance
 from career_copilot.ml.reranking import rerank_with_diversity_and_exploration
@@ -172,3 +176,37 @@ async def post_job_feedback(
         url=f"/recommendations?page={page}&page_size={page_size}",
         status_code=303,
     )
+
+
+@router.get(
+    "/recommendations/{job_source}/{job_id:int}/apply-on-source",
+    response_class=RedirectResponse,
+    response_model=None,
+)
+async def get_apply_on_source(
+    job_source: str,
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
+) -> RedirectResponse:
+    """Record source apply clicks as applied, then redirect to the external job URL."""
+    if job_source == "ingested":
+        row = get_job_by_id(conn, job_id)
+        job = row_to_job_dict(row) if row else None
+    elif job_source == "user":
+        row = get_user_job_by_id(conn, user_id, job_id)
+        job = user_job_row_to_dict(row) if row else None
+    else:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Unsupported job source")
+
+    if not job:
+        conn.close()
+        return RedirectResponse(url="/recommendations", status_code=303)
+
+    set_job_feedback(conn, user_id, job_id, job_source, "applied")
+    conn.commit()
+    conn.close()
+
+    target_url = job.get("url") or "/applications"
+    return RedirectResponse(url=target_url, status_code=303)

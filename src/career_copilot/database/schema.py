@@ -335,7 +335,17 @@ def init_schema(conn: psycopg.Connection) -> None:
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 job_id BIGINT NOT NULL,
                 job_source TEXT NOT NULL CHECK (job_source IN ('ingested', 'user')),
-                feedback TEXT NOT NULL CHECK (feedback IN ('liked', 'disliked', 'applied', 'deleted')),
+                feedback TEXT NOT NULL CHECK (
+                    feedback IN (
+                        'liked',
+                        'disliked',
+                        'applied',
+                        'deleted',
+                        'details_viewed',
+                        'resume_improvement_opened',
+                        'interview_preparation_opened'
+                    )
+                ),
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
@@ -390,7 +400,17 @@ def init_schema(conn: psycopg.Connection) -> None:
                 ) THEN
                     ALTER TABLE user_job_interaction
                     ADD CONSTRAINT user_job_interaction_feedback_check
-                    CHECK (feedback IN ('liked', 'disliked', 'applied', 'deleted'));
+                    CHECK (
+                        feedback IN (
+                            'liked',
+                            'disliked',
+                            'applied',
+                            'deleted',
+                            'details_viewed',
+                            'resume_improvement_opened',
+                            'interview_preparation_opened'
+                        )
+                    );
                 END IF;
             END $$;
             """

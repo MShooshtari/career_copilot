@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from career_copilot.database.jobs import (
     _norm_sid,
     _rag_doc_id_to_source_source_id,
@@ -322,6 +324,26 @@ def test_set_job_feedback_allows_deleted_marker() -> None:
 
     cur.execute.assert_called_once()
     assert cur.execute.call_args[0][1] == (1, 42, "ingested", "deleted")
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    [
+        "details_viewed",
+        "resume_improvement_opened",
+        "interview_preparation_opened",
+    ],
+)
+def test_set_job_feedback_allows_navigation_interactions(feedback: str) -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", feedback)
+
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", feedback)
 
 
 def test_remove_job_feedback_deletes_one_interaction() -> None:

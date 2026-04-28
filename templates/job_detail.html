@@ -225,7 +225,7 @@
                 <a href="/jobs/{{ job.id }}/prepare-interview" class="action-prepare">Prepare for interview</a>
                 {% endif %}
                 {% if job.url %}
-                <a href="{{ job.url }}" target="_blank" rel="noopener">Apply on source →</a>
+                <a href="/recommendations/{{ 'user' if is_user_job else 'ingested' }}/{{ job.id }}/apply-on-source" target="_blank" rel="noopener">Apply on source →</a>
                 {% endif %}
                 {% if is_user_job %}
                 <form action="/my-jobs/{{ job.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Remove this job from your list?');">

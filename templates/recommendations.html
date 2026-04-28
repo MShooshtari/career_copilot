@@ -361,7 +361,7 @@
                             <a href="/my-jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
                             <a href="/my-jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
                             {% if job.url %}
-                            <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                            <a href="/recommendations/user/{{ job.job_id }}/apply-on-source" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
                             {% endif %}
                             <form action="/my-jobs/{{ job.job_id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Remove this job from your list?');">
                                 <button type="submit" class="card-btn delete-btn">Delete</button>
@@ -445,7 +445,7 @@
                             <a href="/jobs/{{ job.job_id }}/prepare-interview" class="card-btn prepare-interview">Prepare for interview</a>
                             {% endif %}
                             {% if job.url %}
-                            <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                            <a href="/recommendations/ingested/{{ job.job_id }}/apply-on-source" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
                             {% endif %}
                         </div>
                         <div class="job-feedback-actions">

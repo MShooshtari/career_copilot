@@ -73,6 +73,42 @@ def test_post_job_feedback_ajax_returns_json_without_redirect(client: TestClient
     mock_conn.close.assert_called_once()
 
 
+def test_apply_on_source_records_applied_and_redirects_to_job_url(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    row = (
+        123,
+        "remoteok",
+        "remoteok-123",
+        "AI Engineer",
+        "Acme",
+        "Remote",
+        None,
+        None,
+        "Description",
+        ["Python"],
+        None,
+        "https://example.com/apply",
+    )
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with (
+            patch("career_copilot.routers.recommendations.get_job_by_id", return_value=row),
+            patch("career_copilot.routers.recommendations.set_job_feedback") as mock_set,
+        ):
+            response = client.get(
+                "/recommendations/ingested/123/apply-on-source",
+                follow_redirects=False,
+            )
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+
+    assert response.status_code == 303
+    assert response.headers.get("location") == "https://example.com/apply"
+    mock_set.assert_called_once_with(mock_conn, 1, 123, "ingested", "applied")
+    mock_conn.commit.assert_called_once()
+    mock_conn.close.assert_called_once()
+
+
 def test_drop_hidden_interactions_keeps_likes_and_unseen_jobs() -> None:
     jobs = [
         {"job_id": 1, "feedback": "liked"},
