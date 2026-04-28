@@ -14,6 +14,7 @@ from career_copilot.database.jobs import (
     get_job_interactions_map,
     insert_user_job,
     list_jobs_with_feedback,
+    remove_job_feedback,
     resolve_job_ids,
     row_to_job_dict,
     row_to_job_dict_snippet,
@@ -309,6 +310,32 @@ def test_set_job_feedback_does_not_clear_like_for_applied() -> None:
     assert "ON CONFLICT (user_id, job_id, job_source, feedback)" in (
         query if isinstance(query, str) else query.decode()
     )
+
+
+def test_set_job_feedback_allows_deleted_marker() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", "deleted")
+
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "deleted")
+
+
+def test_remove_job_feedback_deletes_one_interaction() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.rowcount = 1
+
+    removed = remove_job_feedback(conn, 1, 42, "ingested", "applied")
+
+    assert removed is True
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "applied")
 
 
 def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:

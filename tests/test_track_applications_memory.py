@@ -150,3 +150,41 @@ def test_delete_application_endpoint_removes_and_returns_updated_list(client: Te
         assert data["applications"] == []
     finally:
         app.dependency_overrides.pop(db_deps.get_db, None)
+
+
+def test_delete_feedback_job_marks_deleted_and_redirects(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with patch("career_copilot.routers.track_applications.set_job_feedback") as mock_set:
+            r = client.post(
+                "/applications/jobs/ingested/123/delete?applied_page=2&disliked_page=3",
+                follow_redirects=False,
+            )
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+
+    assert r.status_code == 303
+    assert r.headers.get("location") == "/applications?applied_page=2&disliked_page=3"
+    mock_set.assert_called_once_with(mock_conn, 1, 123, "ingested", "deleted")
+    mock_conn.commit.assert_called_once()
+    mock_conn.close.assert_called_once()
+
+
+def test_restore_feedback_job_removes_interaction_and_redirects(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with patch("career_copilot.routers.track_applications.remove_job_feedback") as mock_remove:
+            r = client.post(
+                "/applications/jobs/user/99/feedback/applied/restore?applied_page=2&disliked_page=1",
+                follow_redirects=False,
+            )
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+
+    assert r.status_code == 303
+    assert r.headers.get("location") == "/applications?applied_page=2&disliked_page=1"
+    mock_remove.assert_called_once_with(mock_conn, 1, 99, "user", "applied")
+    mock_conn.commit.assert_called_once()
+    mock_conn.close.assert_called_once()

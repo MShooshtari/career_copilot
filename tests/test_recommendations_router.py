@@ -79,6 +79,7 @@ def test_drop_hidden_interactions_keeps_likes_and_unseen_jobs() -> None:
         {"job_id": 2, "feedback": "dislike"},
         {"job_id": 3, "feedback": "like", "applied": True},
         {"job_id": 4},
+        {"job_id": 5, "deleted": True},
     ]
 
     assert _drop_hidden_interactions(jobs) == [
@@ -93,9 +94,9 @@ def test_attach_feedback_keeps_applied_independent_from_like() -> None:
     _attach_feedback(jobs, {1: {"like", "applied"}, 2: {"dislike"}})
 
     assert jobs == [
-        {"job_id": 1, "feedback": "like", "applied": True},
-        {"job_id": 2, "feedback": "dislike", "applied": False},
-        {"job_id": 3, "feedback": None, "applied": False},
+        {"job_id": 1, "feedback": "like", "applied": True, "deleted": False},
+        {"job_id": 2, "feedback": "dislike", "applied": False, "deleted": False},
+        {"job_id": 3, "feedback": None, "applied": False, "deleted": False},
     ]
 
 

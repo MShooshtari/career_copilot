@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import psycopg
 
-VALID_JOB_FEEDBACK = {"like", "dislike", "applied"}
+VALID_JOB_FEEDBACK = {"like", "dislike", "applied", "deleted"}
 VALID_JOB_SOURCES = {"ingested", "user"}
 
 
@@ -255,6 +255,33 @@ def set_job_feedback(
         )
 
 
+def remove_job_feedback(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_id: int,
+    job_source: str,
+    feedback: str,
+) -> bool:
+    """Remove one feedback interaction for a job. Returns True if a row was deleted."""
+    if job_source not in VALID_JOB_SOURCES:
+        raise ValueError(f"Unsupported job_source: {job_source}")
+    if feedback not in VALID_JOB_FEEDBACK:
+        raise ValueError(f"Unsupported feedback: {feedback}")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM user_job_interaction
+            WHERE user_id = %s
+              AND job_id = %s
+              AND job_source = %s
+              AND feedback = %s
+            """,
+            (user_id, job_id, job_source, feedback),
+        )
+        return cur.rowcount > 0
+
+
 def get_job_interactions_map(
     conn: psycopg.Connection,
     user_id: int,
@@ -327,6 +354,14 @@ def list_jobs_with_feedback(
                  AND j.id = uji.job_id
                 WHERE uji.user_id = %s
                   AND uji.feedback = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM user_job_interaction deleted_uji
+                      WHERE deleted_uji.user_id = uji.user_id
+                        AND deleted_uji.job_id = uji.job_id
+                        AND deleted_uji.job_source = uji.job_source
+                        AND deleted_uji.feedback = 'deleted'
+                  )
             )
             UNION ALL
             (
@@ -343,6 +378,14 @@ def list_jobs_with_feedback(
                  AND uj.user_id = uji.user_id
                 WHERE uji.user_id = %s
                   AND uji.feedback = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM user_job_interaction deleted_uji
+                      WHERE deleted_uji.user_id = uji.user_id
+                        AND deleted_uji.job_id = uji.job_id
+                        AND deleted_uji.job_source = uji.job_source
+                        AND deleted_uji.feedback = 'deleted'
+                  )
             )
             ORDER BY updated_at DESC
             """,

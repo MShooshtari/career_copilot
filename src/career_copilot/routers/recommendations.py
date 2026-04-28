@@ -49,12 +49,17 @@ def _attach_feedback(
             if "like" in interactions:
                 job["feedback"] = "like"
             job["applied"] = "applied" in interactions
+            job["deleted"] = "deleted" in interactions
     return jobs
 
 
 def _drop_hidden_interactions(jobs: list[dict]) -> list[dict]:
     """Hide jobs after refresh once the user has dismissed or applied to them."""
-    return [job for job in jobs if job.get("feedback") != "dislike" and not job.get("applied")]
+    return [
+        job
+        for job in jobs
+        if job.get("feedback") != "dislike" and not job.get("applied") and not job.get("deleted")
+    ]
 
 
 @router.get("/recommendations", response_class=HTMLResponse)

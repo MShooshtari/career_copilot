@@ -149,11 +149,41 @@
         }
         .feedback-card {
             align-items: flex-start;
+            position: relative;
         }
         .feedback-card .app-card-actions {
             flex-wrap: wrap;
             justify-content: flex-end;
         }
+        .feedback-card form { display: inline-flex; }
+        .feedback-card button.card-btn {
+            font-size: 13px; font-weight: 500; color: var(--accent);
+            text-decoration: none; padding: 6px 14px; border-radius: 8px;
+            border: 1px solid rgba(79, 70, 229, 0.5); background: var(--accent-soft);
+            cursor: pointer;
+        }
+        .feedback-card button.card-btn:hover { background: rgba(79, 70, 229, 0.35); }
+        .feedback-card button.restore-btn {
+            color: #bbf7d0;
+            border-color: rgba(34, 197, 94, 0.5);
+            background: rgba(34, 197, 94, 0.15);
+        }
+        .feedback-card button.restore-btn:hover { background: rgba(34, 197, 94, 0.25); }
+        .feedback-card button.remove-feedback-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            color: #fca5a5;
+            border-radius: 999px;
+            border: 1px solid rgba(248, 113, 113, 0.5);
+            background: rgba(248, 113, 113, 0.12);
+            cursor: pointer;
+            font-weight: 700;
+        }
+        .feedback-card button.remove-feedback-btn:hover { background: rgba(248, 113, 113, 0.24); }
         .feedback-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -163,6 +193,27 @@
         }
         .feedback-badge.applied { background: rgba(34, 197, 94, 0.18); color: #86efac; }
         .feedback-badge.disliked { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+        .feedback-pagination {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .feedback-pagination a {
+            color: #c7d2fe;
+            text-decoration: none;
+            padding: 4px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .feedback-pagination a:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
 
         .chat-card {
             background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%), var(--card-bg);
@@ -285,14 +336,17 @@
             {% endif %}
         </div>
 
-        {% if applied_jobs or disliked_jobs %}
+        {% if applied_total or disliked_total %}
         <div class="feedback-sections">
-            {% if applied_jobs %}
+            {% if applied_total %}
             <section class="feedback-section">
-                <h2 class="section-title">Already applied <span>{{ applied_jobs|length }}</span> job(s)</h2>
+                <h2 class="section-title">Already applied <span>{{ applied_total }}</span> job(s)</h2>
                 <div class="feedback-list">
                     {% for job in applied_jobs %}
                     <article class="app-card feedback-card">
+                        <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/delete?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post" onsubmit="return confirm('Hide this job from recommendations and this page?');">
+                            <button type="submit" class="remove-feedback-btn" aria-label="Hide {{ job.title }}" title="Hide job">X</button>
+                        </form>
                         <div class="app-card-info">
                             <strong>{{ job.title }}</strong> · {{ job.company }}
                             <div class="app-card-meta">
@@ -307,19 +361,36 @@
                             {% if job.url %}
                             <a href="{{ job.url }}" class="card-btn secondary" target="_blank" rel="noopener">Source</a>
                             {% endif %}
+                            <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/feedback/applied/restore?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post">
+                                <button type="submit" class="card-btn restore-btn">Restore</button>
+                            </form>
                         </div>
                     </article>
                     {% endfor %}
                 </div>
+                {% if applied_total_pages > 1 %}
+                <div class="feedback-pagination">
+                    {% if applied_page > 1 %}
+                    <a href="/applications?applied_page={{ applied_page - 1 }}&disliked_page={{ disliked_page }}">Previous</a>
+                    {% endif %}
+                    <span>Page {{ applied_page }} of {{ applied_total_pages }}</span>
+                    {% if applied_page < applied_total_pages %}
+                    <a href="/applications?applied_page={{ applied_page + 1 }}&disliked_page={{ disliked_page }}">Next</a>
+                    {% endif %}
+                </div>
+                {% endif %}
             </section>
             {% endif %}
 
-            {% if disliked_jobs %}
+            {% if disliked_total %}
             <section class="feedback-section">
-                <h2 class="section-title">Disliked <span>{{ disliked_jobs|length }}</span> job(s)</h2>
+                <h2 class="section-title">Disliked <span>{{ disliked_total }}</span> job(s)</h2>
                 <div class="feedback-list">
                     {% for job in disliked_jobs %}
                     <article class="app-card feedback-card">
+                        <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/delete?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post" onsubmit="return confirm('Hide this job from recommendations and this page?');">
+                            <button type="submit" class="remove-feedback-btn" aria-label="Hide {{ job.title }}" title="Hide job">X</button>
+                        </form>
                         <div class="app-card-info">
                             <strong>{{ job.title }}</strong> · {{ job.company }}
                             <div class="app-card-meta">
@@ -334,10 +405,24 @@
                             {% if job.url %}
                             <a href="{{ job.url }}" class="card-btn secondary" target="_blank" rel="noopener">Source</a>
                             {% endif %}
+                            <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/feedback/dislike/restore?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post">
+                                <button type="submit" class="card-btn restore-btn">Restore</button>
+                            </form>
                         </div>
                     </article>
                     {% endfor %}
                 </div>
+                {% if disliked_total_pages > 1 %}
+                <div class="feedback-pagination">
+                    {% if disliked_page > 1 %}
+                    <a href="/applications?applied_page={{ applied_page }}&disliked_page={{ disliked_page - 1 }}">Previous</a>
+                    {% endif %}
+                    <span>Page {{ disliked_page }} of {{ disliked_total_pages }}</span>
+                    {% if disliked_page < disliked_total_pages %}
+                    <a href="/applications?applied_page={{ applied_page }}&disliked_page={{ disliked_page + 1 }}">Next</a>
+                    {% endif %}
+                </div>
+                {% endif %}
             </section>
             {% endif %}
         </div>
