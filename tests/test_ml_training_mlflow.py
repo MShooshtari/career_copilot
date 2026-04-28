@@ -174,11 +174,12 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
         dataset_version="latest",
         seed=7,
         test_size=0.25,
-        positive_threshold=0.5,
+        positive_threshold=1.0,
         experiment_name="career-copilot-ranking",
         run_name="logreg-baseline",
         max_iter=100,
         c=1.0,
+        undersample=False,
     )
 
     # Tracking URI should point at a local SQLite DB under the test data dir.
@@ -191,7 +192,17 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
     assert set(logged_features) == set(FEATURE_COLUMNS)
     assert rec.params["dataset_version"] == "mock_v1"
     assert "mock_similarity_mock_v1.csv" in rec.params["dataset_path"]
-    assert rec.params["positive_threshold"] == 0.5
+    assert rec.params["positive_threshold"] == 1.0
+    assert rec.params["undersampling_applied"] is False
+    assert rec.params["sample_weighting"] == "balanced_binary_cross_entropy"
+    assert json.loads(rec.params["train_class_counts_before_undersampling"]) == {
+        "class_0": 4,
+        "class_1": 2,
+    }
+    assert json.loads(rec.params["train_class_counts_after_undersampling"]) == {
+        "class_0": 4,
+        "class_1": 2,
+    }
 
     # Core evaluation metrics are logged.
     for key in ["auc", "accuracy", "precision", "recall", "f1"]:
@@ -220,7 +231,7 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
         dataset_version="latest",
         seed=7,
         test_size=0.25,
-        positive_threshold=0.5,
+        positive_threshold=1.0,
         experiment_name="career-copilot-ranking",
         run_name="xgboost-baseline",
         n_estimators=10,
@@ -228,6 +239,7 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
         learning_rate=0.1,
         subsample=0.8,
         colsample_bytree=0.8,
+        undersample=True,
     )
 
     assert rec.tracking_uris
@@ -238,6 +250,17 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
     assert set(logged_features) == set(FEATURE_COLUMNS)
     assert rec.params["dataset_version"] == "mock_v1"
     assert "mock_similarity_mock_v1.csv" in rec.params["dataset_path"]
+    assert rec.params["positive_threshold"] == 1.0
+    assert rec.params["undersampling_applied"] is True
+    assert rec.params["sample_weighting"] == "balanced_binary_cross_entropy"
+    assert json.loads(rec.params["train_class_counts_before_undersampling"]) == {
+        "class_0": 4,
+        "class_1": 2,
+    }
+    assert json.loads(rec.params["train_class_counts_after_undersampling"]) == {
+        "class_0": 2,
+        "class_1": 2,
+    }
 
     for key in ["auc", "accuracy", "precision", "recall", "f1"]:
         assert key in rec.metrics
@@ -256,7 +279,7 @@ def test_train_xgboost_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkey
 
 
 def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypatch) -> None:
-    # All weak labels below the default positive_threshold → only class 0 after binarisation.
+    # All weak labels below the positive_threshold -> only class 0 after binarisation.
     df = _make_small_similarity_df()
     df["label"] = 0.0
 
@@ -270,11 +293,12 @@ def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypat
             dataset_version="latest",
             seed=7,
             test_size=0.25,
-            positive_threshold=0.5,
+            positive_threshold=1.0,
             experiment_name="career-copilot-ranking",
             run_name=None,
             max_iter=50,
             c=1.0,
+            undersample=False,
         )
 
     msg = str(excinfo.value)
