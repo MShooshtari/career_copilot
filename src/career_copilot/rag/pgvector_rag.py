@@ -152,7 +152,7 @@ def vector_search_jobs(
             WHERE jf.user_id = %(exclude_user_id)s
               AND jf.job_source = 'ingested'
               AND jf.job_id = j.id
-              AND jf.feedback IN ('dislike', 'applied')
+              AND jf.feedback IN ('disliked', 'applied')
         )
         """
         params["exclude_user_id"] = exclude_interacted_by_user

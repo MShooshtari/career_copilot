@@ -45,9 +45,9 @@ def _attach_feedback(
         job_id = job.get("job_id")
         if job_id is not None:
             interactions = interactions_by_job_id.get(int(job_id), set())
-            job["feedback"] = "dislike" if "dislike" in interactions else None
-            if "like" in interactions:
-                job["feedback"] = "like"
+            job["feedback"] = "disliked" if "disliked" in interactions else None
+            if "liked" in interactions:
+                job["feedback"] = "liked"
             job["applied"] = "applied" in interactions
             job["deleted"] = "deleted" in interactions
     return jobs
@@ -58,7 +58,7 @@ def _drop_hidden_interactions(jobs: list[dict]) -> list[dict]:
     return [
         job
         for job in jobs
-        if job.get("feedback") != "dislike" and not job.get("applied") and not job.get("deleted")
+        if job.get("feedback") != "disliked" and not job.get("applied") and not job.get("deleted")
     ]
 
 
@@ -159,7 +159,7 @@ async def post_job_feedback(
     if job_source not in {"ingested", "user"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported job source")
-    if feedback not in {"like", "dislike", "applied"}:
+    if feedback not in {"liked", "disliked", "applied"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported feedback")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import psycopg
 
-VALID_JOB_FEEDBACK = {"like", "dislike", "applied", "deleted"}
+VALID_JOB_FEEDBACK = {"liked", "disliked", "applied", "deleted"}
 VALID_JOB_SOURCES = {"ingested", "user"}
 
 
@@ -232,8 +232,8 @@ def set_job_feedback(
         raise ValueError(f"Unsupported feedback: {feedback}")
 
     with conn.cursor() as cur:
-        if feedback in {"like", "dislike"}:
-            opposite_feedback = "dislike" if feedback == "like" else "like"
+        if feedback in {"liked", "disliked"}:
+            opposite_feedback = "disliked" if feedback == "liked" else "liked"
             cur.execute(
                 """
                 DELETE FROM user_job_interaction
@@ -318,14 +318,14 @@ def get_job_feedback_map(
     job_source: str,
     job_ids: list[int],
 ) -> dict[int, str]:
-    """Return {job_id: like_or_dislike} for compatibility with older callers."""
+    """Return {job_id: liked_or_disliked} for compatibility with older callers."""
     interactions = get_job_interactions_map(conn, user_id, job_source, job_ids)
     out: dict[int, str] = {}
     for job_id, values in interactions.items():
-        if "dislike" in values:
-            out[job_id] = "dislike"
-        elif "like" in values:
-            out[job_id] = "like"
+        if "disliked" in values:
+            out[job_id] = "disliked"
+        elif "liked" in values:
+            out[job_id] = "liked"
     return out
 
 

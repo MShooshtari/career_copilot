@@ -470,7 +470,7 @@
                                 <a href="{{ job.url }}" class="card-btn secondary" target="_blank" rel="noopener">Source</a>
                                 {% endif %}
                             </div>
-                            <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/feedback/dislike/restore?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post">
+                            <form action="/applications/jobs/{{ job.job_source }}/{{ job.job_id }}/feedback/disliked/restore?applied_page={{ applied_page }}&disliked_page={{ disliked_page }}" method="post">
                                 <button type="submit" class="card-btn restore-btn">Restore</button>
                             </form>
                         </div>

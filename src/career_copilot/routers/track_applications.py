@@ -48,7 +48,7 @@ async def get_applications_page(
     rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
     all_applied_jobs = list_jobs_with_feedback(conn, user_id, "applied")
-    all_disliked_jobs = list_jobs_with_feedback(conn, user_id, "dislike")
+    all_disliked_jobs = list_jobs_with_feedback(conn, user_id, "disliked")
     applied_jobs, applied_page = _paginate_feedback_jobs(all_applied_jobs, applied_page)
     disliked_jobs, disliked_page = _paginate_feedback_jobs(all_disliked_jobs, disliked_page)
     conn.close()
@@ -196,11 +196,11 @@ async def post_restore_feedback_job(
     applied_page: int = Query(1, ge=1),
     disliked_page: int = Query(1, ge=1),
 ) -> RedirectResponse:
-    """Remove an accidental dislike/applied interaction so the job can be recommended again."""
+    """Remove an accidental disliked/applied interaction so the job can be recommended again."""
     if job_source not in {"ingested", "user"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported job source")
-    if feedback not in {"dislike", "applied"}:
+    if feedback not in {"disliked", "applied"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported feedback")
 

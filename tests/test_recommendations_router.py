@@ -23,7 +23,7 @@ def test_post_job_feedback_records_choice_and_redirects(client: TestClient) -> N
     try:
         with patch("career_copilot.routers.recommendations.set_job_feedback") as mock_set:
             response = client.post(
-                "/recommendations/ingested/123/feedback/dislike?page=2&page_size=10",
+                "/recommendations/ingested/123/feedback/disliked?page=2&page_size=10",
                 follow_redirects=False,
             )
     finally:
@@ -31,7 +31,7 @@ def test_post_job_feedback_records_choice_and_redirects(client: TestClient) -> N
 
     assert response.status_code == 303
     assert response.headers.get("location") == "/recommendations?page=2&page_size=10"
-    mock_set.assert_called_once_with(mock_conn, 1, 123, "ingested", "dislike")
+    mock_set.assert_called_once_with(mock_conn, 1, 123, "ingested", "disliked")
     mock_conn.commit.assert_called_once()
     mock_conn.close.assert_called_once()
 
@@ -75,27 +75,27 @@ def test_post_job_feedback_ajax_returns_json_without_redirect(client: TestClient
 
 def test_drop_hidden_interactions_keeps_likes_and_unseen_jobs() -> None:
     jobs = [
-        {"job_id": 1, "feedback": "like"},
-        {"job_id": 2, "feedback": "dislike"},
-        {"job_id": 3, "feedback": "like", "applied": True},
+        {"job_id": 1, "feedback": "liked"},
+        {"job_id": 2, "feedback": "disliked"},
+        {"job_id": 3, "feedback": "liked", "applied": True},
         {"job_id": 4},
         {"job_id": 5, "deleted": True},
     ]
 
     assert _drop_hidden_interactions(jobs) == [
-        {"job_id": 1, "feedback": "like"},
+        {"job_id": 1, "feedback": "liked"},
         {"job_id": 4},
     ]
 
 
-def test_attach_feedback_keeps_applied_independent_from_like() -> None:
+def test_attach_feedback_keeps_applied_independent_from_liked() -> None:
     jobs = [{"job_id": 1}, {"job_id": 2}, {"job_id": 3}]
 
-    _attach_feedback(jobs, {1: {"like", "applied"}, 2: {"dislike"}})
+    _attach_feedback(jobs, {1: {"liked", "applied"}, 2: {"disliked"}})
 
     assert jobs == [
-        {"job_id": 1, "feedback": "like", "applied": True, "deleted": False},
-        {"job_id": 2, "feedback": "dislike", "applied": False, "deleted": False},
+        {"job_id": 1, "feedback": "liked", "applied": True, "deleted": False},
+        {"job_id": 2, "feedback": "disliked", "applied": False, "deleted": False},
         {"job_id": 3, "feedback": None, "applied": False, "deleted": False},
     ]
 

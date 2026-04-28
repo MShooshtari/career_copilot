@@ -284,20 +284,20 @@ def test_set_job_feedback_upserts_valid_feedback() -> None:
     conn.cursor.return_value.__enter__ = lambda self: cur
     conn.cursor.return_value.__exit__ = lambda *a: None
 
-    set_job_feedback(conn, 1, 42, "ingested", "dislike")
+    set_job_feedback(conn, 1, 42, "ingested", "disliked")
 
     assert cur.execute.call_count == 2
     delete_query = cur.execute.call_args_list[0][0][0]
     assert "DELETE FROM user_job_interaction" in (
         delete_query if isinstance(delete_query, str) else delete_query.decode()
     )
-    assert cur.execute.call_args_list[0][0][1] == (1, 42, "ingested", "like")
+    assert cur.execute.call_args_list[0][0][1] == (1, 42, "ingested", "liked")
     query = cur.execute.call_args_list[1][0][0]
     assert "user_job_interaction" in (query if isinstance(query, str) else query.decode())
-    assert cur.execute.call_args_list[1][0][1] == (1, 42, "ingested", "dislike")
+    assert cur.execute.call_args_list[1][0][1] == (1, 42, "ingested", "disliked")
 
 
-def test_set_job_feedback_does_not_clear_like_for_applied() -> None:
+def test_set_job_feedback_does_not_clear_liked_for_applied() -> None:
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__ = lambda self: cur
@@ -343,11 +343,11 @@ def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
     cur = MagicMock()
     conn.cursor.return_value.__enter__ = lambda self: cur
     conn.cursor.return_value.__exit__ = lambda *a: None
-    cur.fetchall.return_value = [(42, "like"), (99, "dislike")]
+    cur.fetchall.return_value = [(42, "liked"), (99, "disliked")]
 
     out = get_job_feedback_map(conn, 1, "ingested", [42, 99, 42])
 
-    assert out == {42: "like", 99: "dislike"}
+    assert out == {42: "liked", 99: "disliked"}
     cur.execute.assert_called_once()
     assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
 
@@ -357,11 +357,11 @@ def test_get_job_interactions_map_returns_multiple_interactions() -> None:
     cur = MagicMock()
     conn.cursor.return_value.__enter__ = lambda self: cur
     conn.cursor.return_value.__exit__ = lambda *a: None
-    cur.fetchall.return_value = [(42, "like"), (42, "applied"), (99, "dislike")]
+    cur.fetchall.return_value = [(42, "liked"), (42, "applied"), (99, "disliked")]
 
     out = get_job_interactions_map(conn, 1, "ingested", [42, 99, 42])
 
-    assert out == {42: {"like", "applied"}, 99: {"dislike"}}
+    assert out == {42: {"liked", "applied"}, 99: {"disliked"}}
     cur.execute.assert_called_once()
     assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
 
