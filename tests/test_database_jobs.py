@@ -5,13 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from career_copilot.database.jobs import (
     _norm_sid,
     _rag_doc_id_to_source_source_id,
     delete_user_job,
     format_recommendation_jobs,
     get_job_feedback_map,
+    get_job_interactions_map,
     insert_user_job,
+    list_jobs_with_feedback,
+    remove_job_feedback,
     resolve_job_ids,
     row_to_job_dict,
     row_to_job_dict_snippet,
@@ -281,12 +286,78 @@ def test_set_job_feedback_upserts_valid_feedback() -> None:
     conn.cursor.return_value.__enter__ = lambda self: cur
     conn.cursor.return_value.__exit__ = lambda *a: None
 
-    set_job_feedback(conn, 1, 42, "ingested", "dislike")
+    set_job_feedback(conn, 1, 42, "ingested", "disliked")
+
+    assert cur.execute.call_count == 2
+    delete_query = cur.execute.call_args_list[0][0][0]
+    assert "DELETE FROM user_job_interaction" in (
+        delete_query if isinstance(delete_query, str) else delete_query.decode()
+    )
+    assert cur.execute.call_args_list[0][0][1] == (1, 42, "ingested", "liked")
+    query = cur.execute.call_args_list[1][0][0]
+    assert "user_job_interaction" in (query if isinstance(query, str) else query.decode())
+    assert cur.execute.call_args_list[1][0][1] == (1, 42, "ingested", "disliked")
+
+
+def test_set_job_feedback_does_not_clear_liked_for_applied() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", "applied")
 
     cur.execute.assert_called_once()
     query = cur.execute.call_args[0][0]
-    assert "job_feedback" in (query if isinstance(query, str) else query.decode())
-    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "dislike")
+    assert "ON CONFLICT (user_id, job_id, job_source, feedback)" in (
+        query if isinstance(query, str) else query.decode()
+    )
+
+
+def test_set_job_feedback_allows_deleted_marker() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", "deleted")
+
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "deleted")
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    [
+        "details_viewed",
+        "resume_improvement_opened",
+        "interview_preparation_opened",
+    ],
+)
+def test_set_job_feedback_allows_navigation_interactions(feedback: str) -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", feedback)
+
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", feedback)
+
+
+def test_remove_job_feedback_deletes_one_interaction() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.rowcount = 1
+
+    removed = remove_job_feedback(conn, 1, 42, "ingested", "applied")
+
+    assert removed is True
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "applied")
 
 
 def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
@@ -294,11 +365,25 @@ def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
     cur = MagicMock()
     conn.cursor.return_value.__enter__ = lambda self: cur
     conn.cursor.return_value.__exit__ = lambda *a: None
-    cur.fetchall.return_value = [(42, "like"), (99, "dislike")]
+    cur.fetchall.return_value = [(42, "liked"), (99, "disliked")]
 
     out = get_job_feedback_map(conn, 1, "ingested", [42, 99, 42])
 
-    assert out == {42: "like", 99: "dislike"}
+    assert out == {42: "liked", 99: "disliked"}
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
+
+
+def test_get_job_interactions_map_returns_multiple_interactions() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchall.return_value = [(42, "liked"), (42, "applied"), (99, "disliked")]
+
+    out = get_job_interactions_map(conn, 1, "ingested", [42, 99, 42])
+
+    assert out == {42: {"liked", "applied"}, 99: {"disliked"}}
     cur.execute.assert_called_once()
     assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
 
@@ -308,3 +393,45 @@ def test_get_job_feedback_map_empty_ids_skips_db() -> None:
 
     assert get_job_feedback_map(conn, 1, "ingested", []) == {}
     conn.cursor.assert_not_called()
+
+
+def test_list_jobs_with_feedback_returns_action_urls() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchall.return_value = [
+        (42, "ingested", "ML Engineer", "Acme", "Remote", "https://example.com/job", None),
+        (7, "user", "Data Scientist", "Personal Co", "", "", None),
+    ]
+
+    out = list_jobs_with_feedback(conn, 1, "applied")
+
+    assert out == [
+        {
+            "job_id": 42,
+            "job_source": "ingested",
+            "title": "ML Engineer",
+            "company": "Acme",
+            "location": "Remote",
+            "url": "https://example.com/job",
+            "detail_url": "/jobs/42",
+            "resume_url": "/jobs/42/improve-resume",
+            "interview_url": "/jobs/42/prepare-interview",
+            "updated_at": None,
+        },
+        {
+            "job_id": 7,
+            "job_source": "user",
+            "title": "Data Scientist",
+            "company": "Personal Co",
+            "location": "",
+            "url": "",
+            "detail_url": "/my-jobs/7",
+            "resume_url": "/my-jobs/7/improve-resume",
+            "interview_url": "/my-jobs/7/prepare-interview",
+            "updated_at": None,
+        },
+    ]
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, "applied", 1, "applied")

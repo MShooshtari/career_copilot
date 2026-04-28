@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Annotated
 
 import psycopg
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from career_copilot.agents.track_applications import chat_track_applications
 from career_copilot.app_config import templates
@@ -18,9 +18,22 @@ from career_copilot.database.applications import (
     remove_application,
 )
 from career_copilot.database.deps import get_db
+from career_copilot.database.jobs import (
+    list_jobs_with_feedback,
+    remove_job_feedback,
+    set_job_feedback,
+)
 from career_copilot.schemas import TrackApplicationsChatRequest
 
 router = APIRouter(prefix="/applications", tags=["track_applications"])
+FEEDBACK_PAGE_SIZE = 5
+
+
+def _paginate_feedback_jobs(jobs: list[dict], page: int) -> tuple[list[dict], int]:
+    total_pages = max(1, (len(jobs) + FEEDBACK_PAGE_SIZE - 1) // FEEDBACK_PAGE_SIZE)
+    page = min(max(page, 1), total_pages)
+    start = (page - 1) * FEEDBACK_PAGE_SIZE
+    return jobs[start : start + FEEDBACK_PAGE_SIZE], page
 
 
 @router.get("", response_class=HTMLResponse)
@@ -28,16 +41,34 @@ async def get_applications_page(
     request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
     user_id: CurrentUserId,
+    applied_page: int = Query(1, ge=1),
+    disliked_page: int = Query(1, ge=1),
 ) -> HTMLResponse:
     """Track applications page: list of applications + agent chat."""
     rows = list_applications(conn, user_id)
     applications = enrich_applications_with_job_info(conn, rows)
+    all_applied_jobs = list_jobs_with_feedback(conn, user_id, "applied")
+    all_disliked_jobs = list_jobs_with_feedback(conn, user_id, "disliked")
+    applied_jobs, applied_page = _paginate_feedback_jobs(all_applied_jobs, applied_page)
+    disliked_jobs, disliked_page = _paginate_feedback_jobs(all_disliked_jobs, disliked_page)
     conn.close()
     return templates.TemplateResponse(
         request,
         "track_applications.html",
         {
             "applications": applications,
+            "applied_jobs": applied_jobs,
+            "applied_total": len(all_applied_jobs),
+            "applied_page": applied_page,
+            "applied_total_pages": max(
+                1, (len(all_applied_jobs) + FEEDBACK_PAGE_SIZE - 1) // FEEDBACK_PAGE_SIZE
+            ),
+            "disliked_jobs": disliked_jobs,
+            "disliked_total": len(all_disliked_jobs),
+            "disliked_page": disliked_page,
+            "disliked_total_pages": max(
+                1, (len(all_disliked_jobs) + FEEDBACK_PAGE_SIZE - 1) // FEEDBACK_PAGE_SIZE
+            ),
             "user_id": user_id,
         },
     )
@@ -127,3 +158,56 @@ async def post_delete_application(
     applications = enrich_applications_with_job_info(conn, rows)
     conn.close()
     return JSONResponse(content={"removed": bool(removed), "applications": applications})
+
+
+@router.post("/jobs/{job_source}/{job_id:int}/delete", response_class=RedirectResponse)
+async def post_delete_feedback_job(
+    job_source: str,
+    job_id: int,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
+    applied_page: int = Query(1, ge=1),
+    disliked_page: int = Query(1, ge=1),
+) -> RedirectResponse:
+    """Soft-hide a job from recommendations and feedback recovery lists."""
+    if job_source not in {"ingested", "user"}:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Unsupported job source")
+
+    set_job_feedback(conn, user_id, job_id, job_source, "deleted")
+    conn.commit()
+    conn.close()
+    return RedirectResponse(
+        url=f"/applications?applied_page={applied_page}&disliked_page={disliked_page}",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/jobs/{job_source}/{job_id:int}/feedback/{feedback}/restore",
+    response_class=RedirectResponse,
+)
+async def post_restore_feedback_job(
+    job_source: str,
+    job_id: int,
+    feedback: str,
+    conn: Annotated[psycopg.Connection, Depends(get_db)],
+    user_id: CurrentUserId,
+    applied_page: int = Query(1, ge=1),
+    disliked_page: int = Query(1, ge=1),
+) -> RedirectResponse:
+    """Remove an accidental disliked/applied interaction so the job can be recommended again."""
+    if job_source not in {"ingested", "user"}:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Unsupported job source")
+    if feedback not in {"disliked", "applied"}:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Unsupported feedback")
+
+    remove_job_feedback(conn, user_id, job_id, job_source, feedback)
+    conn.commit()
+    conn.close()
+    return RedirectResponse(
+        url=f"/applications?applied_page={applied_page}&disliked_page={disliked_page}",
+        status_code=303,
+    )

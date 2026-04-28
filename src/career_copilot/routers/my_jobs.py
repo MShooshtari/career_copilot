@@ -35,7 +35,12 @@ from career_copilot.database.applications import (
     set_application_memory,
 )
 from career_copilot.database.deps import get_db
-from career_copilot.database.jobs import delete_user_job, get_user_job_by_id, user_job_row_to_dict
+from career_copilot.database.jobs import (
+    delete_user_job,
+    get_user_job_by_id,
+    set_job_feedback,
+    user_job_row_to_dict,
+)
 from career_copilot.ingestion.common import html_to_plain_text
 from career_copilot.resume_pdf import build_resume_pdf
 from career_copilot.schemas import InterviewChatRequest, ResumeChatRequest, ResumePdfRequest
@@ -73,9 +78,12 @@ async def get_my_job_detail(
 ) -> HTMLResponse | RedirectResponse:
     """Full job details for a user-added job."""
     job = _get_user_job_dict(conn, user_id, job_id)
-    conn.close()
     if not job:
+        conn.close()
         return RedirectResponse(url="/recommendations", status_code=303)
+    set_job_feedback(conn, user_id, job_id, "user", "details_viewed")
+    conn.commit()
+    conn.close()
     if job.get("description"):
         job = {**job, "description": html_to_plain_text(job["description"]) or job["description"]}
     return templates.TemplateResponse(
@@ -93,9 +101,12 @@ async def get_my_job_improve_resume(
     user_id: CurrentUserId,
 ) -> HTMLResponse | RedirectResponse:
     job = _get_user_job_dict(conn, user_id, job_id)
-    conn.close()
     if not job:
+        conn.close()
         return RedirectResponse(url="/recommendations", status_code=303)
+    set_job_feedback(conn, user_id, job_id, "user", "resume_improvement_opened")
+    conn.commit()
+    conn.close()
     desc = (job.get("description") or "")[:JOB_DESCRIPTION_SNIPPET_MAX_CHARS]
     if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}
@@ -119,9 +130,12 @@ async def get_my_job_prepare_interview(
     user_id: CurrentUserId,
 ) -> HTMLResponse | RedirectResponse:
     job = _get_user_job_dict(conn, user_id, job_id)
-    conn.close()
     if not job:
+        conn.close()
         return RedirectResponse(url="/recommendations", status_code=303)
+    set_job_feedback(conn, user_id, job_id, "user", "interview_preparation_opened")
+    conn.commit()
+    conn.close()
     desc = (job.get("description") or "")[:JOB_DESCRIPTION_SNIPPET_MAX_CHARS]
     if len(job.get("description") or "") > JOB_DESCRIPTION_SNIPPET_MAX_CHARS:
         job = {**job, "description": desc.rstrip() + "…"}

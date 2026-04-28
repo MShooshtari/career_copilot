@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import psycopg
 
-VALID_JOB_FEEDBACK = {"like", "dislike"}
+VALID_JOB_FEEDBACK = {
+    "liked",
+    "disliked",
+    "applied",
+    "deleted",
+    "details_viewed",
+    "resume_improvement_opened",
+    "interview_preparation_opened",
+}
 VALID_JOB_SOURCES = {"ingested", "user"}
 
 
@@ -225,7 +233,44 @@ def set_job_feedback(
     job_source: str,
     feedback: str,
 ) -> None:
-    """Upsert a user's like/dislike for a shown job."""
+    """Upsert a user's interaction for a shown job."""
+    if job_source not in VALID_JOB_SOURCES:
+        raise ValueError(f"Unsupported job_source: {job_source}")
+    if feedback not in VALID_JOB_FEEDBACK:
+        raise ValueError(f"Unsupported feedback: {feedback}")
+
+    with conn.cursor() as cur:
+        if feedback in {"liked", "disliked"}:
+            opposite_feedback = "disliked" if feedback == "liked" else "liked"
+            cur.execute(
+                """
+                DELETE FROM user_job_interaction
+                WHERE user_id = %s
+                  AND job_id = %s
+                  AND job_source = %s
+                  AND feedback = %s
+                """,
+                (user_id, job_id, job_source, opposite_feedback),
+            )
+        cur.execute(
+            """
+            INSERT INTO user_job_interaction (user_id, job_id, job_source, feedback)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, job_id, job_source, feedback) DO UPDATE SET
+                updated_at = now()
+            """,
+            (user_id, job_id, job_source, feedback),
+        )
+
+
+def remove_job_feedback(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_id: int,
+    job_source: str,
+    feedback: str,
+) -> bool:
+    """Remove one feedback interaction for a job. Returns True if a row was deleted."""
     if job_source not in VALID_JOB_SOURCES:
         raise ValueError(f"Unsupported job_source: {job_source}")
     if feedback not in VALID_JOB_FEEDBACK:
@@ -234,23 +279,24 @@ def set_job_feedback(
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO job_feedback (user_id, job_id, job_source, feedback)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_id, job_id, job_source) DO UPDATE SET
-                feedback = EXCLUDED.feedback,
-                updated_at = now()
+            DELETE FROM user_job_interaction
+            WHERE user_id = %s
+              AND job_id = %s
+              AND job_source = %s
+              AND feedback = %s
             """,
             (user_id, job_id, job_source, feedback),
         )
+        return cur.rowcount > 0
 
 
-def get_job_feedback_map(
+def get_job_interactions_map(
     conn: psycopg.Connection,
     user_id: int,
     job_source: str,
     job_ids: list[int],
-) -> dict[int, str]:
-    """Return {job_id: feedback} for the provided jobs."""
+) -> dict[int, set[str]]:
+    """Return {job_id: {interactions}} for the provided jobs."""
     if job_source not in VALID_JOB_SOURCES:
         raise ValueError(f"Unsupported job_source: {job_source}")
     if not job_ids:
@@ -261,14 +307,118 @@ def get_job_feedback_map(
         cur.execute(
             """
             SELECT job_id, feedback
-            FROM job_feedback
+            FROM user_job_interaction
             WHERE user_id = %s
               AND job_source = %s
               AND job_id = ANY(%s::bigint[])
             """,
             (user_id, job_source, unique_ids),
         )
-        return {int(row[0]): str(row[1]) for row in cur.fetchall()}
+        out: dict[int, set[str]] = {}
+        for row in cur.fetchall():
+            out.setdefault(int(row[0]), set()).add(str(row[1]))
+        return out
+
+
+def get_job_feedback_map(
+    conn: psycopg.Connection,
+    user_id: int,
+    job_source: str,
+    job_ids: list[int],
+) -> dict[int, str]:
+    """Return {job_id: liked_or_disliked} for compatibility with older callers."""
+    interactions = get_job_interactions_map(conn, user_id, job_source, job_ids)
+    out: dict[int, str] = {}
+    for job_id, values in interactions.items():
+        if "disliked" in values:
+            out[job_id] = "disliked"
+        elif "liked" in values:
+            out[job_id] = "liked"
+    return out
+
+
+def list_jobs_with_feedback(
+    conn: psycopg.Connection,
+    user_id: int,
+    feedback: str,
+) -> list[dict]:
+    """List jobs a user marked with a specific feedback value."""
+    if feedback not in VALID_JOB_FEEDBACK:
+        raise ValueError(f"Unsupported feedback: {feedback}")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            (
+                SELECT uji.job_id, uji.job_source,
+                       COALESCE(j.title, 'Job') AS title,
+                       COALESCE(j.company, '') AS company,
+                       COALESCE(j.location, '') AS location,
+                       COALESCE(j.url, '') AS url,
+                       uji.updated_at
+                FROM user_job_interaction uji
+                JOIN jobs j
+                  ON uji.job_source = 'ingested'
+                 AND j.id = uji.job_id
+                WHERE uji.user_id = %s
+                  AND uji.feedback = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM user_job_interaction deleted_uji
+                      WHERE deleted_uji.user_id = uji.user_id
+                        AND deleted_uji.job_id = uji.job_id
+                        AND deleted_uji.job_source = uji.job_source
+                        AND deleted_uji.feedback = 'deleted'
+                  )
+            )
+            UNION ALL
+            (
+                SELECT uji.job_id, uji.job_source,
+                       COALESCE(uj.title, 'Job') AS title,
+                       COALESCE(uj.company, '') AS company,
+                       COALESCE(uj.location, '') AS location,
+                       COALESCE(uj.url, '') AS url,
+                       uji.updated_at
+                FROM user_job_interaction uji
+                JOIN user_jobs uj
+                  ON uji.job_source = 'user'
+                 AND uj.id = uji.job_id
+                 AND uj.user_id = uji.user_id
+                WHERE uji.user_id = %s
+                  AND uji.feedback = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM user_job_interaction deleted_uji
+                      WHERE deleted_uji.user_id = uji.user_id
+                        AND deleted_uji.job_id = uji.job_id
+                        AND deleted_uji.job_source = uji.job_source
+                        AND deleted_uji.feedback = 'deleted'
+                  )
+            )
+            ORDER BY updated_at DESC
+            """,
+            (user_id, feedback, user_id, feedback),
+        )
+        rows = cur.fetchall()
+
+    jobs: list[dict] = []
+    for job_id, job_source, title, company, location, url, updated_at in rows:
+        base = "/my-jobs" if job_source == "user" else "/jobs"
+        jobs.append(
+            {
+                "job_id": int(job_id),
+                "job_source": job_source,
+                "title": title or "Job",
+                "company": company or "",
+                "location": location or "",
+                "url": url or "",
+                "detail_url": f"{base}/{int(job_id)}",
+                "resume_url": f"{base}/{int(job_id)}/improve-resume",
+                "interview_url": f"{base}/{int(job_id)}/prepare-interview",
+                "updated_at": updated_at,
+            }
+        )
+    return jobs
 
 
 def user_job_row_to_dict(row: tuple) -> dict:
