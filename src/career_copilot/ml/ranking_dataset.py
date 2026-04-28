@@ -1,10 +1,9 @@
 """
 Mock ranking dataset for job–resume fit.
 
-Label = weak supervision from cosine similarity between job-summary embedding and
-resume-summary embedding (binned to 0, 0.5, 1). Features are similarity scores and
-other signals—no raw embedding used as feature, so the label is not a direct copy
-of a feature.
+Label = weak supervision from a latent ranking utility that combines job/resume
+similarity with freshness. Features are similarity scores, freshness signals, and
+other scalar ranking signals.
 
 Two outputs per run:
 - Similarity dataset: for tree-based / linear models (title_similarity, skill_*, etc.).
@@ -22,7 +21,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-LabelScheme = Literal["weak_supervision_v1"]
+LabelScheme = Literal["weak_supervision_v1", "weak_supervision_v2"]
 
 # Embedding dimension for mock (each embedding group is d-dimensional).
 MOCK_EMBEDDING_DIM = 16
@@ -54,11 +53,14 @@ FEATURE_COLUMNS = [
     "work_mode_similarity",
     "employment_type_similarity",
     "preferred_locations_similarity",
+    "days_since_posted",
+    "is_new",
+    "decay_score",
 ]
 
 # For preprocessing: numeric features get StandardScaler, passthrough stay as-is.
-NUMERIC_FEATURE_NAMES = [c for c in FEATURE_COLUMNS if c != "location_match"]
-PASSTHROUGH_FEATURE_NAMES = ["location_match"] if "location_match" in FEATURE_COLUMNS else []
+PASSTHROUGH_FEATURE_NAMES = [c for c in ("location_match", "is_new") if c in FEATURE_COLUMNS]
+NUMERIC_FEATURE_NAMES = [c for c in FEATURE_COLUMNS if c not in PASSTHROUGH_FEATURE_NAMES]
 
 
 def _weak_label(similarity: float) -> float:
@@ -111,27 +113,26 @@ def make_mock_ranking_dataset(
     *,
     n_rows: int = 2000,
     seed: int = 7,
-    label_scheme: LabelScheme = "weak_supervision_v1",
+    label_scheme: LabelScheme = "weak_supervision_v2",
     embedding_dim: int = MOCK_EMBEDDING_DIM,
 ) -> MockRankingDatasets:
     """
-    Generate mock data with label = binned cosine similarity between job-summary
-    and resume-summary embeddings. Features are correlated with that signal but
-    do not include that embedding similarity (avoids leakage).
+    Generate mock data with label = binned latent utility. Utility combines
+    relevance and freshness so the model can learn that sometimes freshness wins
+    and sometimes strong relevance wins.
 
     Returns similarity DataFrame and embeddings DataFrame.
     """
     rng = np.random.default_rng(seed)
     d = embedding_dim
 
-    # Label: similarity between job-summary and resume-summary embeddings (mock).
+    # Relevance signal: similarity between job-summary and resume-summary embeddings (mock).
     job_emb = _random_unit_vector(rng, d, n_rows)
     resume_emb = _random_unit_vector(rng, d, n_rows)
     mix = rng.uniform(0.3, 0.95, (n_rows, 1))
     resume_emb = resume_emb * (1 - mix) + job_emb * mix
     resume_emb = resume_emb / np.linalg.norm(resume_emb, axis=1, keepdims=True)
     label_sim = np.clip(_cosine_similarity(job_emb, resume_emb), 0.0, 1.0)
-    labels = np.array([_weak_label(float(s)) for s in label_sim], dtype=float)
 
     # All embedding pairs (job/resume or company/user side). First pair = summary; rest correlated with mix.
     pair_arrays: list[tuple[np.ndarray, np.ndarray]] = [(job_emb, resume_emb)]
@@ -154,6 +155,25 @@ def make_mock_ranking_dataset(
     employment_type_similarity = np.clip(0.45 + 0.45 * t + rng.normal(0, 0.1, n_rows), 0.0, 1.0)
     preferred_locations_similarity = np.clip(0.3 + 0.55 * t + rng.normal(0, 0.15, n_rows), 0.0, 1.0)
 
+    # Freshness: relevant jobs skew newer, but age still has independent noise.
+    # This gives the model examples where freshness can break ties without simply
+    # turning recommendations into "newest first".
+    age_scale_days = np.clip(55 - 35 * t, 7, 60)
+    days_since_posted = np.clip(rng.exponential(age_scale_days), 0, 180)
+    is_new = (days_since_posted <= 3).astype(int)
+    freshness_decay_lambda = 0.05
+    decay_score = np.exp(-freshness_decay_lambda * days_since_posted)
+
+    latent_utility = np.clip(
+        0.72 * label_sim
+        + 0.20 * decay_score
+        + 0.08 * is_new
+        + rng.normal(0, 0.06, n_rows),
+        0.0,
+        1.0,
+    )
+    labels = np.array([_weak_label(float(s)) for s in latent_utility], dtype=float)
+
     similarity_df = pd.DataFrame(
         {
             "embedding_similarity": label_sim.astype(float),
@@ -168,6 +188,9 @@ def make_mock_ranking_dataset(
             "work_mode_similarity": work_mode_similarity.astype(float),
             "employment_type_similarity": employment_type_similarity.astype(float),
             "preferred_locations_similarity": preferred_locations_similarity.astype(float),
+            "days_since_posted": days_since_posted.astype(float),
+            "is_new": is_new.astype(int),
+            "decay_score": decay_score.astype(float),
             "label": labels.astype(float),
         }
     )

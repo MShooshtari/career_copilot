@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
@@ -13,6 +14,9 @@ import pandas as pd
 from career_copilot.database.db import load_env
 from career_copilot.ml.mlflow_tracking import get_mlflow_tracking_uri
 from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
+
+FRESHNESS_NEW_DAYS = 3
+FRESHNESS_DECAY_LAMBDA = 0.05
 
 
 @lru_cache(maxsize=1)
@@ -70,6 +74,64 @@ def _build_feature_frame_from_distances(
     return df[FEATURE_COLUMNS]
 
 
+def _parse_posted_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str) and value.strip():
+        raw = value.strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+    else:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _freshness_features(posted_at: Any, *, now: datetime | None = None) -> dict[str, float]:
+    ref = now or datetime.now(tz=UTC)
+    posted = _parse_posted_at(posted_at)
+    if posted is None:
+        return {"days_since_posted": 180.0, "is_new": 0.0, "decay_score": 0.0}
+
+    age_seconds = max((ref - posted).total_seconds(), 0.0)
+    days_since_posted = age_seconds / 86_400
+    return {
+        "days_since_posted": float(days_since_posted),
+        "is_new": float(days_since_posted <= FRESHNESS_NEW_DAYS),
+        "decay_score": float(np.exp(-FRESHNESS_DECAY_LAMBDA * days_since_posted)),
+    }
+
+
+def _build_feature_frame_from_candidates(
+    raw_results: list[dict],
+    *,
+    now: datetime | None = None,
+) -> pd.DataFrame:
+    rows: list[dict[str, float]] = []
+    for item in raw_results:
+        distance = item.get("distance")
+        row = _build_feature_frame_from_distances([distance]).iloc[0].to_dict()
+        meta = item.get("metadata") or {}
+        row.update(_freshness_features(meta.get("posted_at"), now=now))
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame(columns=list(FEATURE_COLUMNS))
+
+    df = pd.DataFrame(rows)
+    for col in FEATURE_COLUMNS:
+        if col not in df.columns:
+            df[col] = 0.0
+    return df[FEATURE_COLUMNS]
+
+
 def score_candidates_by_distance(raw_results: list[dict]) -> list[dict]:
     """
     Attach ranking model scores to candidate results and sort in descending order.
@@ -85,9 +147,8 @@ def score_candidates_by_distance(raw_results: list[dict]) -> list[dict]:
         return raw_results
 
     try:
-        distances = [r.get("distance") for r in raw_results]
-        X = _build_feature_frame_from_distances(distances)
-        proba = model.predict_proba(X.to_numpy(dtype=np.float64))[:, 1]
+        X = _build_feature_frame_from_candidates(raw_results)
+        proba = model.predict_proba(X)[:, 1]
     except Exception:
         return raw_results
 

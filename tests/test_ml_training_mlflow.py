@@ -44,6 +44,9 @@ def _make_small_similarity_df() -> pd.DataFrame:
         "work_mode_similarity": np.clip(base + 0.1, 0.0, 1.0),
         "employment_type_similarity": np.clip(base + 0.05, 0.0, 1.0),
         "preferred_locations_similarity": np.clip(base + 0.12, 0.0, 1.0),
+        "days_since_posted": np.array([1.0, 2.0, 4.0, 8.0, 15.0, 30.0, 45.0, 60.0]),
+        "is_new": np.array([1, 1, 0, 0, 0, 0, 0, 0], dtype=int),
+        "decay_score": np.exp(-0.05 * np.array([1.0, 2.0, 4.0, 8.0, 15.0, 30.0, 45.0, 60.0])),
         "label": label_values,
     }
 
