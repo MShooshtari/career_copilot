@@ -296,6 +296,33 @@ def init_schema(conn: psycopg.Connection) -> None:
         )
         # Commit so CREATE TABLE is persisted; then run migrations in separate transactions
         conn.commit()
+
+        # User feedback on shown jobs. `job_id` points at jobs.id for ingested jobs and
+        # user_jobs.id for user-added jobs, distinguished by job_source.
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_feedback (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                job_id BIGINT NOT NULL,
+                job_source TEXT NOT NULL CHECK (job_source IN ('ingested', 'user')),
+                feedback TEXT NOT NULL CHECK (feedback IN ('like', 'dislike')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (user_id, job_id, job_source)
+            );
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS job_feedback_user_source_feedback_idx "
+            "ON job_feedback (user_id, job_source, feedback)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS job_feedback_user_job_idx "
+            "ON job_feedback (user_id, job_source, job_id)"
+        )
+        conn.commit()
+
         # Applications: resume improvement or interview preparation for a job (ingested or user-added)
         cur.execute(
             """

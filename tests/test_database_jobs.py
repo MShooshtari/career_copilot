@@ -10,10 +10,12 @@ from career_copilot.database.jobs import (
     _rag_doc_id_to_source_source_id,
     delete_user_job,
     format_recommendation_jobs,
+    get_job_feedback_map,
     insert_user_job,
     resolve_job_ids,
     row_to_job_dict,
     row_to_job_dict_snippet,
+    set_job_feedback,
 )
 
 # --- _norm_sid (test via import; used by resolve_job_ids and format_recommendation_jobs) ---
@@ -271,3 +273,38 @@ def test_delete_user_job_returns_false_when_none_deleted() -> None:
 
     out = delete_user_job(conn, 1, 999)
     assert out is False
+
+
+def test_set_job_feedback_upserts_valid_feedback() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+
+    set_job_feedback(conn, 1, 42, "ingested", "dislike")
+
+    cur.execute.assert_called_once()
+    query = cur.execute.call_args[0][0]
+    assert "job_feedback" in (query if isinstance(query, str) else query.decode())
+    assert cur.execute.call_args[0][1] == (1, 42, "ingested", "dislike")
+
+
+def test_get_job_feedback_map_returns_feedback_by_job_id() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda self: cur
+    conn.cursor.return_value.__exit__ = lambda *a: None
+    cur.fetchall.return_value = [(42, "like"), (99, "dislike")]
+
+    out = get_job_feedback_map(conn, 1, "ingested", [42, 99, 42])
+
+    assert out == {42: "like", 99: "dislike"}
+    cur.execute.assert_called_once()
+    assert cur.execute.call_args[0][1] == (1, "ingested", [42, 99])
+
+
+def test_get_job_feedback_map_empty_ids_skips_db() -> None:
+    conn = MagicMock()
+
+    assert get_job_feedback_map(conn, 1, "ingested", []) == {}
+    conn.cursor.assert_not_called()

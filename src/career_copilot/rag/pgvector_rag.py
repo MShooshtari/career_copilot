@@ -138,20 +138,36 @@ def vector_search_jobs(
     vector: list[float],
     *,
     top_k: int,
+    exclude_disliked_by_user: int | None = None,
 ) -> list[dict[str, Any]]:
     _register_vector(conn)
     k = max(1, top_k)
-    sql = """
+    params: dict[str, Any] = {"q": vector, "k": k}
+    dislike_filter = ""
+    if exclude_disliked_by_user is not None:
+        dislike_filter = """
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM job_feedback jf
+            WHERE jf.user_id = %(exclude_user_id)s
+              AND jf.job_source = 'ingested'
+              AND jf.job_id = j.id
+              AND jf.feedback = 'dislike'
+        )
+        """
+        params["exclude_user_id"] = exclude_disliked_by_user
+    sql = f"""
         SELECT j.id, j.source, j.source_id, j.title, j.company, j.location,
                j.salary_min, j.salary_max, j.description, j.skills, j.posted_at, j.url,
                (e.embedding <=> %(q)s::vector) AS distance
         FROM jobs_embeddings e
         JOIN jobs j ON j.id = e.job_id
+        {dislike_filter}
         ORDER BY e.embedding <=> %(q)s::vector
         LIMIT %(k)s
     """
     with conn.cursor() as cur:
-        cur.execute(sql, {"q": vector, "k": k})
+        cur.execute(sql, params)
         rows = cur.fetchall()
     return [_row_to_job_hit(tuple(r)) for r in rows]
 
@@ -250,7 +266,7 @@ def get_recommended_job_results(
     if user_embedding is None:
         return []
     k = max(1, n_results)
-    return vector_search_jobs(conn, user_embedding, top_k=k)
+    return vector_search_jobs(conn, user_embedding, top_k=k, exclude_disliked_by_user=user_id)
 
 
 def get_similar_jobs_for_resume_improvement(

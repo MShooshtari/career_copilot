@@ -161,12 +161,13 @@
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 12px;
         }
         .job-skills {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
+            margin: 0 0 14px;
         }
         .job-skills .chip {
             border-radius: 999px;
@@ -180,10 +181,19 @@
             display: flex;
             flex-wrap: wrap;
             align-items: center;
+            justify-content: flex-start;
             gap: 8px;
         }
+        .job-feedback-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-left: auto;
+        }
         .job-card a.view-details,
-        .job-card a.card-btn {
+        .job-card a.card-btn,
+        .job-card button.card-btn {
             font-size: 13px;
             font-weight: 500;
             color: var(--accent);
@@ -192,9 +202,11 @@
             border-radius: 8px;
             border: 1px solid rgba(79, 70, 229, 0.5);
             background: var(--accent-soft);
+            cursor: pointer;
         }
         .job-card a.view-details:hover,
-        .job-card a.card-btn:hover {
+        .job-card a.card-btn:hover,
+        .job-card button.card-btn:hover {
             background: rgba(79, 70, 229, 0.35);
         }
         .job-card a.card-btn.primary {
@@ -212,6 +224,34 @@
         }
         .job-card a.card-btn.prepare-interview:hover {
             filter: brightness(1.08);
+        }
+        .job-feedback-actions form.feedback-form { display: inline-flex; }
+        .job-card button.feedback-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            color: var(--text-muted);
+            border-radius: 999px;
+        }
+        .job-card button.feedback-icon-btn svg {
+            width: 17px;
+            height: 17px;
+            stroke: currentColor;
+        }
+        .job-card button.feedback-icon-btn:hover {
+            color: #e5e7eb;
+        }
+        .job-card button.feedback-icon-btn.selected {
+            color: #e5e7eb;
+            border-color: rgba(34, 197, 94, 0.7);
+            background: rgba(34, 197, 94, 0.22);
+        }
+        .job-card button.feedback-icon-btn.dislike.selected {
+            border-color: rgba(248, 113, 113, 0.7);
+            background: rgba(248, 113, 113, 0.2);
         }
         .job-card-actions form { display: inline; }
         .job-card-actions .delete-btn {
@@ -285,14 +325,14 @@
                     {% if job.snippet %}
                     <p class="job-snippet">{{ job.snippet }}</p>
                     {% endif %}
+                    <div class="job-skills">
+                        {% for skill in job.skills[:6] %}
+                        {% if skill.strip() %}
+                        <span class="chip">{{ skill.strip() }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
                     <div class="job-card-footer">
-                        <div class="job-skills">
-                            {% for skill in job.skills[:6] %}
-                            {% if skill.strip() %}
-                            <span class="chip">{{ skill.strip() }}</span>
-                            {% endif %}
-                            {% endfor %}
-                        </div>
                         <div class="job-card-actions">
                             <a href="/my-jobs/{{ job.job_id }}" class="view-details">View details</a>
                             <a href="/my-jobs/{{ job.job_id }}/improve-resume" class="card-btn primary">Improve my resume for this role</a>
@@ -302,6 +342,22 @@
                             {% endif %}
                             <form action="/my-jobs/{{ job.job_id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Remove this job from your list?');">
                                 <button type="submit" class="card-btn delete-btn">Delete</button>
+                            </form>
+                        </div>
+                        <div class="job-feedback-actions">
+                            <form action="/recommendations/user/{{ job.job_id }}/feedback/like?page={{ page }}&page_size={{ page_size }}" method="post" class="feedback-form">
+                                <button type="submit" class="card-btn feedback-icon-btn {% if job.feedback == 'like' %}selected{% endif %}" aria-label="Like {{ job.title }}" title="Like">
+                                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3m0 11V10l5-8a3 3 0 0 1 3 3v4h4.6a2 2 0 0 1 2 2.3l-1.4 9A2 2 0 0 1 18.2 22H7Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                            </form>
+                            <form action="/recommendations/user/{{ job.job_id }}/feedback/dislike?page={{ page }}&page_size={{ page_size }}" method="post" class="feedback-form">
+                                <button type="submit" class="card-btn feedback-icon-btn dislike {% if job.feedback == 'dislike' %}selected{% endif %}" aria-label="Dislike {{ job.title }}" title="Dislike">
+                                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3m0-11v12l-5 8a3 3 0 0 1-3-3v-4H4.4a2 2 0 0 1-2-2.3l1.4-9A2 2 0 0 1 5.8 2H17Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
                             </form>
                         </div>
                     </div>
@@ -346,14 +402,14 @@
                     {% if job.snippet %}
                     <p class="job-snippet">{{ job.snippet }}</p>
                     {% endif %}
+                    <div class="job-skills">
+                        {% for skill in job.skills[:6] %}
+                        {% if skill.strip() %}
+                        <span class="chip">{{ skill.strip() }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
                     <div class="job-card-footer">
-                        <div class="job-skills">
-                            {% for skill in job.skills[:6] %}
-                            {% if skill.strip() %}
-                            <span class="chip">{{ skill.strip() }}</span>
-                            {% endif %}
-                            {% endfor %}
-                        </div>
                         <div class="job-card-actions">
                             {% if job.job_id %}
                             <a href="/jobs/{{ job.job_id }}" class="view-details">View details</a>
@@ -362,6 +418,24 @@
                             {% endif %}
                             {% if job.url %}
                             <a href="{{ job.url }}" class="card-btn" target="_blank" rel="noopener">Apply on source</a>
+                            {% endif %}
+                        </div>
+                        <div class="job-feedback-actions">
+                            {% if job.job_id %}
+                            <form action="/recommendations/ingested/{{ job.job_id }}/feedback/like?page={{ page }}&page_size={{ page_size }}" method="post" class="feedback-form">
+                                <button type="submit" class="card-btn feedback-icon-btn {% if job.feedback == 'like' %}selected{% endif %}" aria-label="Like {{ job.title }}" title="Like">
+                                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3m0 11V10l5-8a3 3 0 0 1 3 3v4h4.6a2 2 0 0 1 2 2.3l-1.4 9A2 2 0 0 1 18.2 22H7Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                            </form>
+                            <form action="/recommendations/ingested/{{ job.job_id }}/feedback/dislike?page={{ page }}&page_size={{ page_size }}" method="post" class="feedback-form">
+                                <button type="submit" class="card-btn feedback-icon-btn dislike {% if job.feedback == 'dislike' %}selected{% endif %}" aria-label="Dislike {{ job.title }}" title="Dislike">
+                                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3m0-11v12l-5 8a3 3 0 0 1-3-3v-4H4.4a2 2 0 0 1-2-2.3l1.4-9A2 2 0 0 1 5.8 2H17Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                            </form>
                             {% endif %}
                         </div>
                     </div>
