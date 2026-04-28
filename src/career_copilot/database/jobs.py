@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import psycopg
 
-VALID_JOB_FEEDBACK = {"like", "dislike"}
+VALID_JOB_FEEDBACK = {"like", "dislike", "applied"}
 VALID_JOB_SOURCES = {"ingested", "user"}
 
 
@@ -225,7 +225,7 @@ def set_job_feedback(
     job_source: str,
     feedback: str,
 ) -> None:
-    """Upsert a user's like/dislike for a shown job."""
+    """Upsert a user's interaction for a shown job."""
     if job_source not in VALID_JOB_SOURCES:
         raise ValueError(f"Unsupported job_source: {job_source}")
     if feedback not in VALID_JOB_FEEDBACK:

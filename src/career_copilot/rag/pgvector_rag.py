@@ -138,13 +138,13 @@ def vector_search_jobs(
     vector: list[float],
     *,
     top_k: int,
-    exclude_disliked_by_user: int | None = None,
+    exclude_interacted_by_user: int | None = None,
 ) -> list[dict[str, Any]]:
     _register_vector(conn)
     k = max(1, top_k)
     params: dict[str, Any] = {"q": vector, "k": k}
     dislike_filter = ""
-    if exclude_disliked_by_user is not None:
+    if exclude_interacted_by_user is not None:
         dislike_filter = """
         WHERE NOT EXISTS (
             SELECT 1
@@ -152,10 +152,10 @@ def vector_search_jobs(
             WHERE jf.user_id = %(exclude_user_id)s
               AND jf.job_source = 'ingested'
               AND jf.job_id = j.id
-              AND jf.feedback = 'dislike'
+              AND jf.feedback IN ('dislike', 'applied')
         )
         """
-        params["exclude_user_id"] = exclude_disliked_by_user
+        params["exclude_user_id"] = exclude_interacted_by_user
     sql = f"""
         SELECT j.id, j.source, j.source_id, j.title, j.company, j.location,
                j.salary_min, j.salary_max, j.description, j.skills, j.posted_at, j.url,
@@ -266,7 +266,7 @@ def get_recommended_job_results(
     if user_embedding is None:
         return []
     k = max(1, n_results)
-    return vector_search_jobs(conn, user_embedding, top_k=k, exclude_disliked_by_user=user_id)
+    return vector_search_jobs(conn, user_embedding, top_k=k, exclude_interacted_by_user=user_id)
 
 
 def get_similar_jobs_for_resume_improvement(

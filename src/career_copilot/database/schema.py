@@ -335,7 +335,7 @@ def init_schema(conn: psycopg.Connection) -> None:
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 job_id BIGINT NOT NULL,
                 job_source TEXT NOT NULL CHECK (job_source IN ('ingested', 'user')),
-                feedback TEXT NOT NULL CHECK (feedback IN ('like', 'dislike')),
+                feedback TEXT NOT NULL CHECK (feedback IN ('like', 'dislike', 'applied')),
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 UNIQUE (user_id, job_id, job_source)
@@ -349,6 +349,28 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS user_job_interaction_user_job_idx "
             "ON user_job_interaction (user_id, job_source, job_id)"
+        )
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                ALTER TABLE user_job_interaction
+                DROP CONSTRAINT IF EXISTS job_feedback_feedback_check;
+                ALTER TABLE user_job_interaction
+                DROP CONSTRAINT IF EXISTS user_job_interaction_feedback_check;
+
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'user_job_interaction_feedback_check'
+                      AND conrelid = 'user_job_interaction'::regclass
+                ) THEN
+                    ALTER TABLE user_job_interaction
+                    ADD CONSTRAINT user_job_interaction_feedback_check
+                    CHECK (feedback IN ('like', 'dislike', 'applied'));
+                END IF;
+            END $$;
+            """
         )
         conn.commit()
 

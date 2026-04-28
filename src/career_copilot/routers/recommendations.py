@@ -6,7 +6,7 @@ from typing import Annotated
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from career_copilot.app_config import templates
 from career_copilot.auth.current_user import CurrentUserId
@@ -48,6 +48,11 @@ def _attach_feedback(
     return jobs
 
 
+def _drop_hidden_interactions(jobs: list[dict]) -> list[dict]:
+    """Hide jobs after refresh once the user has dismissed or applied to them."""
+    return [job for job in jobs if job.get("feedback") not in {"dislike", "applied"}]
+
+
 @router.get("/recommendations", response_class=HTMLResponse)
 async def get_recommendations(
     request: Request,
@@ -68,6 +73,7 @@ async def get_recommendations(
         [int(job["job_id"]) for job in jobs_added if job.get("job_id") is not None],
     )
     _attach_feedback(jobs_added, user_feedback)
+    jobs_added = _drop_hidden_interactions(jobs_added)
 
     raw = get_recommended_job_results(
         conn,
@@ -92,6 +98,7 @@ async def get_recommendations(
         [int(job["job_id"]) for job in jobs_online if job.get("job_id") is not None],
     )
     _attach_feedback(jobs_online, online_feedback)
+    jobs_online = _drop_hidden_interactions(jobs_online)
     conn.close()
     total_online = len(jobs_online)
 
@@ -131,24 +138,27 @@ async def post_job_feedback(
     job_source: str,
     job_id: int,
     feedback: str,
+    request: Request,
     conn: Annotated[psycopg.Connection, Depends(get_db)],
     user_id: CurrentUserId,
     page: int = Query(1, ge=1),
     page_size: int = Query(
         RECOMMENDATIONS_DEFAULT_PAGE_SIZE, ge=1, le=RECOMMENDATIONS_MAX_PAGE_SIZE
     ),
-) -> RedirectResponse:
-    """Record like/dislike feedback for a shown recommendation card."""
+) -> RedirectResponse | JSONResponse:
+    """Record feedback or applied state for a shown recommendation card."""
     if job_source not in {"ingested", "user"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported job source")
-    if feedback not in {"like", "dislike"}:
+    if feedback not in {"like", "dislike", "applied"}:
         conn.close()
         raise HTTPException(status_code=400, detail="Unsupported feedback")
 
     set_job_feedback(conn, user_id, job_id, job_source, feedback)
     conn.commit()
     conn.close()
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse(content={"ok": True, "feedback": feedback})
     return RedirectResponse(
         url=f"/recommendations?page={page}&page_size={page_size}",
         status_code=303,
