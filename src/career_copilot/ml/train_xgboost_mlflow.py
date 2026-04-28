@@ -26,7 +26,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from career_copilot.ml.dataset_store import get_data_dir, get_meta, get_path, load
+from career_copilot.ml.dataset_store import get_blob_uris, get_data_dir, get_meta, get_path, load
 from career_copilot.ml.mlflow_tracking import (
     ensure_experiment_for_training,
     get_mlflow_tracking_uri,
@@ -73,6 +73,7 @@ def train_and_log(
     df, resolved_version = load(dataset_version, kind="similarity")
     dataset_path = get_path(dataset_version, kind="similarity").resolve().as_posix()
     meta = get_meta(dataset_version)
+    blob_uris = get_blob_uris(dataset_version)
     label_scheme = meta.get("label_scheme", "weak_supervision_v1")
 
     y_weak = df["label"].astype(float).to_numpy()
@@ -141,6 +142,8 @@ def train_and_log(
         "subsample": subsample,
         "colsample_bytree": colsample_bytree,
     }
+    for kind, uri in blob_uris.items():
+        params[f"dataset_{kind}_blob_uri"] = uri
 
     with mlflow.start_run(run_name=run_name):
         for key, value in params.items():
