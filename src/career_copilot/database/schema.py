@@ -297,11 +297,40 @@ def init_schema(conn: psycopg.Connection) -> None:
         # Commit so CREATE TABLE is persisted; then run migrations in separate transactions
         conn.commit()
 
-        # User feedback on shown jobs. `job_id` points at jobs.id for ingested jobs and
+        # User interactions with shown jobs. `job_id` points at jobs.id for ingested jobs and
         # user_jobs.id for user-added jobs, distinguished by job_source.
         cur.execute(
             """
-            CREATE TABLE IF NOT EXISTS job_feedback (
+            DO $$
+            BEGIN
+                IF to_regclass('user_job_interaction') IS NULL
+                   AND to_regclass('job_feedback') IS NOT NULL THEN
+                    ALTER TABLE job_feedback RENAME TO user_job_interaction;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('job_feedback_user_source_feedback_idx') IS NOT NULL
+                   AND to_regclass('user_job_interaction_user_source_feedback_idx') IS NULL THEN
+                    ALTER INDEX job_feedback_user_source_feedback_idx
+                    RENAME TO user_job_interaction_user_source_feedback_idx;
+                END IF;
+
+                IF to_regclass('job_feedback_user_job_idx') IS NOT NULL
+                   AND to_regclass('user_job_interaction_user_job_idx') IS NULL THEN
+                    ALTER INDEX job_feedback_user_job_idx
+                    RENAME TO user_job_interaction_user_job_idx;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_job_interaction (
                 id BIGSERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 job_id BIGINT NOT NULL,
@@ -314,12 +343,12 @@ def init_schema(conn: psycopg.Connection) -> None:
             """
         )
         cur.execute(
-            "CREATE INDEX IF NOT EXISTS job_feedback_user_source_feedback_idx "
-            "ON job_feedback (user_id, job_source, feedback)"
+            "CREATE INDEX IF NOT EXISTS user_job_interaction_user_source_feedback_idx "
+            "ON user_job_interaction (user_id, job_source, feedback)"
         )
         cur.execute(
-            "CREATE INDEX IF NOT EXISTS job_feedback_user_job_idx "
-            "ON job_feedback (user_id, job_source, job_id)"
+            "CREATE INDEX IF NOT EXISTS user_job_interaction_user_job_idx "
+            "ON user_job_interaction (user_id, job_source, job_id)"
         )
         conn.commit()
 

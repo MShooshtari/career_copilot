@@ -285,7 +285,7 @@ def test_set_job_feedback_upserts_valid_feedback() -> None:
 
     cur.execute.assert_called_once()
     query = cur.execute.call_args[0][0]
-    assert "job_feedback" in (query if isinstance(query, str) else query.decode())
+    assert "user_job_interaction" in (query if isinstance(query, str) else query.decode())
     assert cur.execute.call_args[0][1] == (1, 42, "ingested", "dislike")
 
 

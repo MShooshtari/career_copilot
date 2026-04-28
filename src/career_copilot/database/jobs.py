@@ -234,7 +234,7 @@ def set_job_feedback(
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO job_feedback (user_id, job_id, job_source, feedback)
+            INSERT INTO user_job_interaction (user_id, job_id, job_source, feedback)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id, job_id, job_source) DO UPDATE SET
                 feedback = EXCLUDED.feedback,
@@ -261,7 +261,7 @@ def get_job_feedback_map(
         cur.execute(
             """
             SELECT job_id, feedback
-            FROM job_feedback
+            FROM user_job_interaction
             WHERE user_id = %s
               AND job_source = %s
               AND job_id = ANY(%s::bigint[])

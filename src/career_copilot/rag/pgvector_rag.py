@@ -148,7 +148,7 @@ def vector_search_jobs(
         dislike_filter = """
         WHERE NOT EXISTS (
             SELECT 1
-            FROM job_feedback jf
+            FROM user_job_interaction jf
             WHERE jf.user_id = %(exclude_user_id)s
               AND jf.job_source = 'ingested'
               AND jf.job_id = j.id
