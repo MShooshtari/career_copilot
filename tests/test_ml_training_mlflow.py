@@ -7,7 +7,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from career_copilot.ml import mlflow_tracking, train_logreg_mlflow, train_xgboost_mlflow
+from career_copilot.ml import (
+    dataset_store,
+    mlflow_tracking,
+    train_logreg_mlflow,
+    train_xgboost_mlflow,
+)
 from career_copilot.ml.ranking_dataset import FEATURE_COLUMNS
 
 
@@ -56,8 +61,16 @@ def _make_small_similarity_df() -> pd.DataFrame:
     return df
 
 
-def _patch_dataset_store(monkeypatch, module, df: pd.DataFrame, tmp_path: Path) -> None:
+def _patch_dataset_store(
+    monkeypatch,
+    module,
+    df: pd.DataFrame,
+    tmp_path: Path,
+    *,
+    blob_uris: dict[str, str] | None = None,
+) -> None:
     """Patch dataset_store helpers inside a training module to use an in-memory dataframe."""
+    blob_uris = blob_uris or {}
 
     def _fake_get_data_dir() -> Path:
         data_dir = tmp_path / "data"
@@ -72,7 +85,13 @@ def _patch_dataset_store(monkeypatch, module, df: pd.DataFrame, tmp_path: Path) 
         return df.copy(), "mock_v1"
 
     def _fake_get_meta(version: str) -> dict[str, Any]:
-        return {"label_scheme": "weak_supervision_v1", "n_rows": len(df)}
+        meta: dict[str, Any] = {"label_scheme": "weak_supervision_v1", "n_rows": len(df)}
+        if blob_uris:
+            meta["blob_uris"] = dict(blob_uris)
+        return meta
+
+    def _fake_get_blob_uris(version: str) -> dict[str, str]:
+        return dict(blob_uris)
 
     def _fake_get_path(version: str, kind: str = "similarity") -> Path:
         assert kind == "similarity"
@@ -80,6 +99,7 @@ def _patch_dataset_store(monkeypatch, module, df: pd.DataFrame, tmp_path: Path) 
 
     monkeypatch.setattr(module, "load", _fake_load)
     monkeypatch.setattr(module, "get_meta", _fake_get_meta)
+    monkeypatch.setattr(module, "get_blob_uris", _fake_get_blob_uris)
     monkeypatch.setattr(module, "get_path", _fake_get_path)
     monkeypatch.setattr(module, "get_data_dir", _fake_get_data_dir)
 
@@ -170,7 +190,18 @@ def _patch_mlflow(monkeypatch, module) -> _MlflowRecorder:
 
 def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeypatch) -> None:
     df = _make_small_similarity_df()
-    _patch_dataset_store(monkeypatch, train_logreg_mlflow, df, tmp_path=Path(tmp_path))
+    blob_uris = {
+        "similarity": "https://storage.example/training-data/ranking/mock_v1/similarity.csv",
+        "embeddings": "https://storage.example/training-data/ranking/mock_v1/embeddings.csv",
+        "manifest": "https://storage.example/training-data/ranking/manifest.json",
+    }
+    _patch_dataset_store(
+        monkeypatch,
+        train_logreg_mlflow,
+        df,
+        tmp_path=Path(tmp_path),
+        blob_uris=blob_uris,
+    )
     rec = _patch_mlflow(monkeypatch, train_logreg_mlflow)
 
     train_logreg_mlflow.train_and_log(
@@ -195,6 +226,9 @@ def test_train_logreg_mlflow_logs_params_metrics_and_artifacts(tmp_path, monkeyp
     assert set(logged_features) == set(FEATURE_COLUMNS)
     assert rec.params["dataset_version"] == "mock_v1"
     assert "mock_similarity_mock_v1.csv" in rec.params["dataset_path"]
+    assert rec.params["dataset_similarity_blob_uri"] == blob_uris["similarity"]
+    assert rec.params["dataset_embeddings_blob_uri"] == blob_uris["embeddings"]
+    assert rec.params["dataset_manifest_blob_uri"] == blob_uris["manifest"]
     assert rec.params["positive_threshold"] == 1.0
     assert rec.params["undersampling_applied"] is False
     assert rec.params["sample_weighting"] == "balanced_binary_cross_entropy"
@@ -307,6 +341,56 @@ def test_train_logreg_raises_on_single_class_after_threshold(tmp_path, monkeypat
     msg = str(excinfo.value)
     assert "single class after thresholding" in msg
     assert "positive-threshold" in msg
+
+
+def test_save_version_uploads_training_data_and_manifest_to_blob(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CAREER_COPILOT_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("TRAINING_DATA_STORAGE_MODE", "blob")
+    monkeypatch.setenv("AZURE_TRAINING_DATA_CONTAINER", "training-data")
+    monkeypatch.setenv("AZURE_TRAINING_DATA_PREFIX", "ranking")
+    monkeypatch.setenv(
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "DefaultEndpointsProtocol=https;AccountName=testacct;AccountKey=fake;EndpointSuffix=core.windows.net",
+    )
+
+    uploads: list[tuple[str, str, bytes, bool]] = []
+
+    class _FakeBlobClient:
+        def __init__(self, *, container: str, blob: str) -> None:
+            self.container = container
+            self.blob = blob
+
+        def upload_blob(self, content: bytes, *, overwrite: bool) -> None:
+            uploads.append((self.container, self.blob, content, overwrite))
+
+    class _FakeBlobService:
+        def create_container(self, container: str) -> None:
+            assert container == "training-data"
+
+        def get_blob_client(self, *, container: str, blob: str) -> _FakeBlobClient:
+            return _FakeBlobClient(container=container, blob=blob)
+
+    monkeypatch.setattr(dataset_store, "_blob_service", lambda: _FakeBlobService())
+
+    df = _make_small_similarity_df()
+    version = dataset_store.save_version(df, df, version="vblob", n_rows=len(df))
+
+    assert version == "vblob"
+    uploaded_blobs = [blob for _, blob, _, _ in uploads]
+    assert uploaded_blobs == [
+        "ranking/vblob/mock_similarity_vblob.csv",
+        "ranking/vblob/mock_embeddings_vblob.csv",
+        "ranking/manifest.json",
+    ]
+    assert all(container == "training-data" for container, _, _, _ in uploads)
+    assert all(overwrite is True for _, _, _, overwrite in uploads)
+
+    meta = dataset_store.get_meta("vblob")
+    assert meta["blob_uris"] == {
+        "similarity": "https://testacct.blob.core.windows.net/training-data/ranking/vblob/mock_similarity_vblob.csv",
+        "embeddings": "https://testacct.blob.core.windows.net/training-data/ranking/vblob/mock_embeddings_vblob.csv",
+        "manifest": "https://testacct.blob.core.windows.net/training-data/ranking/manifest.json",
+    }
 
 
 def test_get_mlflow_tracking_uri_prefers_env(monkeypatch) -> None:
