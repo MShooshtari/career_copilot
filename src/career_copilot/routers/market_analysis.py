@@ -48,7 +48,7 @@ async def api_market_analysis(
     remote_only: bool = Query(False),
     salary_at_least: int | None = Query(None, ge=0, le=10_000_000),
     cohort_limit: int = Query(MARKET_ANALYSIS_DEFAULT_COHORT_LIMIT, ge=10, le=5_000),
-    include_rag: bool = Query(True),
+    include_rag: bool = Query(False),
 ) -> JSONResponse:
     filters = MarketCohortFilters(
         posted_within_days=posted_within_days,

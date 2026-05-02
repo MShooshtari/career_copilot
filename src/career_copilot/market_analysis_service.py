@@ -448,7 +448,7 @@ def build_market_analysis_report(
     user_id: int,
     filters: MarketCohortFilters,
     cohort_limit: int,
-    include_rag: bool = True,
+    include_rag: bool = False,
 ) -> dict[str, Any]:
     job_ids, cohort_meta = cohort_job_ids(
         conn, user_id=user_id, filters=filters, cohort_limit=cohort_limit
@@ -457,18 +457,6 @@ def build_market_analysis_report(
     user_skills_list = list_user_skills_lower(conn, user_id)
     user_skills = set(user_skills_list)
     fit = _fit_metrics(user_skills, aggregates["top_skills"])
-    profile_row = get_profile_by_user_id(conn, user_id)
-    profile_blurb = _profile_blurb(profile_row, user_skills_list)
-
-    sal = aggregates.get("salary") or {}
-    top_skill_bits = [f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]]
-    aggregates_summary = (
-        f"Cohort size: {len(job_ids)} jobs. "
-        f"Top skills: {', '.join(top_skill_bits)}. "
-        f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
-        f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
-    )
-
     rag: dict[str, Any] = {
         "available": False,
         "narrative": "",
@@ -477,6 +465,18 @@ def build_market_analysis_report(
     }
     if include_rag and job_ids:
         try:
+            profile_row = get_profile_by_user_id(conn, user_id)
+            profile_blurb = _profile_blurb(profile_row, user_skills_list)
+            sal = aggregates.get("salary") or {}
+            top_skill_bits = [
+                f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]
+            ]
+            aggregates_summary = (
+                f"Cohort size: {len(job_ids)} jobs. "
+                f"Top skills: {', '.join(top_skill_bits)}. "
+                f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
+                f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
+            )
             qvec = _rag_query_embedding(profile_blurb)
             rag_chunks = retrieve_rag_chunks(conn, job_ids=job_ids, query_embedding=qvec)
             rag = generate_rag_insights(

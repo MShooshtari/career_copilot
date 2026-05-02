@@ -76,6 +76,11 @@
             border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 14px;
         }
         button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.secondary {
+            background: rgba(15, 23, 42, 0.9); color: #e5e7eb; border: 1px solid var(--accent);
+            padding: 9px 16px; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 14px;
+        }
+        button.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
         .status { font-size: 13px; color: var(--text-muted); }
         .err { color: #f97373; font-size: 13px; margin-top: 8px; }
         .grid-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -153,12 +158,6 @@
                         Remote-friendly (text match)
                     </label>
                 </div>
-                <div style="display:flex;align-items:flex-end;">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                        <input type="checkbox" id="include_rag" name="include_rag" checked />
-                        Include RAG narrative
-                    </label>
-                </div>
             </form>
             <div class="btn-row">
                 <button type="button" class="primary" id="run-btn">Apply &amp; refresh</button>
@@ -213,7 +212,11 @@
 
             <section class="card">
                 <h2>RAG insights</h2>
-                <p class="hint">Retrieved description chunks from your cohort, summarized by the model with citation markers.</p>
+                <p class="hint">Generate a narrative only after the charts load, so the market view stays responsive.</p>
+                <div class="btn-row" style="margin-bottom:12px;">
+                    <button type="button" class="secondary" id="rag-btn" disabled>Generate insights</button>
+                    <span class="status" id="rag-status"></span>
+                </div>
                 <div class="rag-body" id="rag-body"></div>
                 <div class="citations" id="rag-citations"></div>
                 <div class="err" id="rag-err" style="display:none;"></div>
@@ -225,8 +228,9 @@
         let chartWeekly = null;
         let chartSkills = null;
         let chartLocs = null;
+        let latestCohortSize = 0;
 
-        function qs() {
+        function qs(includeRag) {
             const p = new URLSearchParams();
             p.set("posted_within_days", document.getElementById("posted_within_days").value || "90");
             p.set("cohort_limit", document.getElementById("cohort_limit").value || "500");
@@ -239,7 +243,7 @@
             const sal = document.getElementById("salary_at_least").value.trim();
             if (sal) p.set("salary_at_least", sal);
             if (document.getElementById("remote_only").checked) p.set("remote_only", "true");
-            p.set("include_rag", document.getElementById("include_rag").checked ? "true" : "false");
+            p.set("include_rag", includeRag ? "true" : "false");
             return p.toString();
         }
 
@@ -258,15 +262,51 @@
             return "<p>" + h + "</p>";
         }
 
+        function renderRag(rag) {
+            const ragBody = document.getElementById("rag-body");
+            const ragErr = document.getElementById("rag-err");
+            const ragCit = document.getElementById("rag-citations");
+            ragErr.style.display = "none";
+            if (rag.available && rag.narrative) {
+                ragBody.innerHTML = renderMarkdownish(rag.narrative);
+                const cites = rag.citations || [];
+                ragCit.textContent = cites.length
+                    ? "Sources (job / chunk): " + cites.map((c) => "#" + c.job_id + ":" + c.chunk_index + " " + (c.title || "")).join(" · ")
+                    : "";
+            } else {
+                ragBody.innerHTML = "";
+                ragErr.style.display = "block";
+                ragErr.textContent = rag.error || "Insights unavailable.";
+                ragCit.textContent = "";
+            }
+        }
+
+        function resetRagPanel(cohortSize) {
+            const ragBody = document.getElementById("rag-body");
+            const ragErr = document.getElementById("rag-err");
+            const ragCit = document.getElementById("rag-citations");
+            const ragStatus = document.getElementById("rag-status");
+            const ragBtn = document.getElementById("rag-btn");
+            ragErr.style.display = "none";
+            ragCit.textContent = "";
+            ragStatus.textContent = "";
+            ragBtn.disabled = cohortSize === 0;
+            ragBody.innerHTML = cohortSize === 0
+                ? "<p>No cohort jobs available for insights.</p>"
+                : "<p>Charts are ready. Generate insights when you want the narrative summary.</p>";
+        }
+
         async function loadData() {
             const btn = document.getElementById("run-btn");
+            const ragBtn = document.getElementById("rag-btn");
             const status = document.getElementById("status");
             const errEl = document.getElementById("global-err");
             errEl.style.display = "none";
             btn.disabled = true;
+            ragBtn.disabled = true;
             status.textContent = "Loading…";
             try {
-                const res = await fetch("/api/market-analysis?" + qs());
+                const res = await fetch("/api/market-analysis?" + qs(false));
                 if (!res.ok) throw new Error("HTTP " + res.status);
                 const data = await res.json();
                 document.getElementById("results").style.display = "block";
@@ -280,7 +320,9 @@
 
                 const emptyCohort = document.getElementById("empty-cohort");
                 const nCohort = c.size || 0;
+                latestCohortSize = nCohort;
                 emptyCohort.style.display = nCohort === 0 ? "block" : "none";
+                resetRagPanel(nCohort);
 
                 const weeks = (data.weekly_posted || []).map((x) => x.week_start);
                 const weekCounts = (data.weekly_posted || []).map((x) => x.count);
@@ -386,24 +428,6 @@
                     gp.appendChild(li);
                 }
 
-                const rag = data.rag || {};
-                const ragBody = document.getElementById("rag-body");
-                const ragErr = document.getElementById("rag-err");
-                const ragCit = document.getElementById("rag-citations");
-                ragErr.style.display = "none";
-                if (rag.available && rag.narrative) {
-                    ragBody.innerHTML = renderMarkdownish(rag.narrative);
-                    const cites = rag.citations || [];
-                    ragCit.textContent = cites.length
-                        ? "Sources (job / chunk): " + cites.map((c) => "#" + c.job_id + ":" + c.chunk_index + " " + (c.title || "")).join(" · ")
-                        : "";
-                } else {
-                    ragBody.innerHTML = "";
-                    ragErr.style.display = "block";
-                    ragErr.textContent = rag.error || "Insights unavailable.";
-                    ragCit.textContent = "";
-                }
-
                 status.textContent = "Updated " + new Date().toLocaleTimeString();
             } catch (e) {
                 errEl.style.display = "block";
@@ -411,10 +435,37 @@
                 status.textContent = "";
             } finally {
                 btn.disabled = false;
+                ragBtn.disabled = latestCohortSize === 0;
+            }
+        }
+
+        async function generateInsights() {
+            const ragBtn = document.getElementById("rag-btn");
+            const ragStatus = document.getElementById("rag-status");
+            const ragBody = document.getElementById("rag-body");
+            const ragErr = document.getElementById("rag-err");
+            ragBtn.disabled = true;
+            ragErr.style.display = "none";
+            ragBody.innerHTML = "<p>Retrieving cohort chunks and generating insights…</p>";
+            ragStatus.textContent = "Generating insights…";
+            try {
+                const res = await fetch("/api/market-analysis?" + qs(true));
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const data = await res.json();
+                renderRag(data.rag || {});
+                ragStatus.textContent = "Insights updated " + new Date().toLocaleTimeString();
+            } catch (e) {
+                ragBody.innerHTML = "";
+                ragErr.style.display = "block";
+                ragErr.textContent = String(e);
+                ragStatus.textContent = "";
+            } finally {
+                ragBtn.disabled = latestCohortSize === 0;
             }
         }
 
         document.getElementById("run-btn").addEventListener("click", loadData);
+        document.getElementById("rag-btn").addEventListener("click", generateInsights);
         loadData();
     </script>
 </body>
