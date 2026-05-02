@@ -108,6 +108,11 @@ def clear_market_analysis_caches() -> None:
     _rag_query_embedding_cache.clear()
 
 
+def _profile_version(profile_row: tuple | None, skills: list[str]) -> str:
+    payload = repr((tuple(profile_row) if profile_row else None, tuple(sorted(skills))))
+    return hashlib.sha256(payload.encode("utf-8", errors="replace")).hexdigest()
+
+
 def _cutoff_utc(days: int) -> datetime:
     return datetime.now(tz=UTC) - timedelta(days=max(1, days))
 
@@ -452,18 +457,107 @@ def retrieve_rag_chunks(
     return out
 
 
-def _rag_query_embedding(profile_blurb: str) -> list[float]:
+def _cached_rag_query_embedding(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    profile_version: str,
+    query_hash: str,
+) -> list[float] | None:
+    try:
+        _register(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT embedding
+                FROM market_analysis_rag_query_embeddings
+                WHERE user_id = %s
+                  AND profile_version = %s
+                  AND query_hash = %s
+                """,
+                (user_id, profile_version, query_hash),
+            )
+            row = cur.fetchone()
+    except psycopg.Error:
+        conn.rollback()
+        return None
+    if not row or row[0] is None:
+        return None
+    return list(row[0])
+
+
+def _store_rag_query_embedding(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    profile_version: str,
+    query_hash: str,
+    embedding: list[float],
+) -> None:
+    try:
+        _register(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO market_analysis_rag_query_embeddings (
+                    user_id,
+                    profile_version,
+                    query_hash,
+                    embedding
+                )
+                VALUES (%s, %s, %s, %s::vector)
+                ON CONFLICT (user_id, profile_version, query_hash) DO UPDATE SET
+                  embedding = EXCLUDED.embedding,
+                  updated_at = now()
+                """,
+                (user_id, profile_version, query_hash, embedding),
+            )
+        conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+
+
+def _rag_query_embedding(
+    profile_blurb: str,
+    *,
+    conn: psycopg.Connection | None = None,
+    user_id: int | None = None,
+    profile_version: str | None = None,
+) -> list[float]:
     q = (
         "Job requirements, responsibilities, tech stack, seniority, and qualifications "
         "relevant to this candidate profile:\n\n" + profile_blurb[:6_000]
     )
     query = q.strip()
-    cache_key = hashlib.sha256(query.encode("utf-8", errors="replace")).hexdigest()
+    query_hash = hashlib.sha256(query.encode("utf-8", errors="replace")).hexdigest()
+    cache_key: tuple[Any, ...]
+    if user_id is not None and profile_version:
+        cache_key = ("user_profile", int(user_id), profile_version, query_hash)
+    else:
+        cache_key = ("query", query_hash)
     cached = _rag_query_embedding_cache.get(cache_key)
     if cached is not None:
         return cached
+    if conn is not None and user_id is not None and profile_version:
+        cached = _cached_rag_query_embedding(
+            conn,
+            user_id=user_id,
+            profile_version=profile_version,
+            query_hash=query_hash,
+        )
+        if cached is not None:
+            _rag_query_embedding_cache.set(cache_key, cached)
+            return cached
     embedding = embed_texts([query])[0]
     _rag_query_embedding_cache.set(cache_key, embedding)
+    if conn is not None and user_id is not None and profile_version:
+        _store_rag_query_embedding(
+            conn,
+            user_id=user_id,
+            profile_version=profile_version,
+            query_hash=query_hash,
+            embedding=embedding,
+        )
     return embedding
 
 
@@ -590,7 +684,12 @@ def build_market_analysis_report(
                 f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
                 f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
             )
-            qvec = _rag_query_embedding(profile_blurb)
+            qvec = _rag_query_embedding(
+                profile_blurb,
+                conn=conn,
+                user_id=user_id,
+                profile_version=_profile_version(profile_row, user_skills_list),
+            )
             rag_chunks = retrieve_rag_chunks(conn, job_ids=job_ids, query_embedding=qvec)
             rag = generate_rag_insights(
                 profile_blurb=profile_blurb,

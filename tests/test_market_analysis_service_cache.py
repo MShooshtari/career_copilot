@@ -92,3 +92,45 @@ def test_rag_query_embedding_uses_cache_for_same_profile_blurb() -> None:
 
     assert second == [0.1, 0.2]
     embed.assert_called_once()
+
+
+def test_rag_query_embedding_reuses_stored_profile_version() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = ([0.1, 0.2],)
+
+    with (
+        patch.object(service, "_register"),
+        patch.object(service, "embed_texts") as embed,
+    ):
+        result = service._rag_query_embedding(
+            "Python backend engineer",
+            conn=conn,
+            user_id=7,
+            profile_version="profile-v1",
+        )
+
+    assert result == [0.1, 0.2]
+    embed.assert_not_called()
+
+
+def test_rag_query_embedding_stores_profile_version_after_miss() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = None
+
+    with (
+        patch.object(service, "_register"),
+        patch.object(service, "embed_texts", return_value=[[0.1, 0.2]]) as embed,
+    ):
+        result = service._rag_query_embedding(
+            "Python backend engineer",
+            conn=conn,
+            user_id=7,
+            profile_version="profile-v1",
+        )
+
+    assert result == [0.1, 0.2]
+    embed.assert_called_once()
+    assert cur.execute.call_count == 2
+    conn.commit.assert_called_once()
