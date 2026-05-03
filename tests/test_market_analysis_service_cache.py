@@ -105,6 +105,24 @@ def test_aggregates_top_skills_use_extracted_skills_column() -> None:
     assert aggregates["top_skills"] == [{"skill": "python", "count": 2}]
 
 
+def test_filtered_top_skills_removes_generic_terms_and_merges_variants() -> None:
+    raw = [
+        ("engineering", 10),
+        ("engineer", 9),
+        ("software", 8),
+        ("digital nomad", 7),
+        ("code", 6),
+        ("python", 5),
+        ("Python", 3),
+        ("langchain", 4),
+    ]
+
+    assert service._filtered_top_skills(raw) == [
+        {"skill": "python", "count": 8},
+        {"skill": "langchain", "count": 4},
+    ]
+
+
 def test_rag_query_embedding_uses_cache_for_same_profile_blurb() -> None:
     with patch.object(service, "embed_texts", return_value=[[0.1, 0.2]]) as embed:
         first = service._rag_query_embedding("Python backend engineer")

@@ -71,11 +71,21 @@ _GENERIC_CANDIDATES = {
     "an asset",
     "benefits",
     "bonus",
+    "building",
+    "code",
+    "coder",
+    "coding",
     "competitive pay",
     "communication",
     "degree",
+    "designing",
+    "developer",
+    "development",
+    "digital nomad",
     "diploma",
     "excellent communication",
+    "engineer",
+    "engineering",
     "full time",
     "high school",
     "job description",
@@ -86,9 +96,18 @@ _GENERIC_CANDIDATES = {
     "requirements",
     "responsibilities",
     "salary",
+    "senior",
+    "software",
+    "software development",
+    "software engineer",
+    "software engineering",
     "team player",
     "work experience",
 }
+
+_GENERIC_PATTERNS = (
+    r"\b(?:digital\s+nomad|remote\s+work|work\s+from\s+home)\b",
+)
 
 _STOP_PREFIXES = (
     "ability to ",
@@ -138,6 +157,13 @@ def extract_skill_tags(
                 break
 
     return found
+
+
+def normalize_skill_tag(value: str | None) -> str | None:
+    """Normalize and reject low-value skill tags from any source."""
+    if value is None:
+        return None
+    return _clean_candidate(value)
 
 
 def _extract_text_candidates(text: str) -> list[str]:
@@ -222,6 +248,8 @@ def _is_plausible_skill(value: str) -> bool:
     if not words or len(words) > 6:
         return False
     if lower in _GENERIC_CANDIDATES:
+        return False
+    if len(words) <= 2 and any(re.search(pattern, lower) for pattern in _GENERIC_PATTERNS):
         return False
     if re.search(r"\b(?:salary|benefits?|schedule|shift|remote|hybrid|onsite)\b", lower):
         return False

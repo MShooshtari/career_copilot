@@ -43,3 +43,25 @@ def test_extract_skill_tags_extracts_technical_skills_without_a_taxonomy() -> No
     text = "Experience with Python, SQL, CI/CD, and Google Cloud Platform."
 
     assert extract_skill_tags(text) == ["Python", "SQL", "CI/CD", "Google Cloud Platform"]
+
+
+def test_extract_skill_tags_skips_generic_source_tags_and_keeps_specific_text_tags() -> None:
+    text = "Experience with Python, FastAPI, LangChain, and vector databases."
+
+    assert extract_skill_tags(
+        text,
+        source_skills=[
+            "engineering",
+            "engineer",
+            "software",
+            "digital nomad",
+            "code",
+            "building",
+        ],
+    ) == ["Python", "FastAPI", "LangChain", "Vector Databases"]
+
+
+def test_extract_skill_tags_dedupes_case_variants_after_filtering() -> None:
+    text = "Skills: python, Python, PYTHON, SQL."
+
+    assert extract_skill_tags(text) == ["Python", "SQL"]

@@ -33,6 +33,7 @@ from career_copilot.constants import (
     MARKET_ANALYSIS_TOP_SKILLS_CHART,
 )
 from career_copilot.database.profiles import get_profile_by_user_id, list_user_skills_lower
+from career_copilot.ingestion.skill_extraction import normalize_skill_tag
 from career_copilot.rag.embedding import OPENAI_API_KEY_ENV, embed_texts
 from career_copilot.rag.pgvector_rag import fetch_user_profile_embedding
 
@@ -312,9 +313,10 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
             ORDER BY cnt DESC
             LIMIT %s
             """,
-            (job_ids, MARKET_ANALYSIS_TOP_SKILLS_CHART),
+            (job_ids, MARKET_ANALYSIS_TOP_SKILLS_CHART * 8),
         )
-        top_skills = [{"skill": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
+        raw_top_skills = [(str(r[0]), int(r[1])) for r in cur.fetchall()]
+    top_skills = _filtered_top_skills(raw_top_skills)
 
     with conn.cursor() as cur:
         cur.execute(
@@ -369,6 +371,23 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
         "salary": salary_block,
         "top_locations": top_locations,
     }
+
+
+def _filtered_top_skills(raw_top_skills: list[tuple[str, int]]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for raw_skill, count in raw_top_skills:
+        normalized = normalize_skill_tag(raw_skill)
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        counts[key] = counts.get(key, 0) + int(count)
+
+    return [
+        {"skill": skill, "count": count}
+        for skill, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[
+            :MARKET_ANALYSIS_TOP_SKILLS_CHART
+        ]
+    ]
 
 
 def _fit_metrics(
