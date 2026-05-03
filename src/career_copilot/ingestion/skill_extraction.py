@@ -169,6 +169,18 @@ Rules:
 - Return at most the requested number of tags.
 - If no specific skill tags are present, return {"skills": []}."""
 
+_AI_RESUME_EXTRACTION_SYSTEM = """You extract concise, specific skill tags from resumes.
+Return a JSON object with a single key "skills" whose value is an array of strings.
+
+Rules:
+- Include concrete skills, tools, technologies, certifications, methods, domain capabilities, and role-specific competencies demonstrated by the candidate.
+- Prefer skills that would be useful as resume keywords or job matching tags.
+- Exclude employer names, schools, locations, dates, job titles, seniority, degrees by themselves, contact information, generic resume section headings, and vague traits.
+- Do not include broad terms such as engineering, development, code, communication, problem solving, attention to detail, team collaboration, team player, responsibilities, or experience.
+- Keep each tag short, usually 1-4 words.
+- Return at most the requested number of tags.
+- If no specific skill tags are present, return {"skills": []}."""
+
 
 def extract_skill_tags(
     text: str | None,
@@ -200,6 +212,46 @@ def extract_ai_skill_tags(
     client: Any | None = None,
 ) -> list[str]:
     """Use OpenAI to extract specific skill tags, then apply local tag normalization."""
+    return _extract_ai_skill_tags(
+        text,
+        system_prompt=_AI_EXTRACTION_SYSTEM,
+        document_label="Job description",
+        instruction="Extract up to {max_tags} specific skill tags from this job description.",
+        max_tags=max_tags,
+        model=model,
+        client=client,
+    )
+
+
+def extract_ai_resume_skill_tags(
+    text: str | None,
+    *,
+    max_tags: int = 30,
+    model: str | None = None,
+    client: Any | None = None,
+) -> list[str]:
+    """Use OpenAI to extract normalized skill tags from resume text."""
+    return _extract_ai_skill_tags(
+        text,
+        system_prompt=_AI_RESUME_EXTRACTION_SYSTEM,
+        document_label="Resume",
+        instruction="Extract up to {max_tags} specific skill tags from this resume.",
+        max_tags=max_tags,
+        model=model,
+        client=client,
+    )
+
+
+def _extract_ai_skill_tags(
+    text: str | None,
+    *,
+    system_prompt: str,
+    document_label: str,
+    instruction: str,
+    max_tags: int,
+    model: str | None,
+    client: Any | None,
+) -> list[str]:
     if not text or not text.strip():
         return []
 
@@ -209,13 +261,13 @@ def extract_ai_skill_tags(
         or os.environ.get("OPENAI_SKILL_EXTRACTION_MODEL")
         or OPENAI_SKILL_EXTRACTION_MODEL,
         messages=[
-            {"role": "system", "content": _AI_EXTRACTION_SYSTEM},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": (
-                    f"Extract up to {max_tags} specific skill tags from this job description.\n\n"
+                    f"{instruction.format(max_tags=max_tags)}\n\n"
                     f"Generic examples to exclude: {', '.join(sorted(_GENERIC_CANDIDATES))}\n\n"
-                    f"Job description:\n{text.strip()[:30000]}"
+                    f"{document_label}:\n{text.strip()[:30000]}"
                 ),
             },
         ],

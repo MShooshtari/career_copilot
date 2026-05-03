@@ -2,7 +2,41 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import psycopg
+
+
+def replace_user_skills(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    skill_tags: str,
+    ai_extracted_skills: list[str] | None = None,
+) -> None:
+    """Replace manual skill rows and store the resume-derived AI skill snapshot."""
+    manual_skills = _split_skill_tags(skill_tags)
+    ai_skills = _dedupe_skills(ai_extracted_skills or [])
+
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM user_skills WHERE user_id = %s", (user_id,))
+        if manual_skills:
+            for index, skill in enumerate(manual_skills):
+                cur.execute(
+                    """
+                    INSERT INTO user_skills (user_id, skill, ai_extracted_skills)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (user_id, skill, ai_skills if index == 0 and ai_skills else None),
+                )
+        elif ai_skills:
+            cur.execute(
+                """
+                INSERT INTO user_skills (user_id, skill, ai_extracted_skills)
+                VALUES (%s, %s, %s)
+                """,
+                (user_id, "", ai_skills),
+            )
 
 
 def upsert_user_profile(
@@ -23,18 +57,16 @@ def upsert_user_profile(
     resume_filename: str | None,
     resume_blob_container: str | None = None,
     resume_blob_name: str | None = None,
+    ai_extracted_skills: list[str] | None = None,
 ) -> None:
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM user_skills WHERE user_id = %s", (user_id,))
-        for raw in skill_tags.split(","):
-            skill = raw.strip()
-            if not skill:
-                continue
-            cur.execute(
-                "INSERT INTO user_skills (user_id, skill) VALUES (%s, %s)",
-                (user_id, skill),
-            )
+    replace_user_skills(
+        conn,
+        user_id=user_id,
+        skill_tags=skill_tags,
+        ai_extracted_skills=ai_extracted_skills,
+    )
 
+    with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO profiles (
@@ -122,15 +154,26 @@ def get_profile_by_user_id(conn: psycopg.Connection, user_id: int) -> tuple | No
 
 
 def list_user_skills_lower(conn: psycopg.Connection, user_id: int) -> list[str]:
-    """Return normalized (lowercased, trimmed) skills for the user."""
+    """Return normalized manual and AI-extracted skills for the user."""
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT lower(trim(skill))
-            FROM user_skills
-            WHERE user_id = %s AND skill IS NOT NULL AND trim(skill) <> ''
+            SELECT DISTINCT lower(trim(value)) AS skill
+            FROM (
+                SELECT skill AS value
+                FROM user_skills
+                WHERE user_id = %s
+
+                UNION ALL
+
+                SELECT unnest(ai_extracted_skills) AS value
+                FROM user_skills
+                WHERE user_id = %s AND ai_extracted_skills IS NOT NULL
+            ) AS skills
+            WHERE value IS NOT NULL AND trim(value) <> ''
+            ORDER BY skill
             """,
-            (user_id,),
+            (user_id, user_id),
         )
         rows = cur.fetchall()
     return [str(r[0]) for r in rows if r and r[0]]
@@ -162,3 +205,22 @@ def get_resume_file_by_user_id(
     if resume_file is None:
         return (None, None)
     return (bytes(resume_file), (resume_filename or "resume").replace('"', ""))
+
+
+def _split_skill_tags(skill_tags: str) -> list[str]:
+    return _dedupe_skills(raw.strip() for raw in skill_tags.split(","))
+
+
+def _dedupe_skills(skills: Iterable[object]) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for raw in skills:
+        skill = str(raw).strip()
+        if not skill:
+            continue
+        key = skill.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(skill)
+    return found

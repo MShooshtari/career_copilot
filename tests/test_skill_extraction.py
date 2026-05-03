@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from career_copilot.ingestion.skill_extraction import (
+    extract_ai_resume_skill_tags,
     extract_ai_skill_tags,
     extract_skill_tags,
     skill_specificity_score,
@@ -14,8 +15,10 @@ from career_copilot.ingestion.skill_extraction import (
 class _FakeCompletions:
     def __init__(self, content: str) -> None:
         self._content = content
+        self.last_kwargs = {}
 
     def create(self, **_kwargs):
+        self.last_kwargs = _kwargs
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=self._content))]
         )
@@ -23,7 +26,8 @@ class _FakeCompletions:
 
 class _FakeClient:
     def __init__(self, content: str) -> None:
-        self.chat = SimpleNamespace(completions=_FakeCompletions(content))
+        self.completions = _FakeCompletions(content)
+        self.chat = SimpleNamespace(completions=self.completions)
 
 
 def test_extract_skill_tags_finds_skills_from_explicit_sections() -> None:
@@ -133,3 +137,15 @@ def test_extract_ai_skill_tags_returns_empty_for_invalid_json() -> None:
     client = _FakeClient("not json")
 
     assert extract_ai_skill_tags("Job description", client=client) == []
+
+
+def test_extract_ai_resume_skill_tags_uses_resume_prompt_and_normalization() -> None:
+    client = _FakeClient('{"skills": ["python", "AWS", "team player", "communication"]}')
+
+    assert extract_ai_resume_skill_tags("Resume text", client=client) == [
+        "Python",
+        "AWS",
+    ]
+    messages = client.completions.last_kwargs["messages"]
+    assert "resumes" in messages[0]["content"]
+    assert "Resume:" in messages[1]["content"]
