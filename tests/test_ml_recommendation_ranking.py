@@ -53,7 +53,10 @@ def test_rerank_adds_diversity_and_exploration_slots() -> None:
         {
             "id": "python-1",
             "model_score": 0.99,
-            "metadata": {"title": "Senior Python Engineer", "ai_extracted_skills": "python, fastapi"},
+            "metadata": {
+                "title": "Senior Python Engineer",
+                "ai_extracted_skills": "python, fastapi",
+            },
         },
         {
             "id": "python-2",

@@ -123,7 +123,9 @@ def test_extract_ai_skill_tags_keeps_vague_skills_when_no_specific_skills_exist(
 
 def test_skill_specificity_score_demotes_vague_soft_skills() -> None:
     assert skill_specificity_score("Problem Solving") < skill_specificity_score("Python")
-    assert skill_specificity_score("Attention to Detail") < skill_specificity_score("Vector Databases")
+    assert skill_specificity_score("Attention to Detail") < skill_specificity_score(
+        "Vector Databases"
+    )
     assert skill_specificity_score("Interviewing") == 0.0
 
 

@@ -205,7 +205,9 @@ def extract_ai_skill_tags(
 
     openai_client = client or _get_openai_client()
     response = openai_client.chat.completions.create(
-        model=model or os.environ.get("OPENAI_SKILL_EXTRACTION_MODEL") or OPENAI_SKILL_EXTRACTION_MODEL,
+        model=model
+        or os.environ.get("OPENAI_SKILL_EXTRACTION_MODEL")
+        or OPENAI_SKILL_EXTRACTION_MODEL,
         messages=[
             {"role": "system", "content": _AI_EXTRACTION_SYSTEM},
             {
