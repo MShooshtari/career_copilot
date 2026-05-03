@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import copy
+import threading
+import time
 from typing import Annotated
 
 import psycopg
@@ -12,6 +15,7 @@ from career_copilot.app_config import templates
 from career_copilot.auth.current_user import CurrentUserId
 from career_copilot.constants import (
     RAG_DEFAULT_RECOMMENDATION_N_RESULTS,
+    RECOMMENDATIONS_CACHE_TTL_SECONDS,
     RECOMMENDATIONS_CANDIDATE_POOL_SIZE,
     RECOMMENDATIONS_DEFAULT_PAGE_SIZE,
     RECOMMENDATIONS_DIVERSITY_CATEGORY_PENALTY,
@@ -41,6 +45,54 @@ from career_copilot.rag.pgvector_rag import get_recommended_job_results
 router = APIRouter(tags=["recommendations"])
 
 
+class _TTLCache:
+    def __init__(self, *, ttl_seconds: int, max_entries: int) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._max_entries = max_entries
+        self._items: dict[tuple[int], tuple[float, list[dict]]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[int]) -> list[dict] | None:
+        now = time.time()
+        with self._lock:
+            item = self._items.get(key)
+            if item is None:
+                return None
+            expires_at, value = item
+            if now >= expires_at:
+                self._items.pop(key, None)
+                return None
+            return copy.deepcopy(value)
+
+    def set(self, key: tuple[int], value: list[dict]) -> None:
+        now = time.time()
+        with self._lock:
+            self._purge_expired(now)
+            if len(self._items) >= self._max_entries and key not in self._items:
+                oldest_key = min(self._items, key=lambda k: self._items[k][0])
+                self._items.pop(oldest_key, None)
+            self._items[key] = (now + self._ttl_seconds, copy.deepcopy(value))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+    def _purge_expired(self, now: float) -> None:
+        expired = [key for key, (expires_at, _value) in self._items.items() if now >= expires_at]
+        for key in expired:
+            self._items.pop(key, None)
+
+
+_online_recommendations_cache = _TTLCache(
+    ttl_seconds=RECOMMENDATIONS_CACHE_TTL_SECONDS,
+    max_entries=128,
+)
+
+
+def clear_recommendation_caches() -> None:
+    _online_recommendations_cache.clear()
+
+
 def _attach_feedback(
     jobs: list[dict],
     interactions_by_job_id: dict[int, set[str]],
@@ -66,6 +118,32 @@ def _drop_hidden_interactions(jobs: list[dict]) -> list[dict]:
     ]
 
 
+def _online_recommendation_jobs(conn: psycopg.Connection, user_id: int) -> list[dict]:
+    cache_key = (int(user_id),)
+    cached = _online_recommendations_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    raw = get_recommended_job_results(
+        conn,
+        user_id=user_id,
+        n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
+    )
+    raw = score_candidates_by_distance(raw)
+    raw = rerank_with_diversity_and_exploration(
+        raw,
+        window_size=RECOMMENDATIONS_RERANK_WINDOW_SIZE,
+        user_id=user_id,
+        diversity_penalty=RECOMMENDATIONS_DIVERSITY_SIMILARITY_PENALTY,
+        category_penalty=RECOMMENDATIONS_DIVERSITY_CATEGORY_PENALTY,
+        exploration_rate=RECOMMENDATIONS_EXPLORATION_RATE,
+    )
+    id_map = resolve_job_ids(conn, raw)
+    jobs_online = format_recommendation_jobs(raw, id_map)
+    _online_recommendations_cache.set(cache_key, jobs_online)
+    return jobs_online
+
+
 @router.get("/recommendations", response_class=HTMLResponse)
 async def get_recommendations(
     request: Request,
@@ -88,22 +166,7 @@ async def get_recommendations(
     _attach_feedback(jobs_added, user_interactions)
     jobs_added = _drop_hidden_interactions(jobs_added)
 
-    raw = get_recommended_job_results(
-        conn,
-        user_id=user_id,
-        n_results=min(RECOMMENDATIONS_CANDIDATE_POOL_SIZE, RAG_DEFAULT_RECOMMENDATION_N_RESULTS),
-    )
-    raw = score_candidates_by_distance(raw)
-    raw = rerank_with_diversity_and_exploration(
-        raw,
-        window_size=RECOMMENDATIONS_RERANK_WINDOW_SIZE,
-        user_id=user_id,
-        diversity_penalty=RECOMMENDATIONS_DIVERSITY_SIMILARITY_PENALTY,
-        category_penalty=RECOMMENDATIONS_DIVERSITY_CATEGORY_PENALTY,
-        exploration_rate=RECOMMENDATIONS_EXPLORATION_RATE,
-    )
-    id_map = resolve_job_ids(conn, raw)
-    jobs_online = format_recommendation_jobs(raw, id_map)
+    jobs_online = _online_recommendation_jobs(conn, user_id)
     online_interactions = get_job_interactions_map(
         conn,
         user_id,
@@ -169,6 +232,7 @@ async def post_job_feedback(
 
     set_job_feedback(conn, user_id, job_id, job_source, feedback)
     conn.commit()
+    clear_recommendation_caches()
     conn.close()
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JSONResponse(content={"ok": True, "feedback": feedback})
@@ -206,6 +270,7 @@ async def get_apply_on_source(
 
     set_job_feedback(conn, user_id, job_id, job_source, "applied")
     conn.commit()
+    clear_recommendation_caches()
     conn.close()
 
     target_url = job.get("url") or "/applications"

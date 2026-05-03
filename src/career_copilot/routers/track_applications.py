@@ -23,6 +23,7 @@ from career_copilot.database.jobs import (
     remove_job_feedback,
     set_job_feedback,
 )
+from career_copilot.routers.recommendations import clear_recommendation_caches
 from career_copilot.schemas import TrackApplicationsChatRequest
 
 router = APIRouter(prefix="/applications", tags=["track_applications"])
@@ -176,6 +177,7 @@ async def post_delete_feedback_job(
 
     set_job_feedback(conn, user_id, job_id, job_source, "deleted")
     conn.commit()
+    clear_recommendation_caches()
     conn.close()
     return RedirectResponse(
         url=f"/applications?applied_page={applied_page}&disliked_page={disliked_page}",
@@ -206,6 +208,7 @@ async def post_restore_feedback_job(
 
     remove_job_feedback(conn, user_id, job_id, job_source, feedback)
     conn.commit()
+    clear_recommendation_caches()
     conn.close()
     return RedirectResponse(
         url=f"/applications?applied_page={applied_page}&disliked_page={disliked_page}",
