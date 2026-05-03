@@ -54,6 +54,7 @@ def _row_to_job_hit(
         salary_max,
         description,
         skills,
+        extracted_skills,
         posted_at,
         url,
         distance,
@@ -68,6 +69,7 @@ def _row_to_job_hit(
         salary_max=salary_max,
         description=description,
         skills=list(skills) if skills else None,
+        extracted_skills=list(extracted_skills) if extracted_skills else None,
         posted_at=posted_at,
         url=url,
         raw={},
@@ -158,7 +160,8 @@ def vector_search_jobs(
         params["exclude_user_id"] = exclude_interacted_by_user
     sql = f"""
         SELECT j.id, j.source, j.source_id, j.title, j.company, j.location,
-               j.salary_min, j.salary_max, j.description, j.skills, j.posted_at, j.url,
+               j.salary_min, j.salary_max, j.description, j.skills, j.extracted_skills,
+               j.posted_at, j.url,
                (e.embedding <=> %(q)s::vector) AS distance
         FROM jobs_embeddings e
         JOIN jobs j ON j.id = e.job_id

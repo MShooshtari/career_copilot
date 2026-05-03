@@ -55,6 +55,13 @@ def test_job_to_document_joins_sections() -> None:
     assert "Skills: Python, SQL" in doc
 
 
+def test_job_to_document_includes_extracted_skills_without_duplicates() -> None:
+    j = _nj(skills=["Python"], extracted_skills=["Python", "CI/CD"])
+
+    assert "Skills: Python, CI/CD" in job_to_document(j)
+    assert job_to_metadata(j)["extracted_skills"] == "Python, CI/CD"
+
+
 def test_job_to_document_truncates_over_max_chars() -> None:
     long_desc = "x" * (JOB_DOC_MAX_CHARS + 50)
     j = _nj(title="T", description=long_desc)

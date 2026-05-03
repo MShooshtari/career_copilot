@@ -8,6 +8,17 @@ from career_copilot.ingestion.common import NormalizedJob
 JOB_DOC_MAX_CHARS = RAG_JOB_DOC_MAX_CHARS
 
 
+def _combined_skills(job: NormalizedJob) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for skill in (job.skills or []) + (job.extracted_skills or []):
+        key = skill.casefold()
+        if key not in seen:
+            seen.add(key)
+            out.append(skill)
+    return out
+
+
 def job_to_document(job: NormalizedJob, max_chars: int = JOB_DOC_MAX_CHARS) -> str:
     """Build a single searchable document string from a normalized job (truncated for API limit)."""
     parts = []
@@ -19,8 +30,9 @@ def job_to_document(job: NormalizedJob, max_chars: int = JOB_DOC_MAX_CHARS) -> s
         parts.append(f"Location: {job.location}")
     if job.description:
         parts.append(job.description)
-    if job.skills:
-        parts.append("Skills: " + ", ".join(job.skills))
+    skills = _combined_skills(job)
+    if skills:
+        parts.append("Skills: " + ", ".join(skills))
     doc = "\n\n".join(parts) if parts else ""
     if len(doc) > max_chars:
         doc = doc[:max_chars].rstrip() + "…"
@@ -44,8 +56,11 @@ def job_to_metadata(job: NormalizedJob) -> dict[str, str | int | float | bool]:
         meta["salary_max"] = job.salary_max
     if job.posted_at is not None:
         meta["posted_at"] = job.posted_at.isoformat()
-    if job.skills:
-        meta["skills"] = ", ".join(job.skills)
+    skills = _combined_skills(job)
+    if skills:
+        meta["skills"] = ", ".join(skills)
+    if job.extracted_skills:
+        meta["extracted_skills"] = ", ".join(job.extracted_skills)
     return meta
 
 

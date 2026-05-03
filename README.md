@@ -10,7 +10,7 @@
   - **Ranking**: score candidates with an optional MLflow-configured model using relevance, similarity, and freshness features.
   - **Policy reranking**: diversify the final window by penalizing jobs that look too similar to already selected jobs and reserve a small exploration slice for semi-random candidates.
   - **Tuning**: adjust recommendation knobs (candidate pool size, top-X window, default page sizes) in `src/career_copilot/constants.py`.
-- **Job detail** — View full job description, skills, and salary
+- **Job detail** — View full job description, source skills, extracted skills, and salary
 - **Add job agent** — Paste a job URL or raw text; the agent extracts title, company, location, salary, description, and skills. Optional web search (Tavily or SerpAPI) fills in missing fields. Save the result to **My jobs**.
 - **My jobs** — View, edit, and manage jobs you’ve added or saved from recommendations
 - **Resume improvement agent** — For a chosen job: RAG-backed chat (similar jobs + similar resumes) and one-click PDF export of the improved resume. The agent can call tools to pull extra similar jobs/resumes from the vector store when it decides more context is useful.
@@ -80,8 +80,12 @@ psql -d career_copilot -f sql/001_create_jobs.sql
 # Incremental embedding updates (queue + trigger)
 psql -d career_copilot -f sql/004_jobs_embedding_queue.sql
 
-# Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured)
+# Ingest jobs from RemoteOK, Remotive, Arbeitnow, (and Adzuna if configured).
+# Ingestion also extracts normalized skill tags into jobs.extracted_skills.
 python scripts/ingestion/run.py
+
+# Optional: backfill extracted skills for jobs that already existed before this column was added
+python scripts/job_skills_backfill/run.py
 
 # Compute embeddings (two options):
 # 1) One-shot backfill: Postgres jobs → embeddings in jobs_embeddings (requires OPENAI_API_KEY)
@@ -224,6 +228,8 @@ Then open `http://127.0.0.1:5000` and look for:
 | Arbeitnow  | No     | Europe-focused            |
 | Adzuna     | Yes    | Set `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env` for more jobs |
 
+Ingestion stores both source-provided `skills` and dynamically extracted `extracted_skills` from job descriptions. Existing rows can be backfilled with `python scripts/job_skills_backfill/run.py`; new rows are populated by `python scripts/ingestion/run.py`.
+
 To refresh jobs on a schedule, run `python scripts/ingestion/scheduler.py` (default: every 6 hours; edit the script to change the interval). Re-run `python scripts/job_embeddings_backfill/run.py` after ingestion to refresh **job embeddings** in Postgres (pgvector).
 
 ## Project structure
@@ -239,7 +245,7 @@ career_copilot/
 │   ├── database/           # db, schema, profiles, jobs, applications, deps
 │   ├── rag/                # pgvector RAG (pgvector_rag, embedding, job_document)
 │   ├── ml/                 # Ranking datasets (ranking_dataset, dataset_store), create_ranking_dataset, train_logreg_mlflow
-│   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna)
+│   ├── ingestion/          # Job APIs (RemoteOK, Remotive, Arbeitnow, Adzuna) and skill extraction
 │   ├── agents/             # resume_improvement, interview_preparation, add_job, track_applications, application_memory
 │   ├── resume_io.py        # Resume text extraction (PDF)
 │   └── resume_pdf.py       # PDF generation for improved resume
@@ -261,6 +267,8 @@ career_copilot/
 │   │   ├── Dockerfile      # Incremental worker image (drains queue → upserts embeddings)
 │   │   ├── requirements.txt # Pip deps for that image only
 │   │   └── run.py          # Drain jobs_embedding_queue → upsert jobs_embeddings
+│   ├── job_skills_backfill/
+│   │   └── run.py          # Existing jobs → extracted skill tags in jobs.extracted_skills
 │   ├── run_web.py          # Start uvicorn
 │   ├── repair_descriptions.py
 │   └── explore_embeddings.py
@@ -283,7 +291,7 @@ pytest tests/ -v
 PYTHONPATH=src pytest tests/ -v
 ```
 
-There are unit tests for RAG job-document helpers (`tests/test_job_document.py`) and a small contract test that pgvector DDL in `init_schema` still interpolates `EMBEDDING_VECTOR_DIMENSIONS` (`tests/test_embedding_schema_contract.py`), so schema and embedding config stay aligned.
+There are unit tests for RAG job-document helpers (`tests/test_job_document.py`), dynamic skill extraction (`tests/test_skill_extraction.py`), and a small contract test that pgvector DDL in `init_schema` still interpolates `EMBEDDING_VECTOR_DIMENSIONS` (`tests/test_embedding_schema_contract.py`), so schema and embedding config stay aligned.
 
 ### Linting and formatting
 
