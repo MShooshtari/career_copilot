@@ -4,10 +4,12 @@ Backfill jobs.extracted_skills and jobs.ai_extracted_skills from existing job de
 Run after the jobs table has the extracted_skills column:
 
   python scripts/job_skills_backfill/run.py
+  python scripts/job_skills_backfill/run.py --skip-existing-ai-extracted-skills
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -32,6 +34,15 @@ WHERE description IS NOT NULL AND btrim(description) <> ''
 ORDER BY id;
 """
 
+LOAD_JOBS_MISSING_AI_SKILLS_SQL = """
+SELECT id, description, skills
+FROM jobs
+WHERE description IS NOT NULL
+  AND btrim(description) <> ''
+  AND (ai_extracted_skills IS NULL OR array_length(ai_extracted_skills, 1) IS NULL)
+ORDER BY id;
+"""
+
 UPDATE_SQL = """
 UPDATE jobs
 SET extracted_skills = %s,
@@ -41,7 +52,20 @@ WHERE id = %s;
 """
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Backfill jobs.extracted_skills and jobs.ai_extracted_skills."
+    )
+    parser.add_argument(
+        "--skip-existing-ai-extracted-skills",
+        action="store_true",
+        help="Skip jobs where ai_extracted_skills already contains at least one skill.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     load_env()
     target_db = os.environ.get("POSTGRES_DB") or "career_copilot"
     processed = 0
@@ -50,7 +74,11 @@ def main() -> None:
     with connect(dbname=target_db) as conn:
         init_schema(conn)
         with conn.cursor() as cur:
-            cur.execute(LOAD_JOBS_SQL)
+            cur.execute(
+                LOAD_JOBS_MISSING_AI_SKILLS_SQL
+                if args.skip_existing_ai_extracted_skills
+                else LOAD_JOBS_SQL
+            )
             rows = cur.fetchall()
 
         with conn.cursor() as cur:
