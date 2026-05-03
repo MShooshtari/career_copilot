@@ -152,11 +152,12 @@
                     <label for="salary_at_least">Salary at least (either min or max)</label>
                     <input type="number" id="salary_at_least" name="salary_at_least" min="0" placeholder="optional" />
                 </div>
-                <div style="display:flex;align-items:flex-end;">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                        <input type="checkbox" id="remote_only" name="remote_only" />
-                        Remote-friendly (text match)
-                    </label>
+                <div>
+                    <label for="remote_mode">Remote preference</label>
+                    <select id="remote_mode" name="remote_mode">
+                        <option value="prioritize_remote" selected>Prioritize remote-friendly jobs</option>
+                        <option value="include_remote">Include remote-friendly jobs</option>
+                    </select>
                 </div>
             </form>
             <div class="btn-row">
@@ -242,7 +243,7 @@
             if (src) p.set("source_equals", src);
             const sal = document.getElementById("salary_at_least").value.trim();
             if (sal) p.set("salary_at_least", sal);
-            if (document.getElementById("remote_only").checked) p.set("remote_only", "true");
+            if (document.getElementById("remote_mode").value === "prioritize_remote") p.set("remote_only", "true");
             p.set("include_rag", includeRag ? "true" : "false");
             return p.toString();
         }
