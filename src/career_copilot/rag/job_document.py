@@ -11,7 +11,7 @@ JOB_DOC_MAX_CHARS = RAG_JOB_DOC_MAX_CHARS
 def _analysis_skills(job: NormalizedJob) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
-    for skill in job.extracted_skills or []:
+    for skill in [*(job.ai_extracted_skills or []), *(job.extracted_skills or [])]:
         key = skill.casefold()
         if key not in seen:
             seen.add(key)

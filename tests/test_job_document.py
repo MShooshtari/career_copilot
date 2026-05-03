@@ -63,6 +63,16 @@ def test_job_to_document_includes_extracted_skills_without_duplicates() -> None:
     assert job_to_metadata(j)["extracted_skills"] == "Python, CI/CD"
 
 
+def test_job_to_document_prefers_ai_extracted_skills() -> None:
+    j = _nj(
+        extracted_skills=["Python", "SQL"],
+        ai_extracted_skills=["Data Modeling", "Python"],
+    )
+
+    assert "Skills: Data Modeling, Python, SQL" in job_to_document(j)
+    assert job_to_metadata(j)["extracted_skills"] == "Data Modeling, Python, SQL"
+
+
 def test_job_to_document_ignores_source_skills_for_analysis_text() -> None:
     j = _nj(skills=["SourceTag"], extracted_skills=None)
 

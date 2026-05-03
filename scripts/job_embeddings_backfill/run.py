@@ -27,7 +27,7 @@ from career_copilot.rag.pgvector_rag import index_jobs_into_pgvector  # noqa: E4
 
 LOAD_JOBS_SQL = """
 SELECT id, source, source_id, title, company, location,
-       salary_min, salary_max, description, skills, extracted_skills,
+       salary_min, salary_max, description, skills, extracted_skills, ai_extracted_skills,
        posted_at, url, raw
 FROM jobs
 ORDER BY id;
@@ -47,6 +47,7 @@ def _row_to_normalized_job(row: tuple) -> NormalizedJob:
         description,
         skills,
         extracted_skills,
+        ai_extracted_skills,
         posted_at,
         url,
         raw,
@@ -63,6 +64,7 @@ def _row_to_normalized_job(row: tuple) -> NormalizedJob:
         description=description,
         skills=list(skills) if skills else None,
         extracted_skills=list(extracted_skills) if extracted_skills else None,
+        ai_extracted_skills=list(ai_extracted_skills) if ai_extracted_skills else None,
         posted_at=posted_at,
         url=url,
         raw=raw_dict,

@@ -54,7 +54,9 @@ def build_resume_improvement_context(
         cur.execute(
             """
             SELECT id, source, source_id, title, company, location,
-                   salary_min, salary_max, description, skills, extracted_skills, posted_at, url
+                   salary_min, salary_max, description, skills,
+                   COALESCE(ai_extracted_skills, extracted_skills) AS extracted_skills,
+                   posted_at, url
             FROM jobs WHERE id = %s
             """,
             (job_id,),

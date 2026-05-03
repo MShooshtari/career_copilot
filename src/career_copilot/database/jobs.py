@@ -71,7 +71,8 @@ def get_job_by_id(conn: psycopg.Connection, job_id: int) -> tuple | None:
         cur.execute(
             """
             SELECT id, source, source_id, title, company, location,
-                   salary_min, salary_max, description, skills, extracted_skills,
+                   salary_min, salary_max, description, skills,
+                   COALESCE(ai_extracted_skills, extracted_skills) AS extracted_skills,
                    posted_at, url
             FROM jobs
             WHERE id = %s

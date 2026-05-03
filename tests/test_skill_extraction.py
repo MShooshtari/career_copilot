@@ -2,7 +2,24 @@
 
 from __future__ import annotations
 
-from career_copilot.ingestion.skill_extraction import extract_skill_tags
+from types import SimpleNamespace
+
+from career_copilot.ingestion.skill_extraction import extract_ai_skill_tags, extract_skill_tags
+
+
+class _FakeCompletions:
+    def __init__(self, content: str) -> None:
+        self._content = content
+
+    def create(self, **_kwargs):
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=self._content))]
+        )
+
+
+class _FakeClient:
+    def __init__(self, content: str) -> None:
+        self.chat = SimpleNamespace(completions=_FakeCompletions(content))
 
 
 def test_extract_skill_tags_finds_skills_from_explicit_sections() -> None:
@@ -65,3 +82,21 @@ def test_extract_skill_tags_dedupes_case_variants_after_filtering() -> None:
     text = "Skills: python, Python, PYTHON, SQL."
 
     assert extract_skill_tags(text) == ["Python", "SQL"]
+
+
+def test_extract_ai_skill_tags_normalizes_and_filters_model_output() -> None:
+    client = _FakeClient(
+        '{"skills": ["python", "engineering", "CPR certification", "team player", "SQL"]}'
+    )
+
+    assert extract_ai_skill_tags("Job description", client=client) == [
+        "Python",
+        "CPR",
+        "SQL",
+    ]
+
+
+def test_extract_ai_skill_tags_returns_empty_for_invalid_json() -> None:
+    client = _FakeClient("not json")
+
+    assert extract_ai_skill_tags("Job description", client=client) == []

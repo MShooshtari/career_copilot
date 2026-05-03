@@ -86,7 +86,7 @@ def test_build_market_analysis_report_keeps_include_rag_in_cache_key() -> None:
     assert cohort.call_count == 2
 
 
-def test_aggregates_top_skills_use_extracted_skills_column() -> None:
+def test_aggregates_top_skills_prefer_ai_extracted_skills_column() -> None:
     conn = MagicMock()
     cur = conn.cursor.return_value.__enter__.return_value
     cur.fetchall.side_effect = [
@@ -100,6 +100,7 @@ def test_aggregates_top_skills_use_extracted_skills_column() -> None:
         aggregates = service._aggregates_for_cohort(conn, [1, 2])
 
     top_skills_sql = cur.execute.call_args_list[1].args[0]
+    assert "j.ai_extracted_skills" in top_skills_sql
     assert "j.extracted_skills" in top_skills_sql
     assert "j.skills" not in top_skills_sql
     assert aggregates["top_skills"] == [{"skill": "python", "count": 2}]

@@ -7,8 +7,11 @@ language so it can work across job families instead of only technical roles.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from collections.abc import Iterable
+from typing import Any
 
 _SECTION_HEADING_RE = re.compile(
     r"""
@@ -97,6 +100,7 @@ _GENERIC_CANDIDATES = {
     "responsibilities",
     "salary",
     "senior",
+    "software",
     "team player",
     "work experience",
 }
@@ -131,6 +135,18 @@ _STOP_SUFFIXES = (
 )
 
 _LOWERCASE_WORDS = {"and", "for", "in", "of", "on", "or", "the", "to", "with"}
+OPENAI_SKILL_EXTRACTION_MODEL = "gpt-4o-mini"
+
+_AI_EXTRACTION_SYSTEM = """You extract concise, specific skill tags from job descriptions.
+Return a JSON object with a single key "skills" whose value is an array of strings.
+
+Rules:
+- Include concrete skills, tools, technologies, certifications, methods, domain capabilities, and job-specific competencies.
+- Exclude generic job words, seniority, benefits, degree requirements, schedules, work mode, location, salary, and vague traits.
+- Do not include broad terms such as engineering, development, code, communication, team player, required, preferred, responsibilities, or job description.
+- Keep each tag short, usually 1-4 words.
+- Return at most the requested number of tags.
+- If no specific skill tags are present, return {"skills": []}."""
 
 
 def extract_skill_tags(
@@ -155,11 +171,77 @@ def extract_skill_tags(
     return found
 
 
+def extract_ai_skill_tags(
+    text: str | None,
+    *,
+    max_tags: int = 30,
+    model: str | None = None,
+    client: Any | None = None,
+) -> list[str]:
+    """Use OpenAI to extract specific skill tags, then apply local tag normalization."""
+    if not text or not text.strip():
+        return []
+
+    openai_client = client or _get_openai_client()
+    response = openai_client.chat.completions.create(
+        model=model or os.environ.get("OPENAI_SKILL_EXTRACTION_MODEL") or OPENAI_SKILL_EXTRACTION_MODEL,
+        messages=[
+            {"role": "system", "content": _AI_EXTRACTION_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"Extract up to {max_tags} specific skill tags from this job description.\n\n"
+                    f"Generic examples to exclude: {', '.join(sorted(_GENERIC_CANDIDATES))}\n\n"
+                    f"Job description:\n{text.strip()[:30000]}"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.0,
+    )
+    raw = (response.choices[0].message.content or "").strip()
+    candidates = _parse_ai_skill_response(raw)
+
+    found: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        _append_skill(found, seen, candidate, max_tags=max_tags)
+    return found
+
+
 def normalize_skill_tag(value: str | None) -> str | None:
     """Normalize and reject low-value skill tags from any source."""
     if value is None:
         return None
     return _clean_candidate(value)
+
+
+def _get_openai_client() -> Any:
+    from career_copilot.database.db import load_env
+
+    load_env()
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is not set; cannot extract AI skill tags.")
+
+    from openai import OpenAI
+
+    return OpenAI()
+
+
+def _parse_ai_skill_response(raw: str) -> list[str]:
+    if "```" in raw:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+        if match:
+            raw = match.group(1).strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+
+    skills = data.get("skills") if isinstance(data, dict) else None
+    if not isinstance(skills, list):
+        return []
+    return [skill for skill in skills if isinstance(skill, str)]
 
 
 def _extract_text_candidates(text: str) -> list[str]:
