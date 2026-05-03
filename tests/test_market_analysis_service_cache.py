@@ -178,7 +178,7 @@ def test_filtered_top_skills_demotes_vague_terms_below_specific_skills() -> None
 
     filtered = service._filtered_top_skills(raw)
 
-    assert set(item["skill"] for item in filtered[:2]) == {"python", "vector databases"}
+    assert {item["skill"] for item in filtered[:2]} == {"python", "vector databases"}
     assert {item["skill"] for item in filtered} >= {"problem solving", "attention to detail"}
 
 
