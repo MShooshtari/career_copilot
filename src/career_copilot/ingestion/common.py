@@ -78,6 +78,7 @@ class NormalizedJob:
     posted_at: datetime | None
     url: str | None
     raw: dict[str, Any]
+    extracted_skills: list[str] | None = None
     # Set when indexing from Postgres (RAG uses jobs.id as key).
     db_id: int | None = None
 

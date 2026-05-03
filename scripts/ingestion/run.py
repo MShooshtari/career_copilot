@@ -54,16 +54,17 @@ from career_copilot.ingestion.remotive_api import (  # noqa: E402
     fetch_remotive_jobs,
     normalize_remotive_job,
 )
+from career_copilot.ingestion.skill_extraction import extract_skill_tags  # noqa: E402
 
 UPSERT_SQL = """
 INSERT INTO jobs (
   source, source_id, title, company, location,
-  salary_min, salary_max, description, skills,
+  salary_min, salary_max, description, skills, extracted_skills,
   posted_at, url, raw, updated_at
 )
 VALUES (
   %(source)s, %(source_id)s, %(title)s, %(company)s, %(location)s,
-  %(salary_min)s, %(salary_max)s, %(description)s, %(skills)s,
+  %(salary_min)s, %(salary_max)s, %(description)s, %(skills)s, %(extracted_skills)s,
   %(posted_at)s, %(url)s, %(raw)s, now()
 )
 ON CONFLICT (source, source_id) WHERE source_id IS NOT NULL
@@ -75,6 +76,7 @@ DO UPDATE SET
   salary_max = EXCLUDED.salary_max,
   description = EXCLUDED.description,
   skills = EXCLUDED.skills,
+  extracted_skills = EXCLUDED.extracted_skills,
   posted_at = EXCLUDED.posted_at,
   url = EXCLUDED.url,
   raw = EXCLUDED.raw,
@@ -192,6 +194,7 @@ def main() -> None:
             for job in normalized:
                 if job.source_id is None:
                     continue
+                extracted_skills = extract_skill_tags(job.description)
                 cur.execute(
                     UPSERT_SQL,
                     {
@@ -204,6 +207,7 @@ def main() -> None:
                         "salary_max": job.salary_max,
                         "description": job.description,
                         "skills": job.skills,
+                        "extracted_skills": extracted_skills or None,
                         "posted_at": job.posted_at,
                         "url": job.url,
                         "raw": Json(job.raw),

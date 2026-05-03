@@ -104,6 +104,7 @@ def init_schema(conn: psycopg.Connection) -> None:
                 salary_max INTEGER NULL,
                 description TEXT NULL,
                 skills TEXT[] NULL,
+                extracted_skills TEXT[] NULL,
                 posted_at TIMESTAMPTZ NULL,
                 url TEXT NULL,
                 raw JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -112,6 +113,13 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
+        try:
+            cur.execute("ALTER TABLE jobs ADD COLUMN extracted_skills TEXT[]")
+            conn.commit()
+        except psycopg.ProgrammingError as e:
+            conn.rollback()
+            if e.sqlstate != "42701":  # duplicate_column
+                raise
         # Idempotency + common query indexes (same intent as sql/001_create_jobs.sql).
         cur.execute(
             """
@@ -128,6 +136,9 @@ def init_schema(conn: psycopg.Connection) -> None:
             """
         )
         cur.execute("CREATE INDEX IF NOT EXISTS jobs_posted_at_idx ON jobs (posted_at DESC);")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS jobs_extracted_skills_gin_idx ON jobs USING GIN (extracted_skills);"
+        )
         conn.commit()
 
         # pgvector: job embeddings in jobs_embeddings; user profiles in user_embeddings

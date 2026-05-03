@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 
   description TEXT NULL,
   skills TEXT[] NULL,
+  extracted_skills TEXT[] NULL,
 
   posted_at TIMESTAMPTZ NULL,
   url TEXT NULL,
@@ -21,6 +22,9 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS extracted_skills TEXT[] NULL;
 
 -- Keep the table idempotent across re-ingests.
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_source_id_uniq
@@ -32,3 +36,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_url_uniq
   WHERE url IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS jobs_posted_at_idx ON jobs (posted_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_extracted_skills_gin_idx ON jobs USING GIN (extracted_skills);
