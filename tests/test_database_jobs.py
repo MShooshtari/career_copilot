@@ -75,11 +75,14 @@ def _job_row(
     salary_max=200,
     description="Do stuff",
     skills=None,
+    extracted_skills=None,
     posted_at=None,
     url="https://example.com",
 ) -> tuple:
     if skills is None:
-        skills = ["Python", "SQL"]
+        skills = ["SourceTag"]
+    if extracted_skills is None:
+        extracted_skills = ["Python", "SQL"]
     if posted_at is None:
         posted_at = datetime(2025, 1, 15)
     return (
@@ -93,6 +96,7 @@ def _job_row(
         salary_max,
         description,
         skills,
+        extracted_skills,
         posted_at,
         url,
     )
@@ -110,8 +114,14 @@ def test_row_to_job_dict_full() -> None:
     assert d["url"] == "https://example.com"
 
 
+def test_row_to_job_dict_uses_extracted_skills() -> None:
+    row = _job_row(skills=["SourceTag"], extracted_skills=["Python", "SQL"])
+    d = row_to_job_dict(row)
+    assert d["skills"] == ["Python", "SQL"]
+
+
 def test_row_to_job_dict_none_fields() -> None:
-    row = (1, None, None, None, None, None, None, None, None, None, None, None)
+    row = (1, None, None, None, None, None, None, None, None, None, None, None, None)
     d = row_to_job_dict(row)
     assert d["title"] == "Job"
     assert d["company"] == ""
@@ -192,7 +202,13 @@ def test_format_recommendation_jobs_snippet_truncated() -> None:
 def test_format_recommendation_jobs_skills_from_metadata() -> None:
     raw = [
         {
-            "metadata": {"source": "x", "source_id": "1", "title": "J", "skills": "Python, Go"},
+            "metadata": {
+                "source": "x",
+                "source_id": "1",
+                "title": "J",
+                "skills": "SourceTag",
+                "extracted_skills": "Python, Go",
+            },
         }
     ]
     id_map = {("x", "1"): 1}

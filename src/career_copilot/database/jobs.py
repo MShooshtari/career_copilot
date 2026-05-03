@@ -71,7 +71,7 @@ def get_job_by_id(conn: psycopg.Connection, job_id: int) -> tuple | None:
         cur.execute(
             """
             SELECT id, source, source_id, title, company, location,
-                   salary_min, salary_max, description, skills,
+                   salary_min, salary_max, description, skills, extracted_skills,
                    posted_at, url
             FROM jobs
             WHERE id = %s
@@ -93,7 +93,8 @@ def row_to_job_dict(row: tuple) -> dict:
         salary_min,
         salary_max,
         description,
-        skills,
+        _skills,
+        extracted_skills,
         posted_at,
         url,
     ) = row
@@ -107,7 +108,7 @@ def row_to_job_dict(row: tuple) -> dict:
         "salary_min": salary_min,
         "salary_max": salary_max,
         "description": description or "",
-        "skills": list(skills) if skills else [],
+        "skills": list(extracted_skills) if extracted_skills else [],
         "posted_at": posted_at,
         "url": url or "",
     }
@@ -511,7 +512,9 @@ def format_recommendation_jobs(
                 "distance": r.get("distance"),
                 "salary_min": meta.get("salary_min"),
                 "salary_max": meta.get("salary_max"),
-                "skills": (meta.get("skills") or "").split(",") if meta.get("skills") else [],
+                "skills": (meta.get("extracted_skills") or "").split(",")
+                if meta.get("extracted_skills")
+                else [],
             }
         )
     return jobs_for_template

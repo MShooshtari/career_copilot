@@ -85,6 +85,7 @@ def test_apply_on_source_records_applied_and_redirects_to_job_url(client: TestCl
         None,
         None,
         "Description",
+        ["SourceTag"],
         ["Python"],
         None,
         "https://example.com/apply",
