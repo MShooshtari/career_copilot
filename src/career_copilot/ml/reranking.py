@@ -43,7 +43,8 @@ def _metadata(candidate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _skills(candidate: dict[str, Any]) -> set[str]:
-    raw = _metadata(candidate).get("skills")
+    meta = _metadata(candidate)
+    raw = meta.get("ai_extracted_skills") or meta.get("extracted_skills") or meta.get("skills")
     if isinstance(raw, str):
         return {s.strip().lower() for s in raw.split(",") if s.strip()}
     if isinstance(raw, list):

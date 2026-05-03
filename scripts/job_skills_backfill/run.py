@@ -1,5 +1,5 @@
 """
-Backfill jobs.extracted_skills from existing job descriptions.
+Backfill jobs.extracted_skills and jobs.ai_extracted_skills from existing job descriptions.
 
 Run after the jobs table has the extracted_skills column:
 
@@ -20,7 +20,10 @@ if str(SRC_DIR) not in sys.path:
 
 from career_copilot.database.db import connect, load_env  # noqa: E402
 from career_copilot.database.schema import init_schema  # noqa: E402
-from career_copilot.ingestion.skill_extraction import extract_skill_tags  # noqa: E402
+from career_copilot.ingestion.skill_extraction import (  # noqa: E402
+    extract_ai_skill_tags,
+    extract_skill_tags,
+)
 
 LOAD_JOBS_SQL = """
 SELECT id, description, skills
@@ -32,6 +35,7 @@ ORDER BY id;
 UPDATE_SQL = """
 UPDATE jobs
 SET extracted_skills = %s,
+    ai_extracted_skills = %s,
     updated_at = now()
 WHERE id = %s;
 """
@@ -50,9 +54,22 @@ def main() -> None:
             rows = cur.fetchall()
 
         with conn.cursor() as cur:
+            ai_skill_extraction_available = True
             for job_id, description, skills in rows:
                 extracted_skills = extract_skill_tags(description, source_skills=skills)
-                cur.execute(UPDATE_SQL, (extracted_skills or None, job_id))
+                ai_extracted_skills = None
+                if ai_skill_extraction_available:
+                    try:
+                        ai_extracted_skills = extract_ai_skill_tags(description)
+                    except RuntimeError as e:
+                        print(f"AI skill extraction disabled: {e}")
+                        ai_skill_extraction_available = False
+                    except Exception as e:
+                        print(f"AI skill extraction failed for job_id={job_id}: {e}")
+                cur.execute(
+                    UPDATE_SQL,
+                    (extracted_skills or None, ai_extracted_skills or None, job_id),
+                )
                 processed += 1
                 updated += int(bool(extracted_skills))
                 if processed % 100 == 0:

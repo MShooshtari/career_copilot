@@ -72,6 +72,11 @@ def get_job_by_id(conn: psycopg.Connection, job_id: int) -> tuple | None:
             """
             SELECT id, source, source_id, title, company, location,
                    salary_min, salary_max, description, skills,
+                   COALESCE(
+                       NULLIF(ai_extracted_skills, ARRAY[]::text[]),
+                       NULLIF(extracted_skills, ARRAY[]::text[]),
+                       NULLIF(skills, ARRAY[]::text[])
+                   ) AS extracted_skills,
                    posted_at, url
             FROM jobs
             WHERE id = %s
@@ -93,7 +98,8 @@ def row_to_job_dict(row: tuple) -> dict:
         salary_min,
         salary_max,
         description,
-        skills,
+        _skills,
+        extracted_skills,
         posted_at,
         url,
     ) = row
@@ -107,7 +113,7 @@ def row_to_job_dict(row: tuple) -> dict:
         "salary_min": salary_min,
         "salary_max": salary_max,
         "description": description or "",
-        "skills": list(skills) if skills else [],
+        "skills": list(extracted_skills) if extracted_skills else [],
         "posted_at": posted_at,
         "url": url or "",
     }
@@ -511,7 +517,16 @@ def format_recommendation_jobs(
                 "distance": r.get("distance"),
                 "salary_min": meta.get("salary_min"),
                 "salary_max": meta.get("salary_max"),
-                "skills": (meta.get("skills") or "").split(",") if meta.get("skills") else [],
+                "skills": _metadata_skills(meta),
             }
         )
     return jobs_for_template
+
+
+def _metadata_skills(meta: dict) -> list[str]:
+    raw = meta.get("ai_extracted_skills") or meta.get("extracted_skills") or meta.get("skills")
+    if isinstance(raw, str):
+        return raw.split(",") if raw else []
+    if isinstance(raw, list):
+        return [str(s) for s in raw if str(s)]
+    return []

@@ -54,7 +54,13 @@ def build_resume_improvement_context(
         cur.execute(
             """
             SELECT id, source, source_id, title, company, location,
-                   salary_min, salary_max, description, skills, posted_at, url
+                   salary_min, salary_max, description, skills,
+                   COALESCE(
+                       NULLIF(ai_extracted_skills, ARRAY[]::text[]),
+                       NULLIF(extracted_skills, ARRAY[]::text[]),
+                       NULLIF(skills, ARRAY[]::text[])
+                   ) AS extracted_skills,
+                   posted_at, url
             FROM jobs WHERE id = %s
             """,
             (job_id,),
@@ -71,7 +77,8 @@ def build_resume_improvement_context(
                 salary_min,
                 salary_max,
                 description,
-                skills,
+                _skills,
+                extracted_skills,
                 posted_at,
                 url,
             ) = row
@@ -85,7 +92,7 @@ def build_resume_improvement_context(
                 "salary_min": salary_min,
                 "salary_max": salary_max,
                 "description": description or "",
-                "skills": list(skills) if skills else [],
+                "skills": list(extracted_skills) if extracted_skills else [],
                 "posted_at": posted_at,
                 "url": url or "",
             }

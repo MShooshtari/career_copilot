@@ -55,6 +55,32 @@ def test_api_market_analysis_returns_json(client: TestClient) -> None:
     mock_conn.close.assert_called_once()
 
 
+def test_api_market_analysis_passes_remote_mode(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    sample = {
+        "cohort": {"size": 0, "job_ids_sample": [], "filtered_count": 0},
+        "filters": {},
+        "weekly_posted": [],
+        "top_skills": [],
+        "salary": {},
+        "top_locations": [],
+        "fit": {},
+        "rag": {"available": False, "narrative": "", "error": "x"},
+    }
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with patch(
+            "career_copilot.routers.market_analysis.build_market_analysis_report",
+            return_value=sample,
+        ) as build_report:
+            response = client.get("/api/market-analysis?remote_mode=no_remote")
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+    assert response.status_code == 200
+    assert build_report.call_args.kwargs["filters"].remote_mode == "no_remote"
+    mock_conn.close.assert_called_once()
+
+
 def test_api_market_analysis_allows_rag_opt_in(client: TestClient) -> None:
     mock_conn = MagicMock()
     sample = {

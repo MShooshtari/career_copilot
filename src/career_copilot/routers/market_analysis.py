@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, Depends, Query, Request
@@ -46,16 +46,18 @@ async def api_market_analysis(
     title_contains: str | None = Query(None, max_length=200),
     source_equals: str | None = Query(None, max_length=80),
     remote_only: bool = Query(False),
+    remote_mode: Literal["both", "remote_only", "no_remote"] = Query("both"),
     salary_at_least: int | None = Query(None, ge=0, le=10_000_000),
     cohort_limit: int = Query(MARKET_ANALYSIS_DEFAULT_COHORT_LIMIT, ge=10, le=5_000),
     include_rag: bool = Query(False),
 ) -> JSONResponse:
+    resolved_remote_mode = "remote_only" if remote_only else remote_mode
     filters = MarketCohortFilters(
         posted_within_days=posted_within_days,
         location_contains=location_contains,
         title_contains=title_contains,
         source_equals=source_equals,
-        remote_only=remote_only,
+        remote_mode=resolved_remote_mode,
         salary_at_least=salary_at_least,
     )
     try:

@@ -105,6 +105,7 @@ def init_schema(conn: psycopg.Connection) -> None:
                 description TEXT NULL,
                 skills TEXT[] NULL,
                 extracted_skills TEXT[] NULL,
+                ai_extracted_skills TEXT[] NULL,
                 posted_at TIMESTAMPTZ NULL,
                 url TEXT NULL,
                 raw JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -113,13 +114,17 @@ def init_schema(conn: psycopg.Connection) -> None:
             );
             """
         )
-        try:
-            cur.execute("ALTER TABLE jobs ADD COLUMN extracted_skills TEXT[]")
-            conn.commit()
-        except psycopg.ProgrammingError as e:
-            conn.rollback()
-            if e.sqlstate != "42701":  # duplicate_column
-                raise
+        for sql in (
+            "ALTER TABLE jobs ADD COLUMN extracted_skills TEXT[]",
+            "ALTER TABLE jobs ADD COLUMN ai_extracted_skills TEXT[]",
+        ):
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except psycopg.ProgrammingError as e:
+                conn.rollback()
+                if e.sqlstate != "42701":  # duplicate_column
+                    raise
         # Idempotency + common query indexes (same intent as sql/001_create_jobs.sql).
         cur.execute(
             """
@@ -138,6 +143,10 @@ def init_schema(conn: psycopg.Connection) -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS jobs_posted_at_idx ON jobs (posted_at DESC);")
         cur.execute(
             "CREATE INDEX IF NOT EXISTS jobs_extracted_skills_gin_idx ON jobs USING GIN (extracted_skills);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS jobs_ai_extracted_skills_gin_idx "
+            "ON jobs USING GIN (ai_extracted_skills);"
         )
         conn.commit()
 
