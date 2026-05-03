@@ -194,7 +194,7 @@ def main() -> None:
             for job in normalized:
                 if job.source_id is None:
                     continue
-                extracted_skills = extract_skill_tags(job.description)
+                extracted_skills = extract_skill_tags(job.description, source_skills=job.skills)
                 cur.execute(
                     UPSERT_SQL,
                     {

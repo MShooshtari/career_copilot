@@ -1,140 +1,276 @@
-"""Deterministic skill tag extraction for job descriptions.
+"""Dynamic skill tag extraction for job descriptions.
 
-The extractor intentionally uses a curated taxonomy instead of broad keyword
-matching so generic words like "software" or "engineering" do not become tags.
+The extractor avoids a fixed skill taxonomy. It mines skill-like phrases from
+source tags, explicit skills/requirements sections, and experience/proficiency
+language so it can work across job families instead of only technical roles.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from functools import lru_cache
+from collections.abc import Iterable
 
-
-@dataclass(frozen=True)
-class SkillRule:
-    canonical: str
-    aliases: tuple[str, ...]
-
-
-SKILL_RULES: tuple[SkillRule, ...] = (
-    SkillRule("A/B Testing", ("A/B testing", "AB testing", "split testing", "experiment design")),
-    SkillRule("Acceptance Testing", ("acceptance testing", "UAT", "user acceptance testing")),
-    SkillRule("Agile", ("Agile", "Scrum", "Kanban")),
-    SkillRule("Airflow", ("Airflow", "Apache Airflow")),
-    SkillRule("Amazon Redshift", ("Redshift", "Amazon Redshift")),
-    SkillRule("Ansible", ("Ansible",)),
-    SkillRule("Apache Kafka", ("Kafka", "Apache Kafka")),
-    SkillRule("Apache Spark", ("Spark", "Apache Spark", "PySpark")),
-    SkillRule("API Design", ("API design", "REST API", "REST APIs", "GraphQL API")),
-    SkillRule("ASP.NET", ("ASP.NET", "ASP NET")),
-    SkillRule("AWS", ("AWS", "Amazon Web Services")),
-    SkillRule("Azure", ("Azure", "Microsoft Azure")),
-    SkillRule("BigQuery", ("BigQuery", "Google BigQuery")),
-    SkillRule("CI/CD", ("CI/CD", "CI CD", "continuous integration", "continuous deployment")),
-    SkillRule("C#", ("C#", "C sharp")),
-    SkillRule("C++", ("C++", "CPP")),
-    SkillRule("CSS", ("CSS", "CSS3")),
-    SkillRule("Cypress", ("Cypress",)),
-    SkillRule("Databricks", ("Databricks",)),
-    SkillRule("dbt", ("dbt",)),
-    SkillRule("Django", ("Django",)),
-    SkillRule("Docker", ("Docker", "containerization")),
-    SkillRule("Elasticsearch", ("Elasticsearch", "ElasticSearch", "Elastic Search")),
-    SkillRule("ETL", ("ETL", "ELT", "data pipelines", "data pipeline")),
-    SkillRule("Excel", ("Excel", "Microsoft Excel")),
-    SkillRule("FastAPI", ("FastAPI",)),
-    SkillRule("Feature Engineering", ("feature engineering",)),
-    SkillRule("Figma", ("Figma",)),
-    SkillRule("Flask", ("Flask",)),
-    SkillRule("GCP", ("GCP", "Google Cloud Platform", "Google Cloud")),
-    SkillRule("Git", ("Git", "GitHub", "GitLab", "Bitbucket")),
-    SkillRule("Go", ("Golang",)),
-    SkillRule("GraphQL", ("GraphQL",)),
-    SkillRule("HTML", ("HTML", "HTML5")),
-    SkillRule("Java", ("Java",)),
-    SkillRule("JavaScript", ("JavaScript", "JS", "ECMAScript")),
-    SkillRule("Jenkins", ("Jenkins",)),
-    SkillRule("Jest", ("Jest",)),
-    SkillRule("Jira", ("Jira",)),
-    SkillRule("Jupyter", ("Jupyter", "Jupyter Notebook", "JupyterLab")),
-    SkillRule("Kubernetes", ("Kubernetes", "K8s")),
-    SkillRule("LangChain", ("LangChain",)),
-    SkillRule("Linux", ("Linux", "Unix")),
-    SkillRule("Looker", ("Looker", "LookML")),
-    SkillRule("Machine Learning", ("machine learning", "ML models", "ML model")),
-    SkillRule("Microservices", ("microservices", "microservice architecture")),
-    SkillRule("MLflow", ("MLflow",)),
-    SkillRule("MongoDB", ("MongoDB",)),
-    SkillRule("Next.js", ("Next.js", "NextJS", "Next JS")),
-    SkillRule("Node.js", ("Node.js", "NodeJS", "Node JS")),
-    SkillRule("NoSQL", ("NoSQL",)),
-    SkillRule("NumPy", ("NumPy",)),
-    SkillRule("Pandas", ("Pandas",)),
-    SkillRule("Playwright", ("Playwright",)),
-    SkillRule("PostgreSQL", ("PostgreSQL", "Postgres")),
-    SkillRule("Power BI", ("Power BI", "PowerBI")),
-    SkillRule("Product Analytics", ("product analytics",)),
-    SkillRule("PyTorch", ("PyTorch",)),
-    SkillRule("Python", ("Python",)),
-    SkillRule("RAG", ("RAG", "retrieval augmented generation", "retrieval-augmented generation")),
-    SkillRule("React", ("React", "React.js", "ReactJS")),
-    SkillRule("React Native", ("React Native",)),
-    SkillRule("Redis", ("Redis",)),
-    SkillRule("Regression Testing", ("regression testing",)),
-    SkillRule("Ruby", ("Ruby", "Ruby on Rails", "Rails")),
-    SkillRule("Rust", ("Rust",)),
-    SkillRule("Salesforce", ("Salesforce",)),
-    SkillRule("Selenium", ("Selenium",)),
-    SkillRule("Snowflake", ("Snowflake",)),
-    SkillRule("SQL", ("SQL", "T-SQL", "PL/SQL")),
-    SkillRule("Tableau", ("Tableau",)),
-    SkillRule("Terraform", ("Terraform",)),
-    SkillRule("TensorFlow", ("TensorFlow",)),
-    SkillRule("TypeScript", ("TypeScript", "TS")),
-    SkillRule("Unit Testing", ("unit testing", "unit tests", "JUnit", "pytest")),
-    SkillRule("UX Research", ("UX research", "user research", "usability testing")),
-    SkillRule("Vue.js", ("Vue.js", "VueJS", "Vue JS")),
+_SECTION_HEADING_RE = re.compile(
+    r"""
+    ^\s*
+    (?:
+        required|preferred|minimum|basic|desired|nice[-\s]to[-\s]have
+    )?\s*
+    (?:
+        skills?|qualifications?|requirements?|experience|competenc(?:y|ies)|
+        licenses?|certifications?|what\s+you(?:'ll|\s+will)\s+bring
+    )
+    \s*:?\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
+_INLINE_SECTION_RE = re.compile(
+    r"""
+    ^\s*
+    (?:
+        required|preferred|minimum|basic|desired|nice[-\s]to[-\s]have
+    )?\s*
+    (?:
+        skills?|qualifications?|requirements?|experience|competenc(?:y|ies)|
+        licenses?|certifications?
+    )
+    \s*:\s*(?P<body>.+)$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
-_BOUNDARY_CHARS = r"A-Za-z0-9+#/"
+_CUE_RE = re.compile(
+    r"""
+    \b(?:
+        experience|experienced|proficient|proficiency|knowledge|familiarity|
+        familiar|skilled|expertise|certified|certification|licensed|licensure|
+        competency|competence|background
+    )
+    \s+(?:with|in|using|of|for)?\s*
+    (?P<body>[^.;:\n]+)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_STRIP_CHARS = " \t\r\n-\u2013\u2014:;,.()[]{}"
+_BULLET_RE = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)])\s*")
+_SPACE_RE = re.compile(r"\s+")
+_YEARS_PREFIX_RE = re.compile(
+    r"^(?:\d+\+?\s*)?(?:years?|yrs?)\s+(?:of\s+)?(?:hands[-\s]on\s+)?",
+    re.IGNORECASE,
+)
+
+_TRAILING_NOISE_RE = re.compile(
+    r"\s+(?:experience|skills?|knowledge|proficiency|certification|license|licence)$",
+    re.IGNORECASE,
+)
+
+_GENERIC_CANDIDATES = {
+    "a plus",
+    "an asset",
+    "benefits",
+    "bonus",
+    "competitive pay",
+    "communication",
+    "degree",
+    "diploma",
+    "excellent communication",
+    "full time",
+    "high school",
+    "job description",
+    "must have",
+    "nice to have",
+    "preferred",
+    "required",
+    "requirements",
+    "responsibilities",
+    "salary",
+    "team player",
+    "work experience",
+}
+
+_STOP_PREFIXES = (
+    "ability to ",
+    "able to ",
+    "be able to ",
+    "demonstrated ",
+    "excellent ",
+    "good ",
+    "hands-on ",
+    "prior ",
+    "proven ",
+    "required ",
+    "strong ",
+    "working ",
+)
+
+_STOP_SUFFIXES = (
+    " is preferred",
+    " is required",
+    " preferred",
+    " required",
+    " strongly preferred",
+    " would be an asset",
+    " would be a plus",
+)
+
+_LOWERCASE_WORDS = {"and", "for", "in", "of", "on", "or", "the", "to", "with"}
 
 
-def _alias_pattern(alias: str) -> str:
-    """Build a strict phrase pattern while allowing flexible whitespace."""
-    escaped = re.escape(alias.strip())
-    return escaped.replace(r"\ ", r"\s+")
+def extract_skill_tags(
+    text: str | None,
+    source_skills: Iterable[str] | None = None,
+    *,
+    max_tags: int = 30,
+) -> list[str]:
+    """Extract normalized skill tags without relying on a fixed skills list."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    for skill in source_skills or ():
+        _append_skill(found, seen, skill, max_tags=max_tags)
+
+    if text:
+        for candidate in _extract_text_candidates(text):
+            _append_skill(found, seen, candidate, max_tags=max_tags)
+            if len(found) >= max_tags:
+                break
+
+    return found
 
 
-@lru_cache(maxsize=1)
-def _compiled_rules() -> tuple[tuple[str, re.Pattern[str]], ...]:
-    compiled: list[tuple[str, re.Pattern[str]]] = []
-    for rule in SKILL_RULES:
-        aliases = sorted(rule.aliases, key=len, reverse=True)
-        pattern = "|".join(_alias_pattern(alias) for alias in aliases)
-        compiled.append(
-            (
-                rule.canonical,
-                re.compile(
-                    rf"(?<![{_BOUNDARY_CHARS}])(?:{pattern})(?![{_BOUNDARY_CHARS}])",
-                    re.IGNORECASE,
-                ),
-            )
-        )
-    return tuple(compiled)
+def _extract_text_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    in_skill_section = False
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            in_skill_section = False
+            continue
+
+        bullet_line = _BULLET_RE.sub("", line).strip()
+        inline_section = _INLINE_SECTION_RE.match(bullet_line)
+        if inline_section:
+            candidates.extend(_split_candidate_span(inline_section.group("body")))
+            in_skill_section = True
+            continue
+
+        if _SECTION_HEADING_RE.match(bullet_line):
+            in_skill_section = True
+            continue
+
+        if in_skill_section and _looks_like_candidate_line(raw_line):
+            candidates.extend(_split_candidate_span(bullet_line))
+
+        for match in _CUE_RE.finditer(bullet_line):
+            candidates.extend(_split_candidate_span(match.group("body")))
+
+    return candidates
 
 
-def extract_skill_tags(text: str | None) -> list[str]:
-    """Extract canonical skill tags from job text in first-appearance order."""
-    if not text:
-        return []
+def _looks_like_candidate_line(raw_line: str) -> bool:
+    stripped = raw_line.strip()
+    return bool(_BULLET_RE.match(stripped) or "," in stripped or ";" in stripped or len(stripped) <= 80)
 
-    found: list[tuple[int, int, str]] = []
-    for rule_index, (canonical, pattern) in enumerate(_compiled_rules()):
-        match = pattern.search(text)
-        if match:
-            found.append((match.start(), rule_index, canonical))
 
-    found.sort(key=lambda item: (item[0], item[1]))
-    return [canonical for _, _, canonical in found]
+def _split_candidate_span(span: str) -> list[str]:
+    span = re.split(r"\b(?:including|such as|like)\b", span, maxsplit=1, flags=re.IGNORECASE)[-1]
+    span = re.split(r"\b(?:while|where|when|that|who|which)\b", span, maxsplit=1)[0]
+    parts = re.split(r"\s*(?:,|;|\||\band/or\b|\bor\b|\band\b)\s*", span)
+    return [part for part in (_clean_candidate(part) for part in parts) if part]
+
+
+def _clean_candidate(candidate: str) -> str | None:
+    value = candidate.strip()
+    value = value.strip(_STRIP_CHARS)
+    value = _SPACE_RE.sub(" ", value)
+    if not value:
+        return None
+
+    lower = value.lower()
+    for prefix in _STOP_PREFIXES:
+        if lower.startswith(prefix):
+            value = value[len(prefix) :].strip()
+            lower = value.lower()
+            break
+
+    value = _YEARS_PREFIX_RE.sub("", value).strip()
+    value = _TRAILING_NOISE_RE.sub("", value).strip()
+
+    lower = value.lower()
+    for suffix in _STOP_SUFFIXES:
+        if lower.endswith(suffix):
+            value = value[: -len(suffix)].strip()
+            lower = value.lower()
+            break
+
+    value = value.strip(_STRIP_CHARS)
+    if not _is_plausible_skill(value):
+        return None
+    return _canonicalize(value)
+
+
+def _is_plausible_skill(value: str) -> bool:
+    lower = value.lower()
+    words = re.findall(r"[A-Za-z0-9+#./'-]+", value)
+    if len(value) < 2 or len(value) > 60:
+        return False
+    if not words or len(words) > 6:
+        return False
+    if lower in _GENERIC_CANDIDATES:
+        return False
+    if re.search(r"\b(?:salary|benefits?|schedule|shift|remote|hybrid|onsite)\b", lower):
+        return False
+    if re.search(r"\b(?:bachelor|master|phd|degree|diploma|equivalent)\b", lower):
+        return False
+    if re.search(r"\b(?:years?|yrs?)\b", lower):
+        return False
+    if lower.startswith(("the ", "this ", "our ", "your ", "you ", "we ")):
+        return False
+    return any(char.isalpha() for char in value)
+
+
+def _canonicalize(value: str) -> str:
+    tokens = re.split(r"(\s+)", value)
+    canonical: list[str] = []
+    word_index = 0
+
+    for token in tokens:
+        if not token.strip():
+            canonical.append(token)
+            continue
+
+        lower = token.lower()
+        if word_index > 0 and lower in _LOWERCASE_WORDS:
+            canonical.append(lower)
+        elif _should_preserve_token(token):
+            canonical.append(token)
+        else:
+            canonical.append(token[:1].upper() + token[1:].lower())
+        word_index += 1
+
+    return "".join(canonical)
+
+
+def _should_preserve_token(token: str) -> bool:
+    letters = "".join(ch for ch in token if ch.isalpha())
+    return (
+        (letters.isupper() and len(letters) <= 8)
+        or any(ch in token for ch in "+#./")
+        or any(ch.isupper() for ch in token[1:])
+    )
+
+
+def _append_skill(found: list[str], seen: set[str], candidate: str, *, max_tags: int) -> None:
+    if len(found) >= max_tags:
+        return
+    cleaned = _clean_candidate(candidate)
+    if cleaned is None:
+        return
+    key = cleaned.casefold()
+    if key in seen:
+        return
+    seen.add(key)
+    found.append(cleaned)

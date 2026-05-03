@@ -1,22 +1,24 @@
-"""Tests for deterministic job skill extraction."""
+"""Tests for dynamic job skill extraction."""
 
 from __future__ import annotations
 
 from career_copilot.ingestion.skill_extraction import extract_skill_tags
 
 
-def test_extract_skill_tags_finds_specific_multiword_skills() -> None:
+def test_extract_skill_tags_finds_skills_from_explicit_sections() -> None:
     text = """
-    You will design A/B testing experiments, build CI/CD pipelines, and use
-    PostgreSQL with dbt models for product analytics.
+    Skills:
+    - customer service
+    - cash handling
+    - inventory management
+    - forklift operation
     """
 
     assert extract_skill_tags(text) == [
-        "A/B Testing",
-        "CI/CD",
-        "PostgreSQL",
-        "dbt",
-        "Product Analytics",
+        "Customer Service",
+        "Cash Handling",
+        "Inventory Management",
+        "Forklift Operation",
     ]
 
 
@@ -26,14 +28,18 @@ def test_extract_skill_tags_ignores_generic_job_words() -> None:
     assert extract_skill_tags(text) == []
 
 
-def test_extract_skill_tags_canonicalizes_aliases() -> None:
-    text = "Experience with continuous integration, K8s, Google Cloud Platform, and PySpark."
+def test_extract_skill_tags_uses_source_skills_before_text_skills() -> None:
+    text = "Experience with patient care, CPR certification, and electronic health records."
 
-    assert extract_skill_tags(text) == ["CI/CD", "Kubernetes", "GCP", "Apache Spark"]
-
-
-def test_extract_skill_tags_does_not_match_skill_inside_longer_word() -> None:
-    assert extract_skill_tags("The role focuses on javascript-heavy frontend work.") == [
-        "JavaScript"
+    assert extract_skill_tags(text, source_skills=["medical terminology", "CPR"]) == [
+        "Medical Terminology",
+        "CPR",
+        "Patient Care",
+        "Electronic Health Records",
     ]
-    assert "Java" not in extract_skill_tags("javascript-heavy frontend work")
+
+
+def test_extract_skill_tags_extracts_technical_skills_without_a_taxonomy() -> None:
+    text = "Experience with Python, SQL, CI/CD, and Google Cloud Platform."
+
+    assert extract_skill_tags(text) == ["Python", "SQL", "CI/CD", "Google Cloud Platform"]

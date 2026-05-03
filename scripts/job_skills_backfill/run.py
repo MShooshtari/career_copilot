@@ -23,7 +23,7 @@ from career_copilot.database.schema import init_schema  # noqa: E402
 from career_copilot.ingestion.skill_extraction import extract_skill_tags  # noqa: E402
 
 LOAD_JOBS_SQL = """
-SELECT id, description
+SELECT id, description, skills
 FROM jobs
 WHERE description IS NOT NULL AND btrim(description) <> ''
 ORDER BY id;
@@ -50,8 +50,8 @@ def main() -> None:
             rows = cur.fetchall()
 
         with conn.cursor() as cur:
-            for job_id, description in rows:
-                extracted_skills = extract_skill_tags(description)
+            for job_id, description, skills in rows:
+                extracted_skills = extract_skill_tags(description, source_skills=skills)
                 cur.execute(UPDATE_SQL, (extracted_skills or None, job_id))
                 processed += 1
                 updated += int(bool(extracted_skills))
