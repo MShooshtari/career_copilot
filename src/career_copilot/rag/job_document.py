@@ -20,6 +20,17 @@ def _analysis_skills(job: NormalizedJob) -> list[str]:
     return out
 
 
+def _dedupe_skills(skills: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for skill in skills or []:
+        key = skill.casefold()
+        if key not in seen:
+            seen.add(key)
+            out.append(skill)
+    return out
+
+
 def job_to_document(job: NormalizedJob, max_chars: int = JOB_DOC_MAX_CHARS) -> str:
     """Build a single searchable document string from a normalized job (truncated for API limit)."""
     parts = []
@@ -57,11 +68,15 @@ def job_to_metadata(job: NormalizedJob) -> dict[str, str | int | float | bool]:
         meta["salary_max"] = job.salary_max
     if job.posted_at is not None:
         meta["posted_at"] = job.posted_at.isoformat()
-    skills = _analysis_skills(job)
+    skills = _dedupe_skills(job.skills)
     if skills:
         meta["skills"] = ", ".join(skills)
-        meta["ai_extracted_skills"] = ", ".join(skills)
-        meta["extracted_skills"] = ", ".join(skills)
+    ai_extracted_skills = _dedupe_skills(job.ai_extracted_skills)
+    if ai_extracted_skills:
+        meta["ai_extracted_skills"] = ", ".join(ai_extracted_skills)
+    extracted_skills = _dedupe_skills(job.extracted_skills)
+    if extracted_skills:
+        meta["extracted_skills"] = ", ".join(extracted_skills)
     return meta
 
 

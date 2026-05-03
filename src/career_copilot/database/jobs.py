@@ -524,7 +524,7 @@ def format_recommendation_jobs(
 
 
 def _metadata_skills(meta: dict) -> list[str]:
-    raw = meta.get("ai_extracted_skills") or meta.get("extracted_skills") or meta.get("skills")
+    raw = meta.get("skills") or meta.get("ai_extracted_skills") or meta.get("extracted_skills")
     if isinstance(raw, str):
         return raw.split(",") if raw else []
     if isinstance(raw, list):

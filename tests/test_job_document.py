@@ -59,21 +59,22 @@ def test_job_to_document_includes_ai_extracted_skills_without_duplicates() -> No
     j = _nj(skills=["Python"], ai_extracted_skills=["Python", "CI/CD", "python"])
 
     assert "Skills: Python, CI/CD" in job_to_document(j)
-    assert job_to_metadata(j)["skills"] == "Python, CI/CD"
+    assert job_to_metadata(j)["skills"] == "Python"
     assert job_to_metadata(j)["ai_extracted_skills"] == "Python, CI/CD"
-    assert job_to_metadata(j)["extracted_skills"] == "Python, CI/CD"
 
 
 def test_job_to_document_prefers_ai_extracted_skills_for_analysis() -> None:
     j = _nj(
+        skills=["SourceTag"],
         extracted_skills=["Python", "SQL"],
         ai_extracted_skills=["Data Modeling", "Python"],
     )
 
     assert "Skills: Data Modeling, Python" in job_to_document(j)
     assert "SQL" not in job_to_document(j)
+    assert job_to_metadata(j)["skills"] == "SourceTag"
     assert job_to_metadata(j)["ai_extracted_skills"] == "Data Modeling, Python"
-    assert job_to_metadata(j)["extracted_skills"] == "Data Modeling, Python"
+    assert job_to_metadata(j)["extracted_skills"] == "Python, SQL"
 
 
 def test_job_to_document_falls_back_to_extracted_skills_for_analysis_text() -> None:
@@ -81,7 +82,8 @@ def test_job_to_document_falls_back_to_extracted_skills_for_analysis_text() -> N
 
     assert "Skills: LegacyTag" in job_to_document(j)
     assert "SourceTag" not in job_to_document(j)
-    assert job_to_metadata(j)["skills"] == "LegacyTag"
+    assert job_to_metadata(j)["skills"] == "SourceTag"
+    assert job_to_metadata(j)["extracted_skills"] == "LegacyTag"
 
 
 def test_job_to_document_falls_back_to_source_skills_for_analysis_text() -> None:
@@ -120,13 +122,15 @@ def test_job_to_metadata_optional_fields() -> None:
         salary_min=100_000,
         salary_max=150_000,
         posted_at=posted,
+        skills=["RawTag"],
         ai_extracted_skills=["Go"],
     )
     m = job_to_metadata(j)
     assert m["salary_min"] == 100_000
     assert m["salary_max"] == 150_000
     assert m["posted_at"] == posted.isoformat()
-    assert m["skills"] == "Go"
+    assert m["skills"] == "RawTag"
+    assert m["ai_extracted_skills"] == "Go"
 
 
 def test_job_to_document_key_with_source_id() -> None:
