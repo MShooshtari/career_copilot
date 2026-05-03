@@ -84,11 +84,17 @@ def main() -> None:
         jobs = [_row_to_normalized_job(r) for r in rows]
         count = index_jobs_into_pgvector(conn, jobs)
         chunk_rows = 0
-        for job in jobs:
+        print(f"[job-embeddings-backfill] rebuilding chunks for {len(jobs)} job(s)")
+        for idx, job in enumerate(jobs, start=1):
             try:
                 chunk_rows += rebuild_job_chunks_for_job(conn, job)
             except Exception as ex:
                 print(f"[job-embeddings-backfill] chunk rebuild skipped job_id={job.db_id}: {ex}")
+            if idx % 50 == 0 or idx == len(jobs):
+                print(
+                    f"[job-embeddings-backfill] rebuilt chunks for {idx}/{len(jobs)} job(s), "
+                    f"{chunk_rows} chunk row(s)"
+                )
         print(
             f"Job embeddings backfill: {count} job(s) upserted into jobs_embeddings; "
             f"{chunk_rows} chunk row(s) in job_description_chunks "
