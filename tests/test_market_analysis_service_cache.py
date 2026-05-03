@@ -26,7 +26,9 @@ def test_build_market_analysis_report_caches_by_user_filters_limit_and_rag_flag(
     }
 
     with (
-        patch.object(service, "cohort_job_ids", return_value=([123], {"filtered_count": 1})) as cohort,
+        patch.object(
+            service, "cohort_job_ids", return_value=([123], {"filtered_count": 1})
+        ) as cohort,
         patch.object(service, "_aggregates_for_cohort", return_value=aggregates) as aggregate,
         patch.object(service, "list_user_skills_lower", return_value=["python"]),
     ):
