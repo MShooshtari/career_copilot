@@ -107,7 +107,9 @@ def test_aggregates_top_skills_prefers_ai_then_legacy_skill_columns() -> None:
         "j.extracted_skills"
     )
     assert top_skills_sql.index("j.extracted_skills") < top_skills_sql.index("j.skills")
-    assert aggregates["top_skills"] == [{"skill": "python", "count": 2}]
+    assert aggregates["top_skills"][0]["skill"] == "python"
+    assert aggregates["top_skills"][0]["count"] == 2
+    assert aggregates["top_skills"][0]["market_score"] > 0
 
 
 def test_filtered_top_skills_removes_generic_terms_and_merges_variants() -> None:
@@ -122,10 +124,26 @@ def test_filtered_top_skills_removes_generic_terms_and_merges_variants() -> None
         ("langchain", 4),
     ]
 
-    assert service._filtered_top_skills(raw) == [
-        {"skill": "python", "count": 8},
-        {"skill": "langchain", "count": 4},
+    filtered = service._filtered_top_skills(raw)
+
+    assert [(item["skill"], item["count"]) for item in filtered] == [
+        ("python", 8),
+        ("langchain", 4),
     ]
+
+
+def test_filtered_top_skills_demotes_vague_terms_below_specific_skills() -> None:
+    raw = [
+        ("problem solving", 100),
+        ("attention to detail", 90),
+        ("python", 5),
+        ("vector databases", 4),
+    ]
+
+    filtered = service._filtered_top_skills(raw)
+
+    assert [item["skill"] for item in filtered[:2]] == ["python", "vector databases"]
+    assert {item["skill"] for item in filtered} >= {"problem solving", "attention to detail"}
 
 
 def test_rag_query_embedding_uses_cache_for_same_profile_blurb() -> None:

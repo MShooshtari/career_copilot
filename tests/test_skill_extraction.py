@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from career_copilot.ingestion.skill_extraction import extract_ai_skill_tags, extract_skill_tags
+from career_copilot.ingestion.skill_extraction import (
+    extract_ai_skill_tags,
+    extract_skill_tags,
+    skill_specificity_score,
+)
 
 
 class _FakeCompletions:
@@ -86,7 +90,8 @@ def test_extract_skill_tags_dedupes_case_variants_after_filtering() -> None:
 
 def test_extract_ai_skill_tags_normalizes_and_filters_model_output() -> None:
     client = _FakeClient(
-        '{"skills": ["python", "engineering", "CPR certification", "team player", "SQL"]}'
+        '{"skills": ["python", "engineering", "CPR certification", "team player", '
+        '"interviewing", "increase your earnings with higher rates", "SQL"]}'
     )
 
     assert extract_ai_skill_tags("Job description", client=client) == [
@@ -94,6 +99,32 @@ def test_extract_ai_skill_tags_normalizes_and_filters_model_output() -> None:
         "CPR",
         "SQL",
     ]
+
+
+def test_extract_ai_skill_tags_drops_vague_skills_when_specific_skills_exist() -> None:
+    client = _FakeClient(
+        '{"skills": ["problem solving", "attention to detail", "Python", "Vector databases"]}'
+    )
+
+    assert extract_ai_skill_tags("Job description", client=client) == [
+        "Python",
+        "Vector Databases",
+    ]
+
+
+def test_extract_ai_skill_tags_keeps_vague_skills_when_no_specific_skills_exist() -> None:
+    client = _FakeClient('{"skills": ["problem solving", "attention to detail"]}')
+
+    assert extract_ai_skill_tags("Job description", client=client) == [
+        "Problem Solving",
+        "Attention to Detail",
+    ]
+
+
+def test_skill_specificity_score_demotes_vague_soft_skills() -> None:
+    assert skill_specificity_score("Problem Solving") < skill_specificity_score("Python")
+    assert skill_specificity_score("Attention to Detail") < skill_specificity_score("Vector Databases")
+    assert skill_specificity_score("Interviewing") == 0.0
 
 
 def test_extract_ai_skill_tags_returns_empty_for_invalid_json() -> None:

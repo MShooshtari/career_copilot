@@ -33,7 +33,7 @@ from career_copilot.constants import (
     MARKET_ANALYSIS_TOP_SKILLS_CHART,
 )
 from career_copilot.database.profiles import get_profile_by_user_id, list_user_skills_lower
-from career_copilot.ingestion.skill_extraction import normalize_skill_tag
+from career_copilot.ingestion.skill_extraction import normalize_skill_tag, skill_specificity_score
 from career_copilot.rag.embedding import OPENAI_API_KEY_ENV, embed_texts
 from career_copilot.rag.pgvector_rag import fetch_user_profile_embedding
 
@@ -320,7 +320,7 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
             ORDER BY cnt DESC
             LIMIT %s
             """,
-            (job_ids, MARKET_ANALYSIS_TOP_SKILLS_CHART * 8),
+            (job_ids, MARKET_ANALYSIS_TOP_SKILLS_CHART * 20),
         )
         raw_top_skills = [(str(r[0]), int(r[1])) for r in cur.fetchall()]
     top_skills = _filtered_top_skills(raw_top_skills)
@@ -389,12 +389,25 @@ def _filtered_top_skills(raw_top_skills: list[tuple[str, int]]) -> list[dict[str
         key = normalized.casefold()
         counts[key] = counts.get(key, 0) + int(count)
 
-    return [
-        {"skill": skill, "count": count}
-        for skill, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[
-            :MARKET_ANALYSIS_TOP_SKILLS_CHART
-        ]
-    ]
+    scored = []
+    for skill, count in counts.items():
+        specificity = skill_specificity_score(skill)
+        if specificity <= 0:
+            continue
+        market_score = (count**0.72) * specificity
+        scored.append(
+            {
+                "skill": skill,
+                "count": count,
+                "market_score": round(market_score, 3),
+                "specificity_score": round(specificity, 3),
+            }
+        )
+
+    return sorted(
+        scored,
+        key=lambda item: (-item["market_score"], -item["count"], item["skill"]),
+    )[:MARKET_ANALYSIS_TOP_SKILLS_CHART]
 
 
 def _fit_metrics(

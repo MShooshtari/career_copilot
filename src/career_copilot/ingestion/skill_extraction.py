@@ -89,6 +89,8 @@ _GENERIC_CANDIDATES = {
     "excellent communication",
     "engineer",
     "engineering",
+    "increase your earnings with higher rates",
+    "interviewing",
     "full time",
     "high school",
     "job description",
@@ -101,13 +103,30 @@ _GENERIC_CANDIDATES = {
     "salary",
     "senior",
     "software",
+    "start taking covered clients sooner",
     "team player",
     "work experience",
 }
 
 _GENERIC_PATTERNS = (
     r"\b(?:digital\s+nomad|remote\s+work|work\s+from\s+home)\b",
+    r"\b(?:earnings?|higher\s+rates?|covered\s+clients?|start\s+taking)\b",
 )
+
+_LOW_VALUE_SKILLS = {
+    "adaptability",
+    "attention to detail",
+    "attention to details",
+    "collaboration",
+    "critical thinking",
+    "detail oriented",
+    "multitasking",
+    "organization",
+    "problem solving",
+    "self motivation",
+    "team collaboration",
+    "time management",
+}
 
 _STOP_PREFIXES = (
     "ability to ",
@@ -142,8 +161,10 @@ Return a JSON object with a single key "skills" whose value is an array of strin
 
 Rules:
 - Include concrete skills, tools, technologies, certifications, methods, domain capabilities, and job-specific competencies.
-- Exclude generic job words, seniority, benefits, degree requirements, schedules, work mode, location, salary, and vague traits.
-- Do not include broad terms such as engineering, development, code, communication, team player, required, preferred, responsibilities, or job description.
+- Prefer skills that would be useful as resume keywords or market-demand tags.
+- Exclude marketing copy, platform benefits, hiring-process words, generic job words, seniority, benefits, degree requirements, schedules, work mode, location, salary, and vague traits.
+- Do not include broad terms such as engineering, development, code, communication, problem solving, attention to detail, team collaboration, team player, interviewing, required, preferred, responsibilities, or job description.
+- Do not include phrases like "increase your earnings with higher rates" or "start taking covered clients sooner"; those are not skills.
 - Keep each tag short, usually 1-4 words.
 - Return at most the requested number of tags.
 - If no specific skill tags are present, return {"skills": []}."""
@@ -168,7 +189,7 @@ def extract_skill_tags(
             if len(found) >= max_tags:
                 break
 
-    return found
+    return _prefer_specific_skills(found)
 
 
 def extract_ai_skill_tags(
@@ -206,7 +227,7 @@ def extract_ai_skill_tags(
     seen: set[str] = set()
     for candidate in candidates:
         _append_skill(found, seen, candidate, max_tags=max_tags)
-    return found
+    return _prefer_specific_skills(found)
 
 
 def normalize_skill_tag(value: str | None) -> str | None:
@@ -214,6 +235,29 @@ def normalize_skill_tag(value: str | None) -> str | None:
     if value is None:
         return None
     return _clean_candidate(value)
+
+
+def skill_specificity_score(value: str | None) -> float:
+    """Score how useful a tag is for market skill charts; vague soft skills are demoted."""
+    cleaned = _clean_candidate(value or "")
+    if not cleaned:
+        return 0.0
+
+    lower = cleaned.casefold()
+    words = re.findall(r"[A-Za-z0-9+#./'-]+", cleaned)
+    if lower in _LOW_VALUE_SKILLS:
+        return 0.07
+
+    score = 1.0
+    if len(words) >= 2:
+        score += 0.15
+    if any(ch in cleaned for ch in "+#./"):
+        score += 0.25
+    if any(token.isupper() and len(token) <= 8 for token in words):
+        score += 0.2
+    if re.search(r"\b(?:certification|certified|license|licensed)\b", lower):
+        score += 0.15
+    return min(score, 1.6)
 
 
 def _get_openai_client() -> Any:
@@ -382,3 +426,9 @@ def _append_skill(found: list[str], seen: set[str], candidate: str, *, max_tags:
         return
     seen.add(key)
     found.append(cleaned)
+
+
+def _prefer_specific_skills(skills: list[str]) -> list[str]:
+    if any(skill_specificity_score(skill) >= 0.5 for skill in skills):
+        return [skill for skill in skills if skill_specificity_score(skill) >= 0.5]
+    return skills

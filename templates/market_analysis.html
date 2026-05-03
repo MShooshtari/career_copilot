@@ -185,7 +185,7 @@
                 </section>
                 <section class="card">
                     <h2>Top skills in cohort</h2>
-                    <p class="hint">From skill tags extracted from job descriptions.</p>
+                    <p class="hint">Ranked by demand count plus a specificity score, so concrete skills beat vague traits when possible.</p>
                     <div class="chart-box"><canvas id="chart-skills"></canvas></div>
                 </section>
             </div>
@@ -361,12 +361,27 @@
                     type: "doughnut",
                     data: {
                         labels: skills.map((s) => s.skill),
-                        datasets: [{ data: skills.map((s) => s.count), backgroundColor: colors }]
+                        datasets: [{
+                            label: "Market score",
+                            data: skills.map((s) => s.market_score ?? s.count),
+                            backgroundColor: colors
+                        }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { position: "right", labels: { color: "#9ca3af", boxWidth: 12 } } }
+                        plugins: {
+                            legend: { position: "right", labels: { color: "#9ca3af", boxWidth: 12 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const item = skills[ctx.dataIndex] || {};
+                                        const score = item.market_score ?? item.count ?? 0;
+                                        return `${item.skill}: score ${score} · ${item.count || 0} jobs`;
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
 
