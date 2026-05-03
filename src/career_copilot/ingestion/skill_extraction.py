@@ -97,10 +97,6 @@ _GENERIC_CANDIDATES = {
     "responsibilities",
     "salary",
     "senior",
-    "software",
-    "software development",
-    "software engineer",
-    "software engineering",
     "team player",
     "work experience",
 }
