@@ -86,10 +86,24 @@ def init_schema(conn: psycopg.Connection) -> None:
             CREATE TABLE IF NOT EXISTS user_skills (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                skill TEXT NOT NULL
+                skill TEXT NOT NULL,
+                ai_extracted_skills TEXT[]
             );
             """
         )
+        conn.commit()
+        try:
+            cur.execute("ALTER TABLE user_skills ADD COLUMN ai_extracted_skills TEXT[]")
+            conn.commit()
+        except psycopg.ProgrammingError as e:
+            conn.rollback()
+            if e.sqlstate != "42701":  # duplicate_column
+                raise
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS user_skills_ai_extracted_skills_gin_idx "
+            "ON user_skills USING GIN (ai_extracted_skills);"
+        )
+        conn.commit()
         # Ingested jobs table (used by RAG indexer). Kept in sync with sql/001_create_jobs.sql.
         cur.execute(
             """

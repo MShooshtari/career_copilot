@@ -16,6 +16,7 @@ from career_copilot.database.profiles import (
     get_resume_file_by_user_id,
     upsert_user_profile,
 )
+from career_copilot.ingestion.skill_extraction import extract_ai_resume_skill_tags
 from career_copilot.rag.user_embedding import index_user_embedding
 from career_copilot.resume_io import extract_resume_text
 from career_copilot.routers.recommendations import clear_recommendation_caches
@@ -104,6 +105,18 @@ async def post_profile(
                 content_bytes = existing_data
                 resume_filename = existing_name
 
+        if content_bytes and not resume_text_for_embedding:
+            resume_text_for_embedding = strip_nul(
+                extract_resume_text(content_bytes, resume_filename)
+            )
+
+        ai_extracted_skills: list[str] = []
+        if resume_text_for_embedding:
+            try:
+                ai_extracted_skills = extract_ai_resume_skill_tags(resume_text_for_embedding)
+            except Exception:
+                ai_extracted_skills = []
+
         resume_blob_container = None
         resume_blob_name = None
         if content_bytes and resume_storage_mode() == "blob":
@@ -132,17 +145,15 @@ async def post_profile(
             resume_filename=resume_filename,
             resume_blob_container=resume_blob_container,
             resume_blob_name=resume_blob_name,
+            ai_extracted_skills=ai_extracted_skills,
         )
 
-        if content_bytes and not resume_text_for_embedding:
-            resume_text_for_embedding = strip_nul(
-                extract_resume_text(content_bytes, resume_filename)
-            )
+        embedding_skill_tags = _merge_skill_tags(skill_tags, ai_extracted_skills)
         index_user_embedding(
             conn,
             user_id=user_id,
             resume_text=resume_text_for_embedding,
-            skill_tags=skill_tags,
+            skill_tags=embedding_skill_tags,
             preferred_roles=preferred_roles,
             industries=industries,
             work_mode=work_mode,
@@ -155,3 +166,18 @@ async def post_profile(
         conn.close()
 
     return RedirectResponse(url="/profile", status_code=303)
+
+
+def _merge_skill_tags(skill_tags: str, ai_extracted_skills: list[str]) -> str:
+    skills: list[str] = []
+    seen: set[str] = set()
+    for raw in [*skill_tags.split(","), *ai_extracted_skills]:
+        skill = raw.strip()
+        if not skill:
+            continue
+        key = skill.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        skills.append(skill)
+    return ", ".join(skills)
