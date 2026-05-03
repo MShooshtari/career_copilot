@@ -45,10 +45,38 @@ def test_api_market_analysis_returns_json(client: TestClient) -> None:
         with patch(
             "career_copilot.routers.market_analysis.build_market_analysis_report",
             return_value=sample,
-        ):
+        ) as build_report:
             response = client.get("/api/market-analysis")
     finally:
         app.dependency_overrides.pop(db_deps.get_db, None)
     assert response.status_code == 200
     assert response.json()["cohort"]["size"] == 0
+    assert build_report.call_args.kwargs["include_rag"] is False
+    mock_conn.close.assert_called_once()
+
+
+def test_api_market_analysis_allows_rag_opt_in(client: TestClient) -> None:
+    mock_conn = MagicMock()
+    sample = {
+        "cohort": {"size": 1, "job_ids_sample": [123], "filtered_count": 1},
+        "filters": {},
+        "weekly_posted": [],
+        "top_skills": [],
+        "salary": {},
+        "top_locations": [],
+        "fit": {},
+        "rag": {"available": True, "narrative": "x", "error": None},
+    }
+    app.dependency_overrides[db_deps.get_db] = lambda: mock_conn
+    try:
+        with patch(
+            "career_copilot.routers.market_analysis.build_market_analysis_report",
+            return_value=sample,
+        ) as build_report:
+            response = client.get("/api/market-analysis?include_rag=true")
+    finally:
+        app.dependency_overrides.pop(db_deps.get_db, None)
+    assert response.status_code == 200
+    assert response.json()["rag"]["available"] is True
+    assert build_report.call_args.kwargs["include_rag"] is True
     mock_conn.close.assert_called_once()

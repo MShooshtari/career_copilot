@@ -171,6 +171,19 @@ def init_schema(conn: psycopg.Connection) -> None:
             ON user_embeddings USING hnsw (embedding vector_cosine_ops)
             """
         )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS market_analysis_rag_query_embeddings (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                profile_version TEXT NOT NULL,
+                query_hash TEXT NOT NULL,
+                embedding vector({EMBEDDING_VECTOR_DIMENSIONS}) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (user_id, profile_version, query_hash)
+            )
+            """
+        )
         conn.commit()
 
         # Chunk-level embeddings for RAG (job descriptions split for retrieval).

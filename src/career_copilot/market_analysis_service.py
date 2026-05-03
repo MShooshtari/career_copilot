@@ -4,7 +4,11 @@ Market analysis: SQL-filtered cohort, ranked by user profile embedding, aggregat
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import os
+import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -22,7 +26,9 @@ except ModuleNotFoundError:  # pragma: no cover
 from career_copilot.constants import (
     MARKET_ANALYSIS_DEFAULT_POSTED_WITHIN_DAYS,
     MARKET_ANALYSIS_FALLBACK_COHORT_LIMIT,
+    MARKET_ANALYSIS_RAG_EMBEDDING_CACHE_TTL_SECONDS,
     MARKET_ANALYSIS_RAG_TOP_CHUNKS,
+    MARKET_ANALYSIS_REPORT_CACHE_TTL_SECONDS,
     MARKET_ANALYSIS_TOP_LOCATIONS,
     MARKET_ANALYSIS_TOP_SKILLS_CHART,
 )
@@ -41,8 +47,103 @@ class MarketCohortFilters:
     salary_at_least: int | None = None
 
 
+class _TTLCache:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: int,
+        max_entries: int,
+        clone=copy.deepcopy,
+    ) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._max_entries = max_entries
+        self._clone = clone
+        self._items: dict[Any, tuple[float, Any]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: Any) -> Any | None:
+        now = time.time()
+        with self._lock:
+            item = self._items.get(key)
+            if item is None:
+                return None
+            expires_at, value = item
+            if now >= expires_at:
+                self._items.pop(key, None)
+                return None
+            return self._clone(value)
+
+    def set(self, key: Any, value: Any) -> None:
+        now = time.time()
+        with self._lock:
+            self._purge_expired(now)
+            if len(self._items) >= self._max_entries and key not in self._items:
+                oldest_key = min(self._items, key=lambda k: self._items[k][0])
+                self._items.pop(oldest_key, None)
+            self._items[key] = (now + self._ttl_seconds, self._clone(value))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+    def _purge_expired(self, now: float) -> None:
+        expired = [key for key, (expires_at, _value) in self._items.items() if now >= expires_at]
+        for key in expired:
+            self._items.pop(key, None)
+
+
+_market_analysis_report_cache = _TTLCache(
+    ttl_seconds=MARKET_ANALYSIS_REPORT_CACHE_TTL_SECONDS,
+    max_entries=128,
+)
+_rag_query_embedding_cache = _TTLCache(
+    ttl_seconds=MARKET_ANALYSIS_RAG_EMBEDDING_CACHE_TTL_SECONDS,
+    max_entries=256,
+    clone=list,
+)
+
+
+def clear_market_analysis_caches() -> None:
+    _market_analysis_report_cache.clear()
+    _rag_query_embedding_cache.clear()
+
+
+def _profile_version(profile_row: tuple | None, skills: list[str]) -> str:
+    payload = repr((tuple(profile_row) if profile_row else None, tuple(sorted(skills))))
+    return hashlib.sha256(payload.encode("utf-8", errors="replace")).hexdigest()
+
+
 def _cutoff_utc(days: int) -> datetime:
     return datetime.now(tz=UTC) - timedelta(days=max(1, days))
+
+
+def _normalized_filter_value(value: str | None, *, case_insensitive: bool = False) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized.lower() if case_insensitive else normalized
+
+
+def _market_analysis_cache_key(
+    *,
+    user_id: int,
+    filters: MarketCohortFilters,
+    cohort_limit: int,
+    include_rag: bool,
+) -> tuple[Any, ...]:
+    return (
+        int(user_id),
+        max(1, int(filters.posted_within_days)),
+        _normalized_filter_value(filters.location_contains, case_insensitive=True),
+        _normalized_filter_value(filters.title_contains, case_insensitive=True),
+        _normalized_filter_value(filters.source_equals),
+        bool(filters.remote_only),
+        filters.salary_at_least,
+        max(1, min(int(cohort_limit), 5_000)),
+        bool(include_rag),
+    )
 
 
 def _register(conn: psycopg.Connection) -> None:
@@ -356,12 +457,108 @@ def retrieve_rag_chunks(
     return out
 
 
-def _rag_query_embedding(profile_blurb: str) -> list[float]:
+def _cached_rag_query_embedding(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    profile_version: str,
+    query_hash: str,
+) -> list[float] | None:
+    try:
+        _register(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT embedding
+                FROM market_analysis_rag_query_embeddings
+                WHERE user_id = %s
+                  AND profile_version = %s
+                  AND query_hash = %s
+                """,
+                (user_id, profile_version, query_hash),
+            )
+            row = cur.fetchone()
+    except psycopg.Error:
+        conn.rollback()
+        return None
+    if not row or row[0] is None:
+        return None
+    return list(row[0])
+
+
+def _store_rag_query_embedding(
+    conn: psycopg.Connection,
+    *,
+    user_id: int,
+    profile_version: str,
+    query_hash: str,
+    embedding: list[float],
+) -> None:
+    try:
+        _register(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO market_analysis_rag_query_embeddings (
+                    user_id,
+                    profile_version,
+                    query_hash,
+                    embedding
+                )
+                VALUES (%s, %s, %s, %s::vector)
+                ON CONFLICT (user_id, profile_version, query_hash) DO UPDATE SET
+                  embedding = EXCLUDED.embedding,
+                  updated_at = now()
+                """,
+                (user_id, profile_version, query_hash, embedding),
+            )
+        conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+
+
+def _rag_query_embedding(
+    profile_blurb: str,
+    *,
+    conn: psycopg.Connection | None = None,
+    user_id: int | None = None,
+    profile_version: str | None = None,
+) -> list[float]:
     q = (
         "Job requirements, responsibilities, tech stack, seniority, and qualifications "
         "relevant to this candidate profile:\n\n" + profile_blurb[:6_000]
     )
-    return embed_texts([q.strip()])[0]
+    query = q.strip()
+    query_hash = hashlib.sha256(query.encode("utf-8", errors="replace")).hexdigest()
+    cache_key: tuple[Any, ...]
+    if user_id is not None and profile_version:
+        cache_key = ("user_profile", int(user_id), profile_version, query_hash)
+    else:
+        cache_key = ("query", query_hash)
+    cached = _rag_query_embedding_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    if conn is not None and user_id is not None and profile_version:
+        cached = _cached_rag_query_embedding(
+            conn,
+            user_id=user_id,
+            profile_version=profile_version,
+            query_hash=query_hash,
+        )
+        if cached is not None:
+            _rag_query_embedding_cache.set(cache_key, cached)
+            return cached
+    embedding = embed_texts([query])[0]
+    _rag_query_embedding_cache.set(cache_key, embedding)
+    if conn is not None and user_id is not None and profile_version:
+        _store_rag_query_embedding(
+            conn,
+            user_id=user_id,
+            profile_version=profile_version,
+            query_hash=query_hash,
+            embedding=embedding,
+        )
+    return embedding
 
 
 def generate_rag_insights(
@@ -448,8 +645,18 @@ def build_market_analysis_report(
     user_id: int,
     filters: MarketCohortFilters,
     cohort_limit: int,
-    include_rag: bool = True,
+    include_rag: bool = False,
 ) -> dict[str, Any]:
+    cache_key = _market_analysis_cache_key(
+        user_id=user_id,
+        filters=filters,
+        cohort_limit=cohort_limit,
+        include_rag=include_rag,
+    )
+    cached = _market_analysis_report_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     job_ids, cohort_meta = cohort_job_ids(
         conn, user_id=user_id, filters=filters, cohort_limit=cohort_limit
     )
@@ -457,18 +664,6 @@ def build_market_analysis_report(
     user_skills_list = list_user_skills_lower(conn, user_id)
     user_skills = set(user_skills_list)
     fit = _fit_metrics(user_skills, aggregates["top_skills"])
-    profile_row = get_profile_by_user_id(conn, user_id)
-    profile_blurb = _profile_blurb(profile_row, user_skills_list)
-
-    sal = aggregates.get("salary") or {}
-    top_skill_bits = [f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]]
-    aggregates_summary = (
-        f"Cohort size: {len(job_ids)} jobs. "
-        f"Top skills: {', '.join(top_skill_bits)}. "
-        f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
-        f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
-    )
-
     rag: dict[str, Any] = {
         "available": False,
         "narrative": "",
@@ -477,7 +672,24 @@ def build_market_analysis_report(
     }
     if include_rag and job_ids:
         try:
-            qvec = _rag_query_embedding(profile_blurb)
+            profile_row = get_profile_by_user_id(conn, user_id)
+            profile_blurb = _profile_blurb(profile_row, user_skills_list)
+            sal = aggregates.get("salary") or {}
+            top_skill_bits = [
+                f"{s['skill']}({s['count']})" for s in aggregates.get("top_skills", [])[:5]
+            ]
+            aggregates_summary = (
+                f"Cohort size: {len(job_ids)} jobs. "
+                f"Top skills: {', '.join(top_skill_bits)}. "
+                f"Salary (when min+max present): avg mid ~ {sal.get('avg_mid_when_both')}. "
+                f"Locations: {', '.join(loc['location'] for loc in aggregates['top_locations'][:5])}."
+            )
+            qvec = _rag_query_embedding(
+                profile_blurb,
+                conn=conn,
+                user_id=user_id,
+                profile_version=_profile_version(profile_row, user_skills_list),
+            )
             rag_chunks = retrieve_rag_chunks(conn, job_ids=job_ids, query_embedding=qvec)
             rag = generate_rag_insights(
                 profile_blurb=profile_blurb,
@@ -493,7 +705,7 @@ def build_market_analysis_report(
                 "error": str(e)[:500],
             }
 
-    return {
+    report = {
         "cohort": {
             "size": len(job_ids),
             "job_ids_sample": job_ids[:20],
@@ -514,3 +726,5 @@ def build_market_analysis_report(
         "fit": fit,
         "rag": rag,
     }
+    _market_analysis_report_cache.set(cache_key, report)
+    return report
