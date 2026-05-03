@@ -86,6 +86,38 @@ def test_build_market_analysis_report_keeps_include_rag_in_cache_key() -> None:
     assert cohort.call_count == 2
 
 
+def test_build_market_analysis_report_keeps_remote_mode_in_cache_key() -> None:
+    conn = MagicMock()
+    aggregates = {
+        "weekly_posted": [],
+        "top_skills": [],
+        "salary": {},
+        "top_locations": [],
+    }
+
+    with (
+        patch.object(service, "cohort_job_ids", return_value=([], {"filtered_count": 0})) as cohort,
+        patch.object(service, "_aggregates_for_cohort", return_value=aggregates),
+        patch.object(service, "list_user_skills_lower", return_value=[]),
+    ):
+        service.build_market_analysis_report(
+            conn,
+            user_id=7,
+            filters=MarketCohortFilters(remote_mode="remote_only"),
+            cohort_limit=500,
+            include_rag=False,
+        )
+        service.build_market_analysis_report(
+            conn,
+            user_id=7,
+            filters=MarketCohortFilters(remote_mode="no_remote"),
+            cohort_limit=500,
+            include_rag=False,
+        )
+
+    assert cohort.call_count == 2
+
+
 def test_aggregates_top_skills_prefers_ai_then_legacy_skill_columns() -> None:
     conn = MagicMock()
     cur = conn.cursor.return_value.__enter__.return_value

@@ -64,12 +64,13 @@
         }
         .card h2 { margin: 0 0 8px; font-size: 17px; }
         .card p.hint { margin: 0 0 16px; font-size: 13px; color: var(--text-muted); }
-        .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
         .filters label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
         .filters input, .filters select {
             width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-subtle);
             background: #0f172a; color: var(--text-main); font-size: 14px;
         }
+        .filters .filter-wide { min-width: 230px; }
         .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         button.primary {
             background: var(--accent); color: #fff; border: none; padding: 10px 18px;
@@ -152,11 +153,12 @@
                     <label for="salary_at_least">Salary at least (either min or max)</label>
                     <input type="number" id="salary_at_least" name="salary_at_least" min="0" placeholder="optional" />
                 </div>
-                <div>
+                <div class="filter-wide">
                     <label for="remote_mode">Remote preference</label>
                     <select id="remote_mode" name="remote_mode">
-                        <option value="prioritize_remote" selected>Prioritize remote-friendly jobs</option>
-                        <option value="include_remote">Include remote-friendly jobs</option>
+                        <option value="no_remote">On-site / hybrid only</option>
+                        <option value="remote_only">Remote only</option>
+                        <option value="both" selected>Any work mode</option>
                     </select>
                 </div>
             </form>
@@ -243,7 +245,7 @@
             if (src) p.set("source_equals", src);
             const sal = document.getElementById("salary_at_least").value.trim();
             if (sal) p.set("salary_at_least", sal);
-            if (document.getElementById("remote_mode").value === "prioritize_remote") p.set("remote_only", "true");
+            p.set("remote_mode", document.getElementById("remote_mode").value || "both");
             p.set("include_rag", includeRag ? "true" : "false");
             return p.toString();
         }

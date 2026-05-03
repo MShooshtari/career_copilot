@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import psycopg
 
@@ -44,7 +44,7 @@ class MarketCohortFilters:
     location_contains: str | None = None
     title_contains: str | None = None
     source_equals: str | None = None
-    remote_only: bool = False
+    remote_mode: Literal["both", "remote_only", "no_remote"] = "both"
     salary_at_least: int | None = None
 
 
@@ -140,7 +140,7 @@ def _market_analysis_cache_key(
         _normalized_filter_value(filters.location_contains, case_insensitive=True),
         _normalized_filter_value(filters.title_contains, case_insensitive=True),
         _normalized_filter_value(filters.source_equals),
-        bool(filters.remote_only),
+        filters.remote_mode,
         filters.salary_at_least,
         max(1, min(int(cohort_limit), 5_000)),
         bool(include_rag),
@@ -149,6 +149,24 @@ def _market_analysis_cache_key(
 
 def _register(conn: psycopg.Connection) -> None:
     register_vector(conn)
+
+
+def _append_remote_filter(
+    conds: list[str],
+    params: list[Any],
+    remote_mode: str,
+) -> None:
+    remote_predicate = (
+        "(COALESCE(j.location, '') ILIKE %s "
+        "OR COALESCE(j.description, '') ILIKE %s "
+        "OR COALESCE(j.source, '') ILIKE %s)"
+    )
+    if remote_mode == "remote_only":
+        conds.append(remote_predicate)
+        params.extend(["%remote%", "%remote%", "%remote%"])
+    elif remote_mode == "no_remote":
+        conds.append(f"NOT {remote_predicate}")
+        params.extend(["%remote%", "%remote%", "%remote%"])
 
 
 def count_filtered_jobs(
@@ -172,9 +190,7 @@ def count_filtered_jobs(
     if filters.source_equals and filters.source_equals.strip():
         conds.append("j.source = %s")
         params.append(filters.source_equals.strip())
-    if filters.remote_only:
-        conds.append("(j.location ILIKE %s OR j.description ILIKE %s)")
-        params.extend(["%remote%", "%remote%"])
+    _append_remote_filter(conds, params, filters.remote_mode)
     if filters.salary_at_least is not None:
         conds.append(
             "(j.salary_max IS NOT NULL AND j.salary_max >= %s) "
@@ -217,9 +233,7 @@ def cohort_job_ids(
     if filters.source_equals and filters.source_equals.strip():
         conds.append("j.source = %s")
         params.append(filters.source_equals.strip())
-    if filters.remote_only:
-        conds.append("(j.location ILIKE %s OR j.description ILIKE %s)")
-        params.extend(["%remote%", "%remote%"])
+    _append_remote_filter(conds, params, filters.remote_mode)
     if filters.salary_at_least is not None:
         conds.append(
             "(j.salary_max IS NOT NULL AND j.salary_max >= %s) "
@@ -755,7 +769,8 @@ def build_market_analysis_report(
             "location_contains": filters.location_contains,
             "title_contains": filters.title_contains,
             "source_equals": filters.source_equals,
-            "remote_only": filters.remote_only,
+            "remote_mode": filters.remote_mode,
+            "remote_only": filters.remote_mode == "remote_only",
             "salary_at_least": filters.salary_at_least,
         },
         "weekly_posted": aggregates["weekly_posted"],
