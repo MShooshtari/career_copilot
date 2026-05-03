@@ -17,8 +17,8 @@ from career_copilot.database.profiles import (
     upsert_user_profile,
 )
 from career_copilot.rag.user_embedding import index_user_embedding
-from career_copilot.routers.recommendations import clear_recommendation_caches
 from career_copilot.resume_io import extract_resume_text
+from career_copilot.routers.recommendations import clear_recommendation_caches
 from career_copilot.storage.resumes import put_resume, resume_storage_mode
 from career_copilot.utils import strip_nul
 
