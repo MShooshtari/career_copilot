@@ -172,7 +172,9 @@ def _extract_text_candidates(text: str) -> list[str]:
 
 def _looks_like_candidate_line(raw_line: str) -> bool:
     stripped = raw_line.strip()
-    return bool(_BULLET_RE.match(stripped) or "," in stripped or ";" in stripped or len(stripped) <= 80)
+    return bool(
+        _BULLET_RE.match(stripped) or "," in stripped or ";" in stripped or len(stripped) <= 80
+    )
 
 
 def _split_candidate_span(span: str) -> list[str]:
