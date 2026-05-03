@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import os
 import threading
 import time
@@ -102,6 +103,14 @@ _rag_query_embedding_cache = _TTLCache(
     max_entries=256,
     clone=list,
 )
+
+_MARKET_LOW_SIGNAL_SKILL_PENALTIES = {
+    "customer service": 0.35,
+    "technical": 0.2,
+    "support": 0.4,
+    "management": 0.45,
+    "lead": 0.4,
+}
 
 
 def clear_market_analysis_caches() -> None:
@@ -290,7 +299,12 @@ def cohort_job_ids(
     return ids, meta
 
 
-def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict[str, Any]:
+def _aggregates_for_cohort(
+    conn: psycopg.Connection,
+    job_ids: list[int],
+    *,
+    user_skills: set[str] | None = None,
+) -> dict[str, Any]:
     if not job_ids:
         return {
             "weekly_posted": [],
@@ -318,7 +332,7 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT lower(trim(u.skill)) AS sk, count(*)::int AS cnt
+            SELECT j.id::bigint AS job_id, lower(trim(u.skill)) AS sk
             FROM jobs j
             CROSS JOIN LATERAL unnest(
                 COALESCE(
@@ -330,14 +344,16 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
             ) AS u(skill)
             WHERE j.id = ANY(%s::bigint[])
               AND trim(u.skill) <> ''
-            GROUP BY 1
-            ORDER BY cnt DESC
-            LIMIT %s
             """,
-            (job_ids, MARKET_ANALYSIS_TOP_SKILLS_CHART * 20),
+            (job_ids,),
         )
-        raw_top_skills = [(str(r[0]), int(r[1])) for r in cur.fetchall()]
-    top_skills = _filtered_top_skills(raw_top_skills)
+        raw_skill_mentions = [(int(r[0]), str(r[1])) for r in cur.fetchall()]
+    top_skills = _filtered_top_skills(
+        raw_skill_mentions,
+        conn=conn,
+        job_ids=job_ids,
+        user_skills=user_skills or set(),
+    )
 
     with conn.cursor() as cur:
         cur.execute(
@@ -394,27 +410,63 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
     }
 
 
-def _filtered_top_skills(raw_top_skills: list[tuple[str, int]]) -> list[dict[str, Any]]:
+def _filtered_top_skills(
+    raw_skill_mentions: list[tuple[int, str]],
+    *,
+    conn: psycopg.Connection | None = None,
+    job_ids: list[int] | None = None,
+    user_skills: set[str] | None = None,
+) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
-    for raw_skill, count in raw_top_skills:
+    weighted_counts: dict[str, float] = {}
+    seen_skill_jobs: set[tuple[str, int]] = set()
+    rank_by_job_id = {int(job_id): idx for idx, job_id in enumerate(job_ids or [])}
+    user_skills = {skill.casefold() for skill in user_skills or set()}
+
+    for job_id, raw_skill in raw_skill_mentions:
         normalized = normalize_skill_tag(raw_skill)
         if not normalized:
             continue
         key = normalized.casefold()
-        counts[key] = counts.get(key, 0) + int(count)
+        skill_job = (key, int(job_id))
+        if skill_job in seen_skill_jobs:
+            continue
+        seen_skill_jobs.add(skill_job)
+        counts[key] = counts.get(key, 0) + 1
+        rank = rank_by_job_id.get(int(job_id), len(rank_by_job_id))
+        # Earlier job_ids are closer to the user's profile when vector ranking is available.
+        job_weight = 1.0 / math.sqrt(1.0 + (rank / 50.0))
+        weighted_counts[key] = weighted_counts.get(key, 0.0) + job_weight
+
+    global_total, global_counts = _global_skill_document_counts(conn, counts.keys())
 
     scored = []
     for skill, count in counts.items():
         specificity = skill_specificity_score(skill)
         if specificity <= 0:
             continue
-        market_score = (count**0.72) * specificity
+        idf = (
+            math.log((1 + global_total) / (1 + global_counts.get(skill, count))) + 1
+            if global_total > 0
+            else 1.0
+        )
+        relevance = _profile_skill_relevance(skill, user_skills)
+        low_signal_penalty = _MARKET_LOW_SIGNAL_SKILL_PENALTIES.get(skill, 1.0)
+        market_score = (
+            math.log1p(weighted_counts[skill])
+            * max(idf, 0.1)
+            * specificity
+            * relevance
+            * low_signal_penalty
+        )
         scored.append(
             {
                 "skill": skill,
                 "count": count,
                 "market_score": round(market_score, 3),
                 "specificity_score": round(specificity, 3),
+                "idf_score": round(idf, 3),
+                "weighted_count": round(weighted_counts[skill], 3),
             }
         )
 
@@ -422,6 +474,59 @@ def _filtered_top_skills(raw_top_skills: list[tuple[str, int]]) -> list[dict[str
         scored,
         key=lambda item: (-item["market_score"], -item["count"], item["skill"]),
     )[:MARKET_ANALYSIS_TOP_SKILLS_CHART]
+
+
+def _global_skill_document_counts(
+    conn: psycopg.Connection | None,
+    skills: Any,
+) -> tuple[int, dict[str, int]]:
+    skill_list = sorted({str(skill).casefold() for skill in skills if str(skill).strip()})
+    if not skill_list:
+        return 0, {}
+    if conn is None:
+        return 0, {}
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*)::int FROM jobs")
+            row = cur.fetchone()
+            total = int(row[0] or 0) if row else 0
+            cur.execute(
+                """
+                SELECT lower(trim(u.skill)) AS sk, count(DISTINCT j.id)::int AS df
+                FROM jobs j
+                CROSS JOIN LATERAL unnest(
+                    COALESCE(
+                        NULLIF(j.ai_extracted_skills, ARRAY[]::text[]),
+                        NULLIF(j.extracted_skills, ARRAY[]::text[]),
+                        NULLIF(j.skills, ARRAY[]::text[]),
+                        ARRAY[]::text[]
+                    )
+                ) AS u(skill)
+                WHERE lower(trim(u.skill)) = ANY(%s::text[])
+                GROUP BY 1
+                """,
+                (skill_list,),
+            )
+            counts = {str(r[0]).casefold(): int(r[1]) for r in cur.fetchall()}
+    except psycopg.Error:
+        conn.rollback()
+        return len(skill_list), {}
+    return max(total, 1), counts
+
+
+def _profile_skill_relevance(skill: str, user_skills: set[str]) -> float:
+    if not user_skills:
+        return 1.0
+    skill_tokens = set(skill.split())
+    best = 1.0
+    for user_skill in user_skills:
+        if skill == user_skill:
+            return 1.45
+        user_tokens = set(user_skill.split())
+        if skill_tokens & user_tokens:
+            best = max(best, 1.18)
+    return best
 
 
 def _fit_metrics(
@@ -713,9 +818,9 @@ def build_market_analysis_report(
     job_ids, cohort_meta = cohort_job_ids(
         conn, user_id=user_id, filters=filters, cohort_limit=cohort_limit
     )
-    aggregates = _aggregates_for_cohort(conn, job_ids)
     user_skills_list = list_user_skills_lower(conn, user_id)
     user_skills = set(user_skills_list)
+    aggregates = _aggregates_for_cohort(conn, job_ids, user_skills=user_skills)
     fit = _fit_metrics(user_skills, aggregates["top_skills"])
     rag: dict[str, Any] = {
         "available": False,
