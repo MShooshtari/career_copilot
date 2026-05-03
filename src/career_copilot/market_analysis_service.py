@@ -307,7 +307,12 @@ def _aggregates_for_cohort(conn: psycopg.Connection, job_ids: list[int]) -> dict
             SELECT lower(trim(u.skill)) AS sk, count(*)::int AS cnt
             FROM jobs j
             CROSS JOIN LATERAL unnest(
-                COALESCE(j.ai_extracted_skills, j.extracted_skills, ARRAY[]::text[])
+                COALESCE(
+                    NULLIF(j.ai_extracted_skills, ARRAY[]::text[]),
+                    NULLIF(j.extracted_skills, ARRAY[]::text[]),
+                    NULLIF(j.skills, ARRAY[]::text[]),
+                    ARRAY[]::text[]
+                )
             ) AS u(skill)
             WHERE j.id = ANY(%s::bigint[])
               AND trim(u.skill) <> ''

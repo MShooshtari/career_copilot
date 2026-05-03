@@ -45,7 +45,7 @@ def test_job_to_document_joins_sections() -> None:
         company="Acme",
         location="Remote",
         description="Build things.",
-        extracted_skills=["Python", "SQL"],
+        ai_extracted_skills=["Python", "SQL"],
     )
     doc = job_to_document(j)
     assert "Engineer" in doc
@@ -55,29 +55,40 @@ def test_job_to_document_joins_sections() -> None:
     assert "Skills: Python, SQL" in doc
 
 
-def test_job_to_document_includes_extracted_skills_without_duplicates() -> None:
-    j = _nj(skills=["Python"], extracted_skills=["Python", "CI/CD", "python"])
+def test_job_to_document_includes_ai_extracted_skills_without_duplicates() -> None:
+    j = _nj(skills=["Python"], ai_extracted_skills=["Python", "CI/CD", "python"])
 
     assert "Skills: Python, CI/CD" in job_to_document(j)
     assert job_to_metadata(j)["skills"] == "Python, CI/CD"
+    assert job_to_metadata(j)["ai_extracted_skills"] == "Python, CI/CD"
     assert job_to_metadata(j)["extracted_skills"] == "Python, CI/CD"
 
 
-def test_job_to_document_prefers_ai_extracted_skills() -> None:
+def test_job_to_document_prefers_ai_extracted_skills_for_analysis() -> None:
     j = _nj(
         extracted_skills=["Python", "SQL"],
         ai_extracted_skills=["Data Modeling", "Python"],
     )
 
-    assert "Skills: Data Modeling, Python, SQL" in job_to_document(j)
-    assert job_to_metadata(j)["extracted_skills"] == "Data Modeling, Python, SQL"
+    assert "Skills: Data Modeling, Python" in job_to_document(j)
+    assert "SQL" not in job_to_document(j)
+    assert job_to_metadata(j)["ai_extracted_skills"] == "Data Modeling, Python"
+    assert job_to_metadata(j)["extracted_skills"] == "Data Modeling, Python"
 
 
-def test_job_to_document_ignores_source_skills_for_analysis_text() -> None:
-    j = _nj(skills=["SourceTag"], extracted_skills=None)
+def test_job_to_document_falls_back_to_extracted_skills_for_analysis_text() -> None:
+    j = _nj(skills=["SourceTag"], extracted_skills=["LegacyTag"], ai_extracted_skills=None)
 
+    assert "Skills: LegacyTag" in job_to_document(j)
     assert "SourceTag" not in job_to_document(j)
-    assert "skills" not in job_to_metadata(j)
+    assert job_to_metadata(j)["skills"] == "LegacyTag"
+
+
+def test_job_to_document_falls_back_to_source_skills_for_analysis_text() -> None:
+    j = _nj(skills=["SourceTag"], extracted_skills=None, ai_extracted_skills=None)
+
+    assert "Skills: SourceTag" in job_to_document(j)
+    assert job_to_metadata(j)["skills"] == "SourceTag"
 
 
 def test_job_to_document_truncates_over_max_chars() -> None:
@@ -109,7 +120,7 @@ def test_job_to_metadata_optional_fields() -> None:
         salary_min=100_000,
         salary_max=150_000,
         posted_at=posted,
-        extracted_skills=["Go"],
+        ai_extracted_skills=["Go"],
     )
     m = job_to_metadata(j)
     assert m["salary_min"] == 100_000

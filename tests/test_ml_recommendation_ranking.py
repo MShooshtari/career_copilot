@@ -53,22 +53,22 @@ def test_rerank_adds_diversity_and_exploration_slots() -> None:
         {
             "id": "python-1",
             "model_score": 0.99,
-            "metadata": {"title": "Senior Python Engineer", "extracted_skills": "python, fastapi"},
+            "metadata": {"title": "Senior Python Engineer", "ai_extracted_skills": "python, fastapi"},
         },
         {
             "id": "python-2",
             "model_score": 0.98,
-            "metadata": {"title": "Python API Engineer", "extracted_skills": "python, fastapi"},
+            "metadata": {"title": "Python API Engineer", "ai_extracted_skills": "python, fastapi"},
         },
         {
             "id": "data-1",
             "model_score": 0.90,
-            "metadata": {"title": "Data Engineer", "extracted_skills": "sql, airflow"},
+            "metadata": {"title": "Data Engineer", "ai_extracted_skills": "sql, airflow"},
         },
         {
             "id": "frontend-1",
             "model_score": 0.30,
-            "metadata": {"title": "Frontend Engineer", "extracted_skills": "react, typescript"},
+            "metadata": {"title": "Frontend Engineer", "ai_extracted_skills": "react, typescript"},
         },
     ]
 

@@ -72,7 +72,11 @@ def get_job_by_id(conn: psycopg.Connection, job_id: int) -> tuple | None:
             """
             SELECT id, source, source_id, title, company, location,
                    salary_min, salary_max, description, skills,
-                   COALESCE(ai_extracted_skills, extracted_skills) AS extracted_skills,
+                   COALESCE(
+                       NULLIF(ai_extracted_skills, ARRAY[]::text[]),
+                       NULLIF(extracted_skills, ARRAY[]::text[]),
+                       NULLIF(skills, ARRAY[]::text[])
+                   ) AS extracted_skills,
                    posted_at, url
             FROM jobs
             WHERE id = %s
@@ -513,9 +517,16 @@ def format_recommendation_jobs(
                 "distance": r.get("distance"),
                 "salary_min": meta.get("salary_min"),
                 "salary_max": meta.get("salary_max"),
-                "skills": (meta.get("extracted_skills") or "").split(",")
-                if meta.get("extracted_skills")
-                else [],
+                "skills": _metadata_skills(meta),
             }
         )
     return jobs_for_template
+
+
+def _metadata_skills(meta: dict) -> list[str]:
+    raw = meta.get("ai_extracted_skills") or meta.get("extracted_skills") or meta.get("skills")
+    if isinstance(raw, str):
+        return raw.split(",") if raw else []
+    if isinstance(raw, list):
+        return [str(s) for s in raw if str(s)]
+    return []

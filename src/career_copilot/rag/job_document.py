@@ -11,7 +11,8 @@ JOB_DOC_MAX_CHARS = RAG_JOB_DOC_MAX_CHARS
 def _analysis_skills(job: NormalizedJob) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
-    for skill in [*(job.ai_extracted_skills or []), *(job.extracted_skills or [])]:
+    source_skills = job.ai_extracted_skills or job.extracted_skills or job.skills or []
+    for skill in source_skills:
         key = skill.casefold()
         if key not in seen:
             seen.add(key)
@@ -59,6 +60,7 @@ def job_to_metadata(job: NormalizedJob) -> dict[str, str | int | float | bool]:
     skills = _analysis_skills(job)
     if skills:
         meta["skills"] = ", ".join(skills)
+        meta["ai_extracted_skills"] = ", ".join(skills)
         meta["extracted_skills"] = ", ".join(skills)
     return meta
 

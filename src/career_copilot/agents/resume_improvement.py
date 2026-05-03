@@ -55,7 +55,11 @@ def build_resume_improvement_context(
             """
             SELECT id, source, source_id, title, company, location,
                    salary_min, salary_max, description, skills,
-                   COALESCE(ai_extracted_skills, extracted_skills) AS extracted_skills,
+                   COALESCE(
+                       NULLIF(ai_extracted_skills, ARRAY[]::text[]),
+                       NULLIF(extracted_skills, ARRAY[]::text[]),
+                       NULLIF(skills, ARRAY[]::text[])
+                   ) AS extracted_skills,
                    posted_at, url
             FROM jobs WHERE id = %s
             """,

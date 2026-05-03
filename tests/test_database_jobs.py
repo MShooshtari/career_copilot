@@ -208,12 +208,45 @@ def test_format_recommendation_jobs_skills_from_metadata() -> None:
                 "title": "J",
                 "skills": "SourceTag",
                 "extracted_skills": "Python, Go",
+                "ai_extracted_skills": "Python, Go",
             },
         }
     ]
     id_map = {("x", "1"): 1}
     out = format_recommendation_jobs(raw, id_map)
     assert out[0]["skills"] == ["Python", " Go"]  # comma split keeps space after comma
+
+
+def test_format_recommendation_jobs_falls_back_to_legacy_extracted_skills_metadata() -> None:
+    raw = [
+        {
+            "metadata": {
+                "source": "x",
+                "source_id": "1",
+                "title": "J",
+                "extracted_skills": "LegacyTag",
+            },
+        }
+    ]
+    id_map = {("x", "1"): 1}
+    out = format_recommendation_jobs(raw, id_map)
+    assert out[0]["skills"] == ["LegacyTag"]
+
+
+def test_format_recommendation_jobs_falls_back_to_source_skills_metadata() -> None:
+    raw = [
+        {
+            "metadata": {
+                "source": "x",
+                "source_id": "1",
+                "title": "J",
+                "skills": "SourceTag",
+            },
+        }
+    ]
+    id_map = {("x", "1"): 1}
+    out = format_recommendation_jobs(raw, id_map)
+    assert out[0]["skills"] == ["SourceTag"]
 
 
 # --- resolve_job_ids (mocked connection) ---
