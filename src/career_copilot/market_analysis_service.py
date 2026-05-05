@@ -186,7 +186,7 @@ def count_filtered_jobs(
     _register(conn)
     cutoff = _cutoff_utc(filters.posted_within_days)
     conds = [
-        "j.posted_at IS NULL OR j.posted_at >= %s",
+        "(j.posted_at IS NULL OR j.posted_at >= %s)",
         "EXISTS (SELECT 1 FROM jobs_embeddings e WHERE e.job_id = j.id)",
     ]
     params: list[Any] = [cutoff]
@@ -202,8 +202,8 @@ def count_filtered_jobs(
     _append_remote_filter(conds, params, filters.remote_mode)
     if filters.salary_at_least is not None:
         conds.append(
-            "(j.salary_max IS NOT NULL AND j.salary_max >= %s) "
-            "OR (j.salary_min IS NOT NULL AND j.salary_min >= %s)"
+            "((j.salary_max IS NOT NULL AND j.salary_max >= %s) "
+            "OR (j.salary_min IS NOT NULL AND j.salary_min >= %s))"
         )
         params.extend([filters.salary_at_least, filters.salary_at_least])
 
@@ -229,7 +229,7 @@ def cohort_job_ids(
     _register(conn)
     cutoff = _cutoff_utc(filters.posted_within_days)
     conds = [
-        "j.posted_at IS NULL OR j.posted_at >= %s",
+        "(j.posted_at IS NULL OR j.posted_at >= %s)",
         "EXISTS (SELECT 1 FROM jobs_embeddings e WHERE e.job_id = j.id)",
     ]
     params: list[Any] = [cutoff]
@@ -245,8 +245,8 @@ def cohort_job_ids(
     _append_remote_filter(conds, params, filters.remote_mode)
     if filters.salary_at_least is not None:
         conds.append(
-            "(j.salary_max IS NOT NULL AND j.salary_max >= %s) "
-            "OR (j.salary_min IS NOT NULL AND j.salary_min >= %s)"
+            "((j.salary_max IS NOT NULL AND j.salary_max >= %s) "
+            "OR (j.salary_min IS NOT NULL AND j.salary_min >= %s))"
         )
         params.extend([filters.salary_at_least, filters.salary_at_least])
 

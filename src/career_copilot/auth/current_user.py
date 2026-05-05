@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 from career_copilot.app_config import templates
 from career_copilot.auth.config import auth_enabled
 from career_copilot.auth.deps import get_external_identity
+from career_copilot.auth.guest import GUEST_PROVIDER, get_guest_subject
 from career_copilot.constants import DEFAULT_USER_ID
 from career_copilot.database.deps import get_db
 from career_copilot.database.users import get_or_create_user
@@ -29,7 +30,7 @@ async def get_current_user_id(
     """
     Resolve the current request's user_id.
 
-    - When AUTH is enabled: requires an authenticated external identity and maps it to an internal user id.
+    - When AUTH is enabled: maps an authenticated external identity or guest session to an internal user id.
     - When AUTH is disabled: returns DEFAULT_USER_ID (local demo mode), and ensures a local user row exists.
     """
     # Tests patch out DB access; keep request handlers working without a real DB.
@@ -48,6 +49,17 @@ async def get_current_user_id(
             conn.commit()
             return user_id
         if ext is None:
+            sess = request.session if "session" in request.scope else None
+            guest_subject = get_guest_subject(sess)
+            if guest_subject:
+                user_id = get_or_create_user(
+                    conn,
+                    external_provider=GUEST_PROVIDER,
+                    external_subject=guest_subject,
+                    email=None,
+                )
+                conn.commit()
+                return user_id
             if _wants_html_response(request):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

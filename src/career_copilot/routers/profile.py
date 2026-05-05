@@ -17,6 +17,7 @@ from career_copilot.database.profiles import (
     upsert_user_profile,
 )
 from career_copilot.ingestion.skill_extraction import extract_ai_resume_skill_tags
+from career_copilot.market_analysis_service import clear_market_analysis_caches
 from career_copilot.rag.user_embedding import index_user_embedding
 from career_copilot.resume_io import extract_resume_text
 from career_copilot.routers.recommendations import clear_recommendation_caches
@@ -162,6 +163,7 @@ async def post_profile(
         )
         conn.commit()
         clear_recommendation_caches()
+        clear_market_analysis_caches()
     finally:
         conn.close()
 

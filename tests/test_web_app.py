@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from career_copilot.auth.guest import GUEST_SESSION_KEY, get_guest_subject
 from career_copilot.web_app import app
 
 
@@ -16,9 +17,23 @@ def client() -> TestClient:
 
 
 def test_home_redirects_to_profile(client: TestClient) -> None:
-    response = client.get("/", follow_redirects=False)
+    with patch("career_copilot.routers.home.auth_enabled", return_value=False):
+        response = client.get("/", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/profile"
+
+
+def test_home_redirects_to_sign_in_choice_when_auth_enabled(client: TestClient) -> None:
+    with patch("career_copilot.routers.home.auth_enabled", return_value=True):
+        response = client.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/auth/sign-in"
+
+
+def test_guest_subject_requires_non_empty_session_value() -> None:
+    assert get_guest_subject({GUEST_SESSION_KEY: " guest-123 "}) == "guest-123"
+    assert get_guest_subject({GUEST_SESSION_KEY: ""}) is None
+    assert get_guest_subject(None) is None
 
 
 def test_openapi_json_available(client: TestClient) -> None:
