@@ -157,6 +157,39 @@ After model scoring, recommendations are reranked before pagination:
 - Exploration: reserves `RECOMMENDATIONS_EXPLORATION_RATE` (default `0.20`) of the recommendation window for deterministic semi-random candidates from the retrieved pool.
 - Tuning knobs live in `src/career_copilot/constants.py`: candidate pool size, rerank window size, diversity penalties, and exploration rate.
 
+## AI evaluations
+
+The repo includes framework-agnostic evaluation scaffolding under `src/career_copilot/evals/`.
+It is intentionally independent of LangChain/LangGraph/LangSmith so the same cases can benchmark
+the current implementation and any future agent rewrite.
+
+Run the packaged smoke benchmarks:
+
+```bash
+python scripts/run_evals.py --suite all
+```
+
+Available suites:
+
+- `add-job`: field-level extraction accuracy and required-field completeness for job ingestion.
+- `ranking`: `precision@k`, `recall@k`, and `nDCG@k` for recommendation scoring.
+- `rag`: retrieval precision/recall for known relevant job ids.
+- `rubric`: scored rubric judgments for resume improvement, interview prep, and application tracking.
+- `judge-prompts`: prints judge-model prompts for rubric cases that do not yet have judgments.
+
+By default, `add-job` scores saved predictions in the JSONL fixtures. To call the current
+LLM-backed extractor against the cases, use:
+
+```bash
+python scripts/run_evals.py --suite add-job --live-add-job
+```
+
+You can also run the module directly after setting `PYTHONPATH=src` or after installing the
+package with `pip install -e .`.
+
+Committed smoke cases live in `src/career_copilot/evals/examples/`. Larger private or redacted
+production benchmarks can be stored locally under `data/evals/` and passed with `--dataset`.
+
 ### Versioned dataset (single source of truth)
 
 Data lives under `data/datasets/ranking/`. Each version writes two files: `mock_similarity_vN.csv` and `mock_embeddings_vN.csv`.
