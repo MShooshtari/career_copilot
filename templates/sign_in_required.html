@@ -67,6 +67,20 @@
             box-shadow: 0 10px 25px rgba(55, 48, 163, 0.55);
         }
         a.btn-primary:hover { filter: brightness(1.06); }
+        a.btn-guest {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #052e2b;
+            text-decoration: none;
+            background: linear-gradient(135deg, #5eead4, #34d399);
+            box-shadow: 0 10px 25px rgba(20, 184, 166, 0.35);
+        }
+        a.btn-guest:hover { filter: brightness(1.04); }
         a.btn-secondary {
             display: inline-flex;
             align-items: center;
@@ -89,10 +103,14 @@
 </head>
 <body>
     <div class="card">
-        <h1>You are not signed in</h1>
-        <p>Sign in to continue. After you authenticate, you will be redirected back to Career Copilot.</p>
+        <h1>Choose how to continue</h1>
+        <p>
+            Sign in to save your profile and activity across visits, or continue as a guest for a
+            session-based experience with limited history.
+        </p>
         <div class="actions">
             <a class="btn-primary" href="/auth/login">Sign in</a>
+            <a class="btn-guest" href="/auth/guest">Continue as guest</a>
             <a class="btn-secondary" href="/">Home</a>
         </div>
     </div>

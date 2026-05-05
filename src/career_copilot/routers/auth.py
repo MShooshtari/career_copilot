@@ -4,8 +4,9 @@ from typing import Any
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from career_copilot.app_config import templates
 from career_copilot.auth.config import (
     auth_enabled,
     entra_authority,
@@ -17,6 +18,7 @@ from career_copilot.auth.config import (
     entra_tenant_id,
 )
 from career_copilot.auth.entra import ExternalIdentity
+from career_copilot.auth.guest import GUEST_SESSION_KEY, new_guest_subject
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,6 +53,13 @@ def _build_default_metadata_url() -> str:
     return f"{base}/v2.0/.well-known/openid-configuration"
 
 
+@router.get("/sign-in", response_class=HTMLResponse)
+async def sign_in(request: Request) -> Response:
+    if not auth_enabled():
+        return RedirectResponse(url="/profile", status_code=303)
+    return templates.TemplateResponse(request, "sign_in_required.html", {})
+
+
 def _oauth() -> OAuth:
     oauth = OAuth()
     metadata_url = entra_metadata_url() or _build_default_metadata_url()
@@ -69,11 +78,23 @@ async def login(request: Request) -> RedirectResponse:
     if not auth_enabled():
         return RedirectResponse(url="/profile", status_code=303)
 
+    request.session.pop(GUEST_SESSION_KEY, None)
     oauth = _oauth()
     redirect_uri = entra_redirect_uri()
     if not redirect_uri:
         raise RuntimeError("ENTRA_REDIRECT_URI is required for interactive login")
     return await oauth.entra.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/guest")
+async def guest(request: Request) -> RedirectResponse:
+    if not auth_enabled():
+        return RedirectResponse(url="/profile", status_code=303)
+
+    request.session.pop("ext_identity", None)
+    if not request.session.get(GUEST_SESSION_KEY):
+        request.session[GUEST_SESSION_KEY] = new_guest_subject()
+    return RedirectResponse(url="/profile", status_code=303)
 
 
 @router.get("/callback")
@@ -124,6 +145,7 @@ async def callback(request: Request) -> RedirectResponse:
         "email": ext.email,
         "claims": ext.claims,
     }
+    request.session.pop(GUEST_SESSION_KEY, None)
     return RedirectResponse(url="/profile", status_code=303)
 
 
@@ -131,4 +153,5 @@ async def callback(request: Request) -> RedirectResponse:
 async def logout(request: Request) -> RedirectResponse:
     if getattr(request, "session", None) is not None:
         request.session.pop("ext_identity", None)
+        request.session.pop(GUEST_SESSION_KEY, None)
     return RedirectResponse(url="/profile", status_code=303)
