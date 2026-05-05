@@ -156,9 +156,9 @@
                 <div class="filter-wide">
                     <label for="remote_mode">Remote preference</label>
                     <select id="remote_mode" name="remote_mode">
-                        <option value="no_remote">On-site / hybrid only</option>
-                        <option value="remote_only">Remote only</option>
                         <option value="both" selected>Any work mode</option>
+                        <option value="remote_only">Remote only</option>
+                        <option value="no_remote">Exclude remote mentions</option>
                     </select>
                 </div>
             </form>
@@ -314,8 +314,12 @@
                 const data = await res.json();
                 document.getElementById("results").style.display = "block";
                 const c = data.cohort || {};
-                let pill = "Cohort: " + (c.size || 0) + " jobs";
-                if (c.filtered_count != null) pill += " · " + c.filtered_count + " matched filters before cap";
+                const filteredCount = c.filtered_count == null ? null : Number(c.filtered_count);
+                const cohortSize = Number(c.size || 0);
+                let pill = "Cohort: " + cohortSize + " jobs";
+                if (filteredCount != null && filteredCount > cohortSize) {
+                    pill += " · capped from " + filteredCount + " matching jobs";
+                }
                 if (c.used_vector_ranking) pill += " · ranked by your profile embedding";
                 else pill += " · sorted by recency (add/save profile + API key for vector rank)";
                 if (c.message) pill += " — " + c.message;
