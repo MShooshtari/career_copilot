@@ -99,7 +99,11 @@ def print_judge_prompts(*, dataset: str) -> None:
         if not rubric_name or case.get("judgment"):
             continue
         print("\n" + "=" * 80)
-        print(build_judge_prompt(rubric_name=rubric_name, case=case, output=str(case.get("output") or "")))
+        print(
+            build_judge_prompt(
+                rubric_name=rubric_name, case=case, output=str(case.get("output") or "")
+            )
+        )
 
 
 def run_all(*, live_add_job: bool = False, k: int = 3) -> dict[str, dict[str, float]]:
@@ -165,4 +169,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

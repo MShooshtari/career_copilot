@@ -84,4 +84,3 @@ def test_eval_runners_return_aggregate_metrics() -> None:
     assert "recommendation_ranking" in all_metrics
     assert "rag_retrieval" in all_metrics
     assert "rubric_outputs" in all_metrics
-

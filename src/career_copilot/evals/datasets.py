@@ -53,4 +53,3 @@ def load_dataset(name_or_path: str) -> list[dict[str, Any]]:
     if path.exists():
         return read_jsonl(path)
     return read_jsonl(example_dataset_path(name_or_path))
-

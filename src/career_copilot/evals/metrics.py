@@ -76,7 +76,9 @@ def score_job_extraction(
         f"field_{field_name}": _field_score(actual.get(field_name), expected.get(field_name))
         for field_name in field_names
     }
-    present = [field_name for field_name in field_names if actual.get(field_name) not in (None, "", [])]
+    present = [
+        field_name for field_name in field_names if actual.get(field_name) not in (None, "", [])
+    ]
     return {
         **per_field,
         "field_accuracy": sum(per_field.values()) / len(per_field),
@@ -89,7 +91,9 @@ def aggregate_metric_dicts(rows: list[dict[str, float]]) -> dict[str, float]:
         return {}
     keys = sorted({key for row in rows for key in row})
     return {
-        key: float(sum(row[key] for row in rows if key in row) / sum(1 for row in rows if key in row))
+        key: float(
+            sum(row[key] for row in rows if key in row) / sum(1 for row in rows if key in row)
+        )
         for key in keys
     }
 
@@ -124,4 +128,3 @@ def score_ranking_cases(cases: list[dict[str, Any]], *, k: int) -> dict[str, flo
             scores.append(float(candidate.get("score", candidate.get("model_score", 0.0))))
             groups.append(request_id)
     return ranking_metrics_at_k(labels, scores, k=k, group_ids=groups)
-

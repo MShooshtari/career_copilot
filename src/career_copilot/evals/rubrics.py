@@ -110,8 +110,7 @@ def build_judge_prompt(*, rubric_name: str, case: dict[str, Any], output: str) -
     """
     rubric = RUBRICS[rubric_name]
     criteria = "\n".join(
-        f"- {criterion.name} ({criterion.min_score}-{criterion.max_score}): "
-        f"{criterion.description}"
+        f"- {criterion.name} ({criterion.min_score}-{criterion.max_score}): {criterion.description}"
         for criterion in rubric.criteria
     )
     return (
@@ -142,4 +141,3 @@ def score_rubric_judgment(judgment: dict[str, Any], *, rubric_name: str) -> dict
         values.append(value)
     out["rubric_overall"] = sum(values) / len(values) if values else 0.0
     return out
-
